@@ -9,21 +9,62 @@ import 'globe/globe_country_data.dart';
 
 const totalCountriesInWorld = 195;
 const totalContinentsInWorld = 7;
+const _continentDisplayOrder = <String>[
+  'Africa',
+  'Asia',
+  'Europe',
+  'North America',
+  'South America',
+  'Oceania',
+  'Antarctica',
+];
+
+class GlobeFocusRequest {
+  const GlobeFocusRequest({
+    required this.countryCode,
+    required this.token,
+  });
+
+  final String countryCode;
+  final int token;
+}
+
+final globeFocusRequestProvider =
+    StateProvider<GlobeFocusRequest?>((ref) => null);
+
+class ContinentProgress {
+  const ContinentProgress({
+    required this.continent,
+    required this.visitedCount,
+    required this.totalCount,
+  });
+
+  final String continent;
+  final int visitedCount;
+  final int totalCount;
+
+  double get progress =>
+      totalCount == 0 ? 0 : (visitedCount / totalCount).clamp(0, 1);
+}
 
 class MapDashboardState {
   const MapDashboardState({
     required this.visitedCount,
+    required this.totalTrips,
     required this.recentTrips,
     required this.continentsVisited,
     required this.worldVisited,
     required this.visitedCountryCodes,
+    required this.continentProgress,
   });
 
   final int visitedCount;
+  final int totalTrips;
   final List<TripUi> recentTrips;
   final int continentsVisited;
   final int worldVisited;
   final List<String> visitedCountryCodes;
+  final List<ContinentProgress> continentProgress;
 }
 
 final mapDashboardProvider = Provider<AsyncValue<MapDashboardState>>((ref) {
@@ -62,6 +103,7 @@ final mapDashboardProvider = Provider<AsyncValue<MapDashboardState>>((ref) {
   final visitedCountryCodes =
       visits.map((visit) => visit.countryCode.toUpperCase()).toSet();
   final visitedCount = visitedCountryCodes.length;
+  final totalTrips = trips.length;
   final recentTrips =
       trips.take(6).map(TripUi.fromRecord).toList(growable: false);
 
@@ -77,16 +119,54 @@ final mapDashboardProvider = Provider<AsyncValue<MapDashboardState>>((ref) {
       .toSet()
       .length;
 
+  final continentTotals = <String, int>{
+    for (final continent in _continentDisplayOrder) continent: 0,
+  };
+  for (final continent in continentByCountryCode.values) {
+    if (!continentTotals.containsKey(continent)) {
+      continue;
+    }
+    continentTotals[continent] = continentTotals[continent]! + 1;
+  }
+
+  for (final entry in _hiddenMicrostatesByContinent.entries) {
+    final current = continentTotals[entry.key] ?? 0;
+    continentTotals[entry.key] = current + entry.value;
+  }
+
+  final continentVisited = <String, int>{
+    for (final continent in _continentDisplayOrder) continent: 0,
+  };
+  for (final countryCode in visitedCountryCodes) {
+    final continent = continentByCountryCode[countryCode];
+    if (continent == null || !continentVisited.containsKey(continent)) {
+      continue;
+    }
+    continentVisited[continent] = continentVisited[continent]! + 1;
+  }
+
+  final continentProgress = _continentDisplayOrder
+      .map(
+        (continent) => ContinentProgress(
+          continent: continent,
+          visitedCount: continentVisited[continent] ?? 0,
+          totalCount: continentTotals[continent] ?? 0,
+        ),
+      )
+      .toList(growable: false);
+
   final visitedCountryCodesSorted = visitedCountryCodes.toList(growable: false)
     ..sort();
 
   return AsyncValue.data(
     MapDashboardState(
       visitedCount: visitedCount,
+      totalTrips: totalTrips,
       recentTrips: recentTrips,
       continentsVisited: continentsVisited,
       worldVisited: visitedCount,
       visitedCountryCodes: visitedCountryCodesSorted,
+      continentProgress: continentProgress,
     ),
   );
 });
@@ -128,13 +208,22 @@ class MapVisitToggleController extends AutoDisposeAsyncNotifier<void> {
 }
 
 const _continentByCountryCode = <String, String>{
+  'AD': 'Europe',
   'JP': 'Asia',
   'IT': 'Europe',
+  'LI': 'Europe',
+  'MC': 'Europe',
+  'SM': 'Europe',
   'TR': 'Asia',
   'AE': 'Asia',
   'US': 'North America',
+  'VA': 'Europe',
   'BR': 'South America',
   'AU': 'Oceania',
   'ZA': 'Africa',
   'AQ': 'Antarctica',
+};
+
+const _hiddenMicrostatesByContinent = <String, int>{
+  'Europe': 5,
 };

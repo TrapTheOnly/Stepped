@@ -233,6 +233,9 @@ class GlobePainter extends CustomPainter {
       final isVisited = visitedCountryCodes.contains(country.iso2);
       final isSelected = selectedCountryCode == country.iso2;
       final rings = country.ringsForLod(lodLevel);
+      final internalSharedEdges = country.iso2 == 'UA'
+          ? _collectInternalSharedEdges(rings)
+          : const <String>{};
 
       final fillPaint = Paint()
         ..style = PaintingStyle.fill
@@ -278,16 +281,15 @@ class GlobePainter extends CustomPainter {
             ),
         ];
 
-        final fillPath = _buildVisibleFillPath(projected, ring, globeRadius);
-        if (fillPath != null) {
+        final fillPaths = _buildVisibleFillPaths(projected, ring);
+        for (final fillPath in fillPaths) {
           canvas.drawPath(fillPath, fillPaint);
         }
 
         final borderPath = _buildVisibleBorderPath(
           projected,
           ring,
-          globeRadius,
-          country.iso2,
+          internalSharedEdges,
         );
         if (!borderPath.getBounds().isEmpty) {
           canvas.drawPath(borderPath, sealPaint);
@@ -338,8 +340,7 @@ class GlobePainter extends CustomPainter {
   Path _buildVisibleBorderPath(
     List<GlobeProjectedPoint> points,
     List<GlobeGeoPoint> ring,
-    double globeRadius,
-    String countryIso2,
+    Set<String> internalSharedEdges,
   ) {
     final path = Path();
     if (points.length < 2) {
@@ -352,11 +353,11 @@ class GlobePainter extends CustomPainter {
       if (!_isFront(current) || !_isFront(next)) {
         continue;
       }
-      if (_isProjectedSeamJump(current.offset, next.offset, globeRadius)) {
+      if (_isGeoDateLineJump(ring[i], ring[i + 1])) {
         continue;
       }
-      if (_shouldSuppressInternalCrimeaEdge(
-          countryIso2, ring[i], ring[i + 1])) {
+      if (internalSharedEdges.isNotEmpty &&
+          internalSharedEdges.contains(_segmentKey(ring[i], ring[i + 1]))) {
         continue;
       }
 
@@ -367,32 +368,34 @@ class GlobePainter extends CustomPainter {
     return path;
   }
 
-  Path? _buildVisibleFillPath(
+  List<Path> _buildVisibleFillPaths(
     List<GlobeProjectedPoint> points,
     List<GlobeGeoPoint> ring,
-    double globeRadius,
   ) {
     if (points.length < 4) {
-      return null;
+      return const <Path>[];
     }
 
-    final run = _longestVisibleRun(points, ring, globeRadius);
-    if (run.length < 3) {
-      return null;
+    final runs = _visibleRuns(points, ring);
+    if (runs.isEmpty) {
+      return const <Path>[];
     }
 
-    final path = Path()..moveTo(run.first.dx, run.first.dy);
-    for (final offset in run.skip(1)) {
-      path.lineTo(offset.dx, offset.dy);
+    final paths = <Path>[];
+    for (final run in runs) {
+      final path = Path()..moveTo(run.first.dx, run.first.dy);
+      for (final offset in run.skip(1)) {
+        path.lineTo(offset.dx, offset.dy);
+      }
+      path.close();
+      paths.add(path);
     }
-    path.close();
-    return path;
+    return paths;
   }
 
-  List<Offset> _longestVisibleRun(
+  List<List<Offset>> _visibleRuns(
     List<GlobeProjectedPoint> points,
     List<GlobeGeoPoint> ring,
-    double globeRadius,
   ) {
     final runs = <List<Offset>>[];
     var current = <Offset>[];
@@ -400,16 +403,10 @@ class GlobePainter extends CustomPainter {
     for (var index = 0; index < points.length; index++) {
       final point = points[index];
       final previousIndex = index == 0 ? points.length - 1 : index - 1;
-      final previousPoint = points[previousIndex];
       final previousGeo = ring[previousIndex];
       final currentGeo = ring[index];
 
-      final connected = !_isProjectedSeamJump(
-            previousPoint.offset,
-            point.offset,
-            globeRadius,
-          ) &&
-          !_isGeoDateLineJump(previousGeo, currentGeo);
+      final connected = !_isGeoDateLineJump(previousGeo, currentGeo);
 
       if (_isFront(point) && (current.isEmpty || connected)) {
         current.add(point.offset);
@@ -429,14 +426,12 @@ class GlobePainter extends CustomPainter {
     }
 
     if (runs.isEmpty) {
-      return const <Offset>[];
+      return const <List<Offset>>[];
     }
 
     if (_isFront(points.first) &&
         _isFront(points.last) &&
         runs.length >= 2 &&
-        !_isProjectedSeamJump(
-            points.first.offset, points.last.offset, globeRadius) &&
         !_isGeoDateLineJump(ring.first, ring.last)) {
       final merged = <Offset>[...runs.last, ...runs.first];
       runs
@@ -445,44 +440,54 @@ class GlobePainter extends CustomPainter {
         ..insert(0, merged);
     }
 
-    runs.sort((left, right) => right.length.compareTo(left.length));
-    return runs.first;
+    return runs
+        .where((run) => run.length >= 3)
+        .toList(growable: false);
   }
 
   bool _isFront(GlobeProjectedPoint point) => point.depth > -0.03;
-
-  bool _isProjectedSeamJump(Offset left, Offset right, double globeRadius) {
-    return (left - right).distance > globeRadius * 0.82;
-  }
 
   bool _isGeoDateLineJump(GlobeGeoPoint left, GlobeGeoPoint right) {
     final lonDelta = (left.lon - right.lon).abs();
     return lonDelta > 170;
   }
 
-  bool _shouldSuppressInternalCrimeaEdge(
-    String countryIso2,
-    GlobeGeoPoint left,
-    GlobeGeoPoint right,
-  ) {
-    if (countryIso2 != 'UA') {
-      return false;
+  Set<String> _collectInternalSharedEdges(List<List<GlobeGeoPoint>> rings) {
+    final counts = <String, int>{};
+    for (final ring in rings) {
+      if (ring.length < 2) {
+        continue;
+      }
+      for (var i = 0; i < ring.length - 1; i++) {
+        final left = ring[i];
+        final right = ring[i + 1];
+        if (_isGeoDateLineJump(left, right)) {
+          continue;
+        }
+        final key = _segmentKey(left, right);
+        counts[key] = (counts[key] ?? 0) + 1;
+      }
     }
 
-    final inBox = left.lon >= 31.6 &&
-        left.lon <= 35.8 &&
-        left.lat >= 45.4 &&
-        left.lat <= 46.8 &&
-        right.lon >= 31.6 &&
-        right.lon <= 35.8 &&
-        right.lat >= 45.4 &&
-        right.lat <= 46.8;
+    return {
+      for (final entry in counts.entries)
+        if (entry.value > 1) entry.key,
+    };
+  }
 
-    if (!inBox) {
-      return false;
+  String _segmentKey(GlobeGeoPoint left, GlobeGeoPoint right) {
+    final leftKey = _pointKey(left);
+    final rightKey = _pointKey(right);
+    if (leftKey.compareTo(rightKey) <= 0) {
+      return '$leftKey|$rightKey';
     }
+    return '$rightKey|$leftKey';
+  }
 
-    return (left.lat - right.lat).abs() < 0.6;
+  String _pointKey(GlobeGeoPoint point) {
+    final lon = (point.lon * 1000000).round();
+    final lat = (point.lat * 1000000).round();
+    return '$lon:$lat';
   }
 
   Color _applyOpacity(Color color, double opacity) {

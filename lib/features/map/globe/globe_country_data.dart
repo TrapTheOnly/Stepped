@@ -5,9 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 const _degreesToRadians = math.pi / 180.0;
-const _lodCount = 5;
-const _lodEpsilons = <double>[0.85, 0.46, 0.20, 0.10, 0.035];
-const _lodMaxPoints = <int>[42, 92, 190, 300, 520];
+const _lodCount = 2;
 const _hiddenTinyCountryIso2 = <String>{'AD', 'LI', 'MC', 'SM', 'VA'};
 
 @immutable
@@ -71,16 +69,16 @@ class GlobeCountryDatasetLoader {
   static Future<GlobeCountryDataset> load() => _cached;
 
   static Future<GlobeCountryDataset> _loadFromAssets() async {
-    final high = await _loadRawCountries(
-      assetPath: 'assets/data/countries.geojson',
-      source: _GeoSource.geoCountries,
-    );
     final low = await _loadRawCountries(
+      assetPath: 'assets/data/countries_200m.geojson',
+      source: _GeoSource.naturalEarth110m,
+    );
+    final high = await _loadRawCountries(
       assetPath: 'assets/data/countries_110m.geojson',
       source: _GeoSource.naturalEarth110m,
     );
 
-    final allIsoCodes = <String>{...high.keys, ...low.keys};
+    final allIsoCodes = <String>{...low.keys, ...high.keys};
     final builds = <String, _MutableCountry>{};
 
     for (final iso2 in allIsoCodes) {
@@ -89,41 +87,37 @@ class GlobeCountryDatasetLoader {
       }
 
       final highRaw = high[iso2];
-      final lowRaw = low[iso2];
-      final name = highRaw?.name ?? lowRaw?.name ?? iso2;
-      final continent = highRaw?.continent ?? lowRaw?.continent;
-      final highRings =
-          highRaw?.rings ?? lowRaw?.rings ?? const <_RawCountryRing>[];
-      final lowRings = lowRaw?.rings ?? highRings;
-
-      if (highRings.isEmpty || lowRings.isEmpty) {
+      final lowRaw = low[iso2] ?? highRaw;
+      if (lowRaw == null || lowRaw.rings.isEmpty) {
         continue;
       }
+      final name = highRaw?.name ?? lowRaw.name;
+      final continent = highRaw?.continent ?? lowRaw.continent;
+      final lowRings = lowRaw.rings;
+      final highRings = highRaw?.rings ?? lowRings;
 
       final lodRings = List<List<List<GlobeGeoPoint>>>.generate(
         _lodCount,
         (_) => <List<GlobeGeoPoint>>[],
       );
 
-      for (var lod = 0; lod < _lodCount; lod++) {
-        final sourceRings = lod <= 1
-            ? _selectSourceRingsForLowLod(lowRings, lod)
-            : _selectSourceRingsForHighLod(highRings, lod);
-
-        for (final ring in sourceRings) {
-          final simplified = _simplifyRing(ring.points, lod);
-          if (simplified.length >= 4) {
-            lodRings[lod].add(List<GlobeGeoPoint>.unmodifiable(simplified));
-          }
+      for (final ring in lowRings) {
+        if (ring.points.length >= 4) {
+          lodRings[0].add(List<GlobeGeoPoint>.unmodifiable(ring.points));
         }
+      }
+      if (lodRings[0].isEmpty) {
+        lodRings[0].add(List<GlobeGeoPoint>.unmodifiable(lowRings.first.points));
+      }
 
-        if (lodRings[lod].isEmpty) {
-          final fallback =
-              _simplifyRing(highRings.first.points, math.max(1, lod));
-          if (fallback.length >= 4) {
-            lodRings[lod].add(List<GlobeGeoPoint>.unmodifiable(fallback));
-          }
+      for (final ring in highRings) {
+        if (ring.points.length >= 4) {
+          lodRings[1].add(List<GlobeGeoPoint>.unmodifiable(ring.points));
         }
+      }
+      if (lodRings[1].isEmpty) {
+        lodRings[1]
+            .add(List<GlobeGeoPoint>.unmodifiable(highRings.first.points));
       }
 
       builds[iso2] = _MutableCountry(
@@ -231,7 +225,10 @@ class GlobeCountryDatasetLoader {
       case _GeoSource.naturalEarth110m:
         raw = (properties['ISO_A2_EH'] as String?) ??
             (properties['ISO_A2'] as String?) ??
-            (properties['WB_A2'] as String?);
+            (properties['WB_A2'] as String?) ??
+            (properties['iso_a2_eh'] as String?) ??
+            (properties['iso_a2'] as String?) ??
+            (properties['wb_a2'] as String?);
     }
 
     if (raw == null) {
@@ -257,6 +254,7 @@ class GlobeCountryDatasetLoader {
           (properties['NAME'] as String?),
       _GeoSource.naturalEarth110m => (properties['NAME'] as String?) ??
           (properties['ADMIN'] as String?) ??
+          (properties['admin'] as String?) ??
           (properties['name'] as String?),
     };
 
@@ -295,72 +293,6 @@ class GlobeCountryDatasetLoader {
       'antarctica' => 'Antarctica',
       _ => null,
     };
-  }
-
-  static List<_RawCountryRing> _selectSourceRingsForLowLod(
-    List<_RawCountryRing> sortedRings,
-    int lod,
-  ) {
-    if (sortedRings.isEmpty) {
-      return const <_RawCountryRing>[];
-    }
-
-    final largest = sortedRings.first.areaAbs;
-    final ratioThreshold = lod == 0 ? 0.16 : 0.08;
-    final absoluteThreshold = lod == 0 ? 7.0 : 2.8;
-    final maxRings = lod == 0 ? 5 : 9;
-
-    final selected = <_RawCountryRing>[sortedRings.first];
-    for (final ring in sortedRings.skip(1)) {
-      if (selected.length >= maxRings) {
-        break;
-      }
-      if (ring.areaAbs >= largest * ratioThreshold ||
-          ring.areaAbs >= absoluteThreshold) {
-        selected.add(ring);
-      }
-    }
-
-    return selected;
-  }
-
-  static List<_RawCountryRing> _selectSourceRingsForHighLod(
-    List<_RawCountryRing> sortedRings,
-    int lod,
-  ) {
-    if (sortedRings.isEmpty) {
-      return const <_RawCountryRing>[];
-    }
-
-    if (lod == 2) {
-      final largest = sortedRings.first.areaAbs;
-      final selected = <_RawCountryRing>[sortedRings.first];
-      for (final ring in sortedRings.skip(1)) {
-        if (selected.length >= 28) {
-          break;
-        }
-        if (ring.areaAbs >= largest * 0.0016 || ring.areaAbs >= 0.12) {
-          selected.add(ring);
-        }
-      }
-      return selected;
-    }
-
-    if (lod == 3) {
-      final largest = sortedRings.first.areaAbs;
-      final selected = <_RawCountryRing>[sortedRings.first];
-      for (final ring in sortedRings.skip(1)) {
-        if (selected.length >= 68) {
-          break;
-        }
-        if (ring.areaAbs >= largest * 0.00035 || ring.areaAbs >= 0.03) {
-          selected.add(ring);
-        }
-      }
-      return selected;
-    }
-
-    return sortedRings;
   }
 
   static List<List<GlobeGeoPoint>> _bestReferenceRings(
@@ -507,115 +439,6 @@ class GlobeCountryDatasetLoader {
     }
 
     return points.length >= 4 ? points : const <GlobeGeoPoint>[];
-  }
-
-  static List<GlobeGeoPoint> _simplifyRing(List<GlobeGeoPoint> ring, int lod) {
-    final openRing = ring.sublist(0, ring.length - 1);
-    if (openRing.length < 3) {
-      return ring;
-    }
-
-    final epsilon = _lodEpsilons[lod];
-    final maxPoints = _lodMaxPoints[lod];
-    var simplified = _douglasPeucker(openRing, epsilon);
-
-    if (simplified.length > maxPoints) {
-      simplified = _downsample(simplified, maxPoints);
-    }
-
-    if (simplified.length < 3) {
-      simplified = _downsample(openRing, 3);
-    }
-
-    final closed = List<GlobeGeoPoint>.from(simplified);
-    final first = closed.first;
-    final last = closed.last;
-    if ((first.lon - last.lon).abs() > 1e-9 ||
-        (first.lat - last.lat).abs() > 1e-9) {
-      closed.add(GlobeGeoPoint(lon: first.lon, lat: first.lat));
-    }
-
-    return closed;
-  }
-
-  static List<GlobeGeoPoint> _douglasPeucker(
-    List<GlobeGeoPoint> points,
-    double epsilon,
-  ) {
-    if (points.length <= 2) {
-      return List<GlobeGeoPoint>.from(points);
-    }
-
-    var maxDistance = 0.0;
-    var index = 0;
-    final start = points.first;
-    final end = points.last;
-
-    for (var i = 1; i < points.length - 1; i++) {
-      final distance = _distanceToSegment(points[i], start, end);
-      if (distance > maxDistance) {
-        maxDistance = distance;
-        index = i;
-      }
-    }
-
-    if (maxDistance <= epsilon) {
-      return <GlobeGeoPoint>[start, end];
-    }
-
-    final left = _douglasPeucker(points.sublist(0, index + 1), epsilon);
-    final right = _douglasPeucker(points.sublist(index), epsilon);
-
-    return <GlobeGeoPoint>[
-      ...left.sublist(0, left.length - 1),
-      ...right,
-    ];
-  }
-
-  static double _distanceToSegment(
-    GlobeGeoPoint point,
-    GlobeGeoPoint segmentStart,
-    GlobeGeoPoint segmentEnd,
-  ) {
-    final vx = segmentEnd.lon - segmentStart.lon;
-    final vy = segmentEnd.lat - segmentStart.lat;
-    final wx = point.lon - segmentStart.lon;
-    final wy = point.lat - segmentStart.lat;
-
-    final segmentLengthSquared = (vx * vx) + (vy * vy);
-    if (segmentLengthSquared == 0) {
-      return math.sqrt((wx * wx) + (wy * wy));
-    }
-
-    final projection = ((wx * vx) + (wy * vy)) / segmentLengthSquared;
-    final t = projection.clamp(0.0, 1.0);
-    final closestX = segmentStart.lon + (t * vx);
-    final closestY = segmentStart.lat + (t * vy);
-    final dx = point.lon - closestX;
-    final dy = point.lat - closestY;
-
-    return math.sqrt((dx * dx) + (dy * dy));
-  }
-
-  static List<GlobeGeoPoint> _downsample(
-      List<GlobeGeoPoint> points, int maxPoints) {
-    if (points.length <= maxPoints) {
-      return List<GlobeGeoPoint>.from(points);
-    }
-
-    if (maxPoints <= 2) {
-      return <GlobeGeoPoint>[points.first, points.last];
-    }
-
-    final sampled = <GlobeGeoPoint>[points.first];
-    final step = (points.length - 2) / (maxPoints - 2);
-    for (var i = 1; i < maxPoints - 1; i++) {
-      final rawIndex = (i * step).round();
-      final index = rawIndex.clamp(1, points.length - 2);
-      sampled.add(points[index]);
-    }
-    sampled.add(points.last);
-    return sampled;
   }
 
   static GlobeGeoPoint _computeCentroid(List<List<GlobeGeoPoint>> rings) {

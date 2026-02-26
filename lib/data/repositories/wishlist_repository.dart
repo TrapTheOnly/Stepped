@@ -10,6 +10,11 @@ final wishlistStreamProvider = StreamProvider<List<WishlistItemRecord>>((ref) {
   return ref.watch(wishlistRepositoryProvider).watchWishlist();
 });
 
+final wishlistItemProvider =
+    FutureProvider.family<WishlistItemRecord?, int>((ref, id) {
+  return ref.watch(wishlistRepositoryProvider).getWishlistItemById(id);
+});
+
 class WishlistRepository {
   const WishlistRepository(this._database);
 
@@ -17,6 +22,10 @@ class WishlistRepository {
 
   Stream<List<WishlistItemRecord>> watchWishlist() {
     return _database.watchWishlist();
+  }
+
+  Future<WishlistItemRecord?> getWishlistItemById(int id) {
+    return _database.getWishlistItemById(id);
   }
 
   Future<int> addWishlistItem(WishlistItemRecord item) {

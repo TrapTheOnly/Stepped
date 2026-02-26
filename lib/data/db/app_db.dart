@@ -6,6 +6,8 @@ import 'package:sqflite/sqflite.dart';
 
 import 'tables.dart';
 
+const _noWishlistValue = Object();
+
 final databaseProvider = Provider<AppDatabase>((ref) {
   final database = AppDatabase();
   ref.onDispose(database.close);
@@ -120,34 +122,69 @@ class WishlistItemRecord {
     this.id,
     required this.title,
     this.countryName,
+    this.countryCode,
     required this.createdAt,
+    this.plannedStartDate,
+    this.plannedEndDate,
+    this.plannedCities,
+    this.aiPlan,
   });
 
   final int? id;
   final String title;
   final String? countryName;
+  final String? countryCode;
   final int createdAt;
+  final int? plannedStartDate;
+  final int? plannedEndDate;
+  final String? plannedCities;
+  final String? aiPlan;
 
   factory WishlistItemRecord.fromMap(Map<String, Object?> map) {
     return WishlistItemRecord(
       id: map['id'] as int,
       title: map['title'] as String,
       countryName: map['countryName'] as String?,
+      countryCode: map['countryCode'] as String?,
       createdAt: map['createdAt'] as int,
+      plannedStartDate: map['plannedStartDate'] as int?,
+      plannedEndDate: map['plannedEndDate'] as int?,
+      plannedCities: map['plannedCities'] as String?,
+      aiPlan: map['aiPlan'] as String?,
     );
   }
 
   WishlistItemRecord copyWith({
     int? id,
     String? title,
-    String? countryName,
+    Object? countryName = _noWishlistValue,
+    Object? countryCode = _noWishlistValue,
     int? createdAt,
+    Object? plannedStartDate = _noWishlistValue,
+    Object? plannedEndDate = _noWishlistValue,
+    Object? plannedCities = _noWishlistValue,
+    Object? aiPlan = _noWishlistValue,
   }) {
     return WishlistItemRecord(
       id: id ?? this.id,
       title: title ?? this.title,
-      countryName: countryName ?? this.countryName,
+      countryName: identical(countryName, _noWishlistValue)
+          ? this.countryName
+          : countryName as String?,
+      countryCode: identical(countryCode, _noWishlistValue)
+          ? this.countryCode
+          : countryCode as String?,
       createdAt: createdAt ?? this.createdAt,
+      plannedStartDate: identical(plannedStartDate, _noWishlistValue)
+          ? this.plannedStartDate
+          : plannedStartDate as int?,
+      plannedEndDate: identical(plannedEndDate, _noWishlistValue)
+          ? this.plannedEndDate
+          : plannedEndDate as int?,
+      plannedCities: identical(plannedCities, _noWishlistValue)
+          ? this.plannedCities
+          : plannedCities as String?,
+      aiPlan: identical(aiPlan, _noWishlistValue) ? this.aiPlan : aiPlan as String?,
     );
   }
 
@@ -155,7 +192,12 @@ class WishlistItemRecord {
     final data = <String, Object?>{
       'title': title,
       'countryName': countryName,
+      'countryCode': countryCode,
       'createdAt': createdAt,
+      'plannedStartDate': plannedStartDate,
+      'plannedEndDate': plannedEndDate,
+      'plannedCities': plannedCities,
+      'aiPlan': aiPlan,
     };
 
     if (includeId && id != null) {
@@ -168,7 +210,7 @@ class WishlistItemRecord {
 
 class AppDatabase {
   static const _databaseName = 'stepped.db';
-  static const _databaseVersion = 1;
+  static const _databaseVersion = 2;
 
   Database? _database;
   final StreamController<void> _tripChanges =
@@ -202,6 +244,28 @@ class AppDatabase {
           await db.execute(createWishlistTable);
           await db.execute(createTripsStartDateIndex);
           await db.execute(createWishlistCreatedAtIndex);
+        }
+        if (oldVersion < 2) {
+          await _addColumnIfMissing(
+            db,
+            'ALTER TABLE $wishlistTable ADD COLUMN countryCode TEXT',
+          );
+          await _addColumnIfMissing(
+            db,
+            'ALTER TABLE $wishlistTable ADD COLUMN plannedStartDate INTEGER',
+          );
+          await _addColumnIfMissing(
+            db,
+            'ALTER TABLE $wishlistTable ADD COLUMN plannedEndDate INTEGER',
+          );
+          await _addColumnIfMissing(
+            db,
+            'ALTER TABLE $wishlistTable ADD COLUMN plannedCities TEXT',
+          );
+          await _addColumnIfMissing(
+            db,
+            'ALTER TABLE $wishlistTable ADD COLUMN aiPlan TEXT',
+          );
         }
       },
     );
@@ -388,6 +452,20 @@ class AppDatabase {
     return rows.map(WishlistItemRecord.fromMap).toList(growable: false);
   }
 
+  Future<WishlistItemRecord?> getWishlistItemById(int id) async {
+    final db = await _db;
+    final rows = await db.query(
+      wishlistTable,
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    return WishlistItemRecord.fromMap(rows.first);
+  }
+
   Future<int> insertWishlistItem(WishlistItemRecord item) async {
     final db = await _db;
     final id = await db.insert(wishlistTable, item.toMap());
@@ -436,6 +514,14 @@ class AppDatabase {
     yield await loader();
     await for (final _ in trigger) {
       yield await loader();
+    }
+  }
+
+  Future<void> _addColumnIfMissing(Database db, String statement) async {
+    try {
+      await db.execute(statement);
+    } on DatabaseException {
+      // Ignore duplicate-column failures for defensive migrations.
     }
   }
 }

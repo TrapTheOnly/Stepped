@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'data/seed/seed_data.dart';
+import 'features/settings/app_preferences.dart';
 import 'routing/app_router.dart';
 import 'theme/app_theme.dart';
 
@@ -13,6 +14,9 @@ class SteppedAppBootstrap extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final startup = ref.watch(appStartupProvider);
     final router = ref.watch(appRouterProvider);
+    final preferencesAsync = ref.watch(appPreferencesProvider);
+    final themeMode =
+        preferencesAsync.valueOrNull?.themeMode ?? ThemeMode.system;
 
     return DynamicColorBuilder(
       builder: (lightDynamic, darkDynamic) {
@@ -30,6 +34,7 @@ class SteppedAppBootstrap extends ConsumerWidget {
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light(lightScheme),
           darkTheme: AppTheme.dark(darkScheme),
+          themeMode: themeMode,
           routerConfig: router,
           builder: (context, child) {
             return startup.when(

@@ -9,6 +9,7 @@ import '../features/settings/settings_screen.dart';
 import '../features/stats/stats_screen.dart';
 import '../features/trips/add_trip_screen.dart';
 import '../features/trips/trips_screen.dart';
+import '../features/wishlist/wishlist_plan_screen.dart';
 import '../features/wishlist/wishlist_screen.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'rootNavigator');
@@ -64,6 +65,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             pageBuilder: (context, state) {
               return const NoTransitionPage<void>(child: WishlistScreen());
             },
+            routes: <RouteBase>[
+              GoRoute(
+                path: 'plan/:id',
+                parentNavigatorKey: _rootNavigatorKey,
+                builder: (context, state) {
+                  final rawId = state.pathParameters['id'];
+                  final id = int.tryParse(rawId ?? '');
+                  if (id == null) {
+                    return const _RouteErrorScreen(
+                      message: 'Invalid wishlist item id',
+                    );
+                  }
+                  return WishlistPlanScreen(itemId: id);
+                },
+              ),
+            ],
           ),
           GoRoute(
             path: '/profile',

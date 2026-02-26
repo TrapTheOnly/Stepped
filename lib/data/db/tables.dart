@@ -28,7 +28,12 @@ CREATE TABLE $wishlistTable (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   title TEXT NOT NULL,
   countryName TEXT,
-  createdAt INTEGER NOT NULL
+  countryCode TEXT,
+  createdAt INTEGER NOT NULL,
+  plannedStartDate INTEGER,
+  plannedEndDate INTEGER,
+  plannedCities TEXT,
+  aiPlan TEXT
 )
 ''';
 
