@@ -56,7 +56,7 @@ class _WishlistScreenState extends ConsumerState<WishlistScreen> {
                       countryCode: _countryCodeFor(item, countryCodeByName),
                       showDate: preferences.showWishlistDates,
                       dateFormat: _dateFormat,
-                      onPlan: item.id == null
+                      onOpenPlan: item.id == null
                           ? null
                           : () => context.push('/wishlist/plan/${item.id}'),
                       onActions: () => _showActions(
@@ -123,8 +123,8 @@ class _WishlistScreenState extends ConsumerState<WishlistScreen> {
             children: <Widget>[
               ListTile(
                 leading: const Icon(Icons.auto_awesome_outlined),
-                title: const Text('Plan with AI'),
-                subtitle: const Text('Generate city/day recommendations'),
+                title: const Text('Open plan'),
+                subtitle: const Text('Review, regenerate, or manually edit'),
                 enabled: item.id != null,
                 onTap: item.id == null
                     ? null
@@ -298,7 +298,7 @@ class _WishlistScreenState extends ConsumerState<WishlistScreen> {
                     );
                   },
                   icon: const Icon(Icons.auto_awesome_outlined),
-                  label: const Text('Save + Plan'),
+                  label: const Text('Save + Open Plan'),
                 ),
                 FilledButton(
                   onPressed: () {
@@ -475,7 +475,7 @@ class _WishlistCard extends StatelessWidget {
     required this.countryCode,
     required this.showDate,
     required this.dateFormat,
-    required this.onPlan,
+    required this.onOpenPlan,
     required this.onActions,
   });
 
@@ -483,7 +483,7 @@ class _WishlistCard extends StatelessWidget {
   final String? countryCode;
   final bool showDate;
   final DateFormat dateFormat;
-  final VoidCallback? onPlan;
+  final VoidCallback? onOpenPlan;
   final VoidCallback onActions;
 
   @override
@@ -492,96 +492,100 @@ class _WishlistCard extends StatelessWidget {
     final hasAiPlan = (item.aiPlan ?? '').trim().isNotEmpty;
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                if (countryCode != null)
-                  CountryFlag(iso2: countryCode!, width: 32, height: 22)
-                else
-                  const CircleAvatar(
-                    radius: 14,
-                    child: Icon(Icons.bookmark_outline, size: 15),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onOpenPlan,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  if (countryCode != null)
+                    CountryFlag(iso2: countryCode!, width: 32, height: 22)
+                  else
+                    const CircleAvatar(
+                      radius: 14,
+                      child: Icon(Icons.bookmark_outline, size: 15),
+                    ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      item.title,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
                   ),
-                const SizedBox(width: 10),
-                Expanded(
+                  IconButton(
+                    onPressed: onActions,
+                    icon: const Icon(Icons.more_horiz),
+                  ),
+                ],
+              ),
+              if ((item.countryName ?? '').trim().isNotEmpty ||
+                  hasAiPlan ||
+                  showDate)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: <Widget>[
+                      if ((item.countryName ?? '').trim().isNotEmpty)
+                        _Badge(
+                          icon: Icons.public_outlined,
+                          label: item.countryName!.trim(),
+                        ),
+                      if (item.plannedStartDate != null &&
+                          item.plannedEndDate != null)
+                        _Badge(
+                          icon: Icons.date_range_outlined,
+                          label:
+                              '${dateFormat.format(DateTime.fromMillisecondsSinceEpoch(item.plannedStartDate!))} - ${dateFormat.format(DateTime.fromMillisecondsSinceEpoch(item.plannedEndDate!))}',
+                        ),
+                      if ((item.plannedCities ?? '').trim().isNotEmpty)
+                        _Badge(
+                          icon: Icons.location_city_outlined,
+                          label: item.plannedCities!,
+                        ),
+                      if (hasAiPlan)
+                        const _Badge(
+                          icon: Icons.auto_awesome_outlined,
+                          label: 'AI plan saved',
+                        ),
+                      if (showDate)
+                        _Badge(
+                          icon: Icons.schedule_outlined,
+                          label:
+                              'Saved ${dateFormat.format(DateTime.fromMillisecondsSinceEpoch(item.createdAt))}',
+                        ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 10),
+              FilledButton.tonalIcon(
+                onPressed: onOpenPlan,
+                icon: const Icon(Icons.visibility_outlined),
+                label: const Text('Open plan'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(44),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+              if (onOpenPlan == null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
                   child: Text(
-                    item.title,
-                    style: Theme.of(context).textTheme.titleMedium,
+                    'Save this item first to open plan review.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
                   ),
                 ),
-                IconButton(
-                  onPressed: onActions,
-                  icon: const Icon(Icons.more_horiz),
-                ),
-              ],
-            ),
-            if ((item.countryName ?? '').trim().isNotEmpty ||
-                hasAiPlan ||
-                showDate)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: <Widget>[
-                    if ((item.countryName ?? '').trim().isNotEmpty)
-                      _Badge(
-                        icon: Icons.public_outlined,
-                        label: item.countryName!.trim(),
-                      ),
-                    if (item.plannedStartDate != null &&
-                        item.plannedEndDate != null)
-                      _Badge(
-                        icon: Icons.date_range_outlined,
-                        label:
-                            '${dateFormat.format(DateTime.fromMillisecondsSinceEpoch(item.plannedStartDate!))} - ${dateFormat.format(DateTime.fromMillisecondsSinceEpoch(item.plannedEndDate!))}',
-                      ),
-                    if ((item.plannedCities ?? '').trim().isNotEmpty)
-                      _Badge(
-                        icon: Icons.location_city_outlined,
-                        label: item.plannedCities!,
-                      ),
-                    if (hasAiPlan)
-                      const _Badge(
-                        icon: Icons.auto_awesome_outlined,
-                        label: 'AI plan saved',
-                      ),
-                    if (showDate)
-                      _Badge(
-                        icon: Icons.schedule_outlined,
-                        label:
-                            'Saved ${dateFormat.format(DateTime.fromMillisecondsSinceEpoch(item.createdAt))}',
-                      ),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 10),
-            FilledButton.tonalIcon(
-              onPressed: onPlan,
-              icon: const Icon(Icons.auto_awesome_outlined),
-              label: const Text('Plan with AI'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(44),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-            ),
-            if (onPlan == null)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  'Save this item first to open AI planner.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

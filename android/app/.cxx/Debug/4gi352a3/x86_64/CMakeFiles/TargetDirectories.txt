@@ -1,0 +1,2 @@
+/Users/ismail/Documents/Codes/Stepped/android/app/.cxx/Debug/4gi352a3/x86_64/CMakeFiles/edit_cache.dir
+/Users/ismail/Documents/Codes/Stepped/android/app/.cxx/Debug/4gi352a3/x86_64/CMakeFiles/rebuild_cache.dir

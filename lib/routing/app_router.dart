@@ -9,11 +9,15 @@ import '../features/settings/settings_screen.dart';
 import '../features/stats/stats_screen.dart';
 import '../features/trips/add_trip_screen.dart';
 import '../features/trips/trips_screen.dart';
+import '../features/wishlist/wishlist_plan_manual_edit_screen.dart';
+import '../features/wishlist/wishlist_plan_review_screen.dart';
 import '../features/wishlist/wishlist_plan_screen.dart';
 import '../features/wishlist/wishlist_screen.dart';
 
-final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'rootNavigator');
-final _shellNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'shellNavigator');
+final _rootNavigatorKey =
+    GlobalKey<NavigatorState>(debugLabel: 'rootNavigator');
+final _shellNavigatorKey =
+    GlobalKey<NavigatorState>(debugLabel: 'shellNavigator');
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
@@ -77,8 +81,38 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                       message: 'Invalid wishlist item id',
                     );
                   }
-                  return WishlistPlanScreen(itemId: id);
+                  return WishlistPlanReviewScreen(itemId: id);
                 },
+                routes: <RouteBase>[
+                  GoRoute(
+                    path: 'ai-edit',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (context, state) {
+                      final rawId = state.pathParameters['id'];
+                      final id = int.tryParse(rawId ?? '');
+                      if (id == null) {
+                        return const _RouteErrorScreen(
+                          message: 'Invalid wishlist item id',
+                        );
+                      }
+                      return WishlistPlanScreen(itemId: id);
+                    },
+                  ),
+                  GoRoute(
+                    path: 'manual-edit',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (context, state) {
+                      final rawId = state.pathParameters['id'];
+                      final id = int.tryParse(rawId ?? '');
+                      if (id == null) {
+                        return const _RouteErrorScreen(
+                          message: 'Invalid wishlist item id',
+                        );
+                      }
+                      return WishlistPlanManualEditScreen(itemId: id);
+                    },
+                  ),
+                ],
               ),
             ],
           ),
@@ -124,7 +158,8 @@ class _AppShell extends StatelessWidget {
       body: child,
       bottomNavigationBar: NavigationBar(
         selectedIndex: _indexForLocation(location),
-        onDestinationSelected: (index) => _onDestinationSelected(context, index),
+        onDestinationSelected: (index) =>
+            _onDestinationSelected(context, index),
         destinations: const <NavigationDestination>[
           NavigationDestination(
             icon: Icon(Icons.public_outlined),
