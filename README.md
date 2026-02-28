@@ -1,4 +1,4 @@
-# Stepped (Flutter)
+# Stepped
 
 Minimal Android-first travel tracking UI built with Material 3 and Material You dynamic color.
 
@@ -39,6 +39,18 @@ flutter run --dart-define-from-file=google_sign_in.env.json
 
 For OAuth setup details, see [docs/auth_setup.md](docs/auth_setup.md).
 
+## CI APK Release
+
+- Workflow: `.github/workflows/android-apk-release.yml`
+- Trigger: every push to `main` and manual run from Actions tab
+- Output: release APK attached to a new GitHub Release and also uploaded as a workflow artifact
+
+Required GitHub Actions value:
+
+- Environment: `Main`
+- Key: `GOOGLE_SERVER_CLIENT_ID`
+- Location: `Settings -> Environments -> Main -> Variables` (or `Secrets`)
+
 ## Dynamic Color
 
 - On Android 12+ (API 31+), the app reads system dynamic colors via `dynamic_color`.
@@ -52,4 +64,3 @@ For OAuth setup details, see [docs/auth_setup.md](docs/auth_setup.md).
 - Wishlist supports create, read, update, and delete.
 - Adding/updating a trip upserts a country visit if it does not already exist.
 - Country geometry source: https://github.com/datasets/geo-countries
-

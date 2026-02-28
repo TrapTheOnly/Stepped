@@ -1,0 +1,74 @@
+name: Build And Release APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release-apk:
+    environment: Main
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Validate Google OAuth variable
+        env:
+          GOOGLE_SERVER_CLIENT_ID_VAR: ${{ vars.GOOGLE_SERVER_CLIENT_ID }}
+          GOOGLE_SERVER_CLIENT_ID_SECRET: ${{ secrets.GOOGLE_SERVER_CLIENT_ID }}
+        run: |
+          GOOGLE_SERVER_CLIENT_ID="${GOOGLE_SERVER_CLIENT_ID_VAR:-$GOOGLE_SERVER_CLIENT_ID_SECRET}"
+          if [ -z "$GOOGLE_SERVER_CLIENT_ID" ]; then
+            echo "Missing GOOGLE_SERVER_CLIENT_ID in Environment 'Main'."
+            echo "Set it in: Settings -> Environments -> Main -> Variables (or Secrets)."
+            exit 1
+          fi
+          echo "GOOGLE_SERVER_CLIENT_ID=$GOOGLE_SERVER_CLIENT_ID" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build release APK
+        run: flutter build apk --release --dart-define=GOOGLE_SERVER_CLIENT_ID="$GOOGLE_SERVER_CLIENT_ID"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+
+      - name: Compute release metadata
+        id: meta
+        run: |
+          short_sha="${GITHUB_SHA::7}"
+          tag="apk-${GITHUB_RUN_NUMBER}-${short_sha}"
+          name="APK build #${GITHUB_RUN_NUMBER} (${short_sha})"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.name }}
+          generate_release_notes: true
+          files: build/app/outputs/flutter-apk/app-release.apk
