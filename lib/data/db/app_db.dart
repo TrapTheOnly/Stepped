@@ -5,8 +5,9 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 import 'tables.dart';
+import 'app_db_models.dart';
+export 'app_db_models.dart';
 
-const _noWishlistValue = Object();
 
 final databaseProvider = Provider<AppDatabase>((ref) {
   final database = AppDatabase();
@@ -14,265 +15,22 @@ final databaseProvider = Provider<AppDatabase>((ref) {
   return database;
 });
 
-class CountryVisitRecord {
-  const CountryVisitRecord({
-    required this.countryCode,
-    required this.countryName,
-    required this.visitedAt,
-  });
-
-  final String countryCode;
-  final String countryName;
-  final int visitedAt;
-
-  factory CountryVisitRecord.fromMap(Map<String, Object?> map) {
-    return CountryVisitRecord(
-      countryCode: map['countryCode'] as String,
-      countryName: map['countryName'] as String,
-      visitedAt: map['visitedAt'] as int,
-    );
-  }
-
-  Map<String, Object?> toMap() {
-    return {
-      'countryCode': countryCode,
-      'countryName': countryName,
-      'visitedAt': visitedAt,
-    };
-  }
-}
-
-class TripRecord {
-  const TripRecord({
-    this.id,
-    required this.countryCode,
-    required this.countryName,
-    required this.startDate,
-    required this.endDate,
-    required this.cities,
-    this.coverImageUri,
-    this.notes,
-  });
-
-  final int? id;
-  final String countryCode;
-  final String countryName;
-  final int startDate;
-  final int endDate;
-  final String cities;
-  final String? coverImageUri;
-  final String? notes;
-
-  factory TripRecord.fromMap(Map<String, Object?> map) {
-    return TripRecord(
-      id: map['id'] as int,
-      countryCode: map['countryCode'] as String,
-      countryName: map['countryName'] as String,
-      startDate: map['startDate'] as int,
-      endDate: map['endDate'] as int,
-      cities: map['cities'] as String,
-      coverImageUri: map['coverImageUri'] as String?,
-      notes: map['notes'] as String?,
-    );
-  }
-
-  TripRecord copyWith({
-    int? id,
-    String? countryCode,
-    String? countryName,
-    int? startDate,
-    int? endDate,
-    String? cities,
-    String? coverImageUri,
-    String? notes,
-  }) {
-    return TripRecord(
-      id: id ?? this.id,
-      countryCode: countryCode ?? this.countryCode,
-      countryName: countryName ?? this.countryName,
-      startDate: startDate ?? this.startDate,
-      endDate: endDate ?? this.endDate,
-      cities: cities ?? this.cities,
-      coverImageUri: coverImageUri ?? this.coverImageUri,
-      notes: notes ?? this.notes,
-    );
-  }
-
-  Map<String, Object?> toMap({bool includeId = false}) {
-    final data = <String, Object?>{
-      'countryCode': countryCode,
-      'countryName': countryName,
-      'startDate': startDate,
-      'endDate': endDate,
-      'cities': cities,
-      'coverImageUri': coverImageUri,
-      'notes': notes,
-    };
-
-    if (includeId && id != null) {
-      data['id'] = id;
-    }
-
-    return data;
-  }
-}
-
-class WishlistItemRecord {
-  const WishlistItemRecord({
-    this.id,
-    required this.title,
-    this.countryName,
-    this.countryCode,
-    required this.createdAt,
-    this.plannedStartDate,
-    this.plannedEndDate,
-    this.plannedCities,
-    this.aiPlan,
-  });
-
-  final int? id;
-  final String title;
-  final String? countryName;
-  final String? countryCode;
-  final int createdAt;
-  final int? plannedStartDate;
-  final int? plannedEndDate;
-  final String? plannedCities;
-  final String? aiPlan;
-
-  factory WishlistItemRecord.fromMap(Map<String, Object?> map) {
-    return WishlistItemRecord(
-      id: map['id'] as int,
-      title: map['title'] as String,
-      countryName: map['countryName'] as String?,
-      countryCode: map['countryCode'] as String?,
-      createdAt: map['createdAt'] as int,
-      plannedStartDate: map['plannedStartDate'] as int?,
-      plannedEndDate: map['plannedEndDate'] as int?,
-      plannedCities: map['plannedCities'] as String?,
-      aiPlan: map['aiPlan'] as String?,
-    );
-  }
-
-  WishlistItemRecord copyWith({
-    int? id,
-    String? title,
-    Object? countryName = _noWishlistValue,
-    Object? countryCode = _noWishlistValue,
-    int? createdAt,
-    Object? plannedStartDate = _noWishlistValue,
-    Object? plannedEndDate = _noWishlistValue,
-    Object? plannedCities = _noWishlistValue,
-    Object? aiPlan = _noWishlistValue,
-  }) {
-    return WishlistItemRecord(
-      id: id ?? this.id,
-      title: title ?? this.title,
-      countryName: identical(countryName, _noWishlistValue)
-          ? this.countryName
-          : countryName as String?,
-      countryCode: identical(countryCode, _noWishlistValue)
-          ? this.countryCode
-          : countryCode as String?,
-      createdAt: createdAt ?? this.createdAt,
-      plannedStartDate: identical(plannedStartDate, _noWishlistValue)
-          ? this.plannedStartDate
-          : plannedStartDate as int?,
-      plannedEndDate: identical(plannedEndDate, _noWishlistValue)
-          ? this.plannedEndDate
-          : plannedEndDate as int?,
-      plannedCities: identical(plannedCities, _noWishlistValue)
-          ? this.plannedCities
-          : plannedCities as String?,
-      aiPlan: identical(aiPlan, _noWishlistValue) ? this.aiPlan : aiPlan as String?,
-    );
-  }
-
-  Map<String, Object?> toMap({bool includeId = false}) {
-    final data = <String, Object?>{
-      'title': title,
-      'countryName': countryName,
-      'countryCode': countryCode,
-      'createdAt': createdAt,
-      'plannedStartDate': plannedStartDate,
-      'plannedEndDate': plannedEndDate,
-      'plannedCities': plannedCities,
-      'aiPlan': aiPlan,
-    };
-
-    if (includeId && id != null) {
-      data['id'] = id;
-    }
-
-    return data;
-  }
-}
-
 class AppDatabase {
+
   static const _databaseName = 'stepped.db';
+
   static const _databaseVersion = 2;
 
   Database? _database;
+
   final StreamController<void> _tripChanges =
       StreamController<void>.broadcast(sync: true);
+
   final StreamController<void> _visitChanges =
       StreamController<void>.broadcast(sync: true);
+
   final StreamController<void> _wishlistChanges =
       StreamController<void>.broadcast(sync: true);
-
-  Future<Database> get _db async {
-    final existing = _database;
-    if (existing != null) {
-      return existing;
-    }
-
-    final path = p.join(await getDatabasesPath(), _databaseName);
-    final created = await openDatabase(
-      path,
-      version: _databaseVersion,
-      onCreate: (db, _) async {
-        await db.execute(createCountryVisitsTable);
-        await db.execute(createTripsTable);
-        await db.execute(createWishlistTable);
-        await db.execute(createTripsStartDateIndex);
-        await db.execute(createWishlistCreatedAtIndex);
-      },
-      onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < 1) {
-          await db.execute(createCountryVisitsTable);
-          await db.execute(createTripsTable);
-          await db.execute(createWishlistTable);
-          await db.execute(createTripsStartDateIndex);
-          await db.execute(createWishlistCreatedAtIndex);
-        }
-        if (oldVersion < 2) {
-          await _addColumnIfMissing(
-            db,
-            'ALTER TABLE $wishlistTable ADD COLUMN countryCode TEXT',
-          );
-          await _addColumnIfMissing(
-            db,
-            'ALTER TABLE $wishlistTable ADD COLUMN plannedStartDate INTEGER',
-          );
-          await _addColumnIfMissing(
-            db,
-            'ALTER TABLE $wishlistTable ADD COLUMN plannedEndDate INTEGER',
-          );
-          await _addColumnIfMissing(
-            db,
-            'ALTER TABLE $wishlistTable ADD COLUMN plannedCities TEXT',
-          );
-          await _addColumnIfMissing(
-            db,
-            'ALTER TABLE $wishlistTable ADD COLUMN aiPlan TEXT',
-          );
-        }
-      },
-    );
-
-    _database = created;
-    return created;
-  }
 
   Stream<List<TripRecord>> watchTripsOrderedByStartDesc() {
     return _watch(_tripChanges.stream, getTripsOrderedByStartDesc);
@@ -507,6 +265,63 @@ class AppDatabase {
     await _wishlistChanges.close();
   }
 
+}
+
+extension _AppDatabaseInternalMethods on AppDatabase {
+  Future<Database> get _db async {
+    final existing = _database;
+    if (existing != null) {
+      return existing;
+    }
+
+    final path = p.join(await getDatabasesPath(), AppDatabase._databaseName);
+    final created = await openDatabase(
+      path,
+      version: AppDatabase._databaseVersion,
+      onCreate: (db, _) async {
+        await db.execute(createCountryVisitsTable);
+        await db.execute(createTripsTable);
+        await db.execute(createWishlistTable);
+        await db.execute(createTripsStartDateIndex);
+        await db.execute(createWishlistCreatedAtIndex);
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 1) {
+          await db.execute(createCountryVisitsTable);
+          await db.execute(createTripsTable);
+          await db.execute(createWishlistTable);
+          await db.execute(createTripsStartDateIndex);
+          await db.execute(createWishlistCreatedAtIndex);
+        }
+        if (oldVersion < 2) {
+          await _addColumnIfMissing(
+            db,
+            'ALTER TABLE $wishlistTable ADD COLUMN countryCode TEXT',
+          );
+          await _addColumnIfMissing(
+            db,
+            'ALTER TABLE $wishlistTable ADD COLUMN plannedStartDate INTEGER',
+          );
+          await _addColumnIfMissing(
+            db,
+            'ALTER TABLE $wishlistTable ADD COLUMN plannedEndDate INTEGER',
+          );
+          await _addColumnIfMissing(
+            db,
+            'ALTER TABLE $wishlistTable ADD COLUMN plannedCities TEXT',
+          );
+          await _addColumnIfMissing(
+            db,
+            'ALTER TABLE $wishlistTable ADD COLUMN aiPlan TEXT',
+          );
+        }
+      },
+    );
+
+    _database = created;
+    return created;
+  }
+
   Stream<T> _watch<T>(
     Stream<void> trigger,
     Future<T> Function() loader,
@@ -524,4 +339,5 @@ class AppDatabase {
       // Ignore duplicate-column failures for defensive migrations.
     }
   }
+
 }

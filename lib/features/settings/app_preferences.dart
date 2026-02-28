@@ -8,6 +8,13 @@ const _homeBaseKey = 'stepped_home_base';
 const _confirmWishlistDeleteKey = 'stepped_confirm_wishlist_delete';
 const _showWishlistDatesKey = 'stepped_show_wishlist_dates';
 const _geminiApiKeyKey = 'stepped_gemini_api_key';
+const _aiPlannerSourceKey = 'stepped_ai_planner_source';
+const _cloudAiBaseUrlKey = 'stepped_cloud_ai_base_url';
+
+enum AiPlannerSource {
+  cloud,
+  localGemini,
+}
 
 class AppPreferences {
   const AppPreferences({
@@ -17,6 +24,8 @@ class AppPreferences {
     required this.confirmWishlistDelete,
     required this.showWishlistDates,
     required this.geminiApiKey,
+    required this.aiPlannerSource,
+    required this.cloudAiBaseUrl,
   });
 
   static const defaults = AppPreferences(
@@ -26,6 +35,8 @@ class AppPreferences {
     confirmWishlistDelete: true,
     showWishlistDates: true,
     geminiApiKey: '',
+    aiPlannerSource: AiPlannerSource.cloud,
+    cloudAiBaseUrl: 'https://api.stepped.world',
   );
 
   final ThemeMode themeMode;
@@ -34,6 +45,8 @@ class AppPreferences {
   final bool confirmWishlistDelete;
   final bool showWishlistDates;
   final String geminiApiKey;
+  final AiPlannerSource aiPlannerSource;
+  final String cloudAiBaseUrl;
 
   AppPreferences copyWith({
     ThemeMode? themeMode,
@@ -42,6 +55,8 @@ class AppPreferences {
     bool? confirmWishlistDelete,
     bool? showWishlistDates,
     String? geminiApiKey,
+    AiPlannerSource? aiPlannerSource,
+    String? cloudAiBaseUrl,
   }) {
     return AppPreferences(
       themeMode: themeMode ?? this.themeMode,
@@ -51,6 +66,8 @@ class AppPreferences {
           confirmWishlistDelete ?? this.confirmWishlistDelete,
       showWishlistDates: showWishlistDates ?? this.showWishlistDates,
       geminiApiKey: geminiApiKey ?? this.geminiApiKey,
+      aiPlannerSource: aiPlannerSource ?? this.aiPlannerSource,
+      cloudAiBaseUrl: cloudAiBaseUrl ?? this.cloudAiBaseUrl,
     );
   }
 }
@@ -118,6 +135,22 @@ class AppPreferencesController extends AsyncNotifier<AppPreferences> {
     _emitUpdated((current) => current.copyWith(geminiApiKey: normalized));
   }
 
+  Future<void> updateAiPlannerSource(AiPlannerSource source) async {
+    final prefs = await _ensurePreferences();
+    await prefs.setString(_aiPlannerSourceKey, _encodeAiPlannerSource(source));
+    _emitUpdated((current) => current.copyWith(aiPlannerSource: source));
+  }
+
+  Future<void> updateCloudAiBaseUrl(String value) async {
+    final normalized = value.trim();
+    final nextValue = normalized.isEmpty
+        ? AppPreferences.defaults.cloudAiBaseUrl
+        : normalized;
+    final prefs = await _ensurePreferences();
+    await prefs.setString(_cloudAiBaseUrlKey, nextValue);
+    _emitUpdated((current) => current.copyWith(cloudAiBaseUrl: nextValue));
+  }
+
   Future<void> resetToDefaults() async {
     final prefs = await _ensurePreferences();
     await prefs.setString(
@@ -135,6 +168,14 @@ class AppPreferencesController extends AsyncNotifier<AppPreferences> {
       AppPreferences.defaults.showWishlistDates,
     );
     await prefs.remove(_geminiApiKeyKey);
+    await prefs.setString(
+      _aiPlannerSourceKey,
+      _encodeAiPlannerSource(AppPreferences.defaults.aiPlannerSource),
+    );
+    await prefs.setString(
+      _cloudAiBaseUrlKey,
+      AppPreferences.defaults.cloudAiBaseUrl,
+    );
     state = const AsyncData(AppPreferences.defaults);
   }
 
@@ -168,6 +209,12 @@ class AppPreferencesController extends AsyncNotifier<AppPreferences> {
       showWishlistDates: prefs.getBool(_showWishlistDatesKey) ??
           AppPreferences.defaults.showWishlistDates,
       geminiApiKey: prefs.getString(_geminiApiKeyKey) ?? '',
+      aiPlannerSource: _decodeAiPlannerSource(
+            prefs.getString(_aiPlannerSourceKey),
+          ) ??
+          AppPreferences.defaults.aiPlannerSource,
+      cloudAiBaseUrl: prefs.getString(_cloudAiBaseUrlKey) ??
+          AppPreferences.defaults.cloudAiBaseUrl,
     );
   }
 
@@ -190,6 +237,21 @@ class AppPreferencesController extends AsyncNotifier<AppPreferences> {
       ThemeMode.light => 'light',
       ThemeMode.dark => 'dark',
       ThemeMode.system => 'system',
+    };
+  }
+
+  static AiPlannerSource? _decodeAiPlannerSource(String? raw) {
+    return switch (raw) {
+      'cloud' => AiPlannerSource.cloud,
+      'local_gemini' => AiPlannerSource.localGemini,
+      _ => null,
+    };
+  }
+
+  static String _encodeAiPlannerSource(AiPlannerSource source) {
+    return switch (source) {
+      AiPlannerSource.cloud => 'cloud',
+      AiPlannerSource.localGemini => 'local_gemini',
     };
   }
 }

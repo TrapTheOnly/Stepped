@@ -5,6 +5,8 @@ import '../../data/db/app_db.dart';
 import '../../data/repositories/trips_repository.dart';
 import '../../data/repositories/wishlist_repository.dart';
 import '../map/map_viewmodel.dart';
+import 'stats_calculations.dart';
+import 'widgets/stat_metric.dart';
 
 class StatsScreen extends ConsumerWidget {
   const StatsScreen({super.key});
@@ -46,12 +48,12 @@ class StatsScreen extends ConsumerWidget {
     final wishlistItems =
         wishlistAsync.valueOrNull ?? const <WishlistItemRecord>[];
 
-    final totalTripDays = _totalTripDays(trips);
+    final totalDays = totalTripDays(trips);
     final averageTripDays =
-        trips.isEmpty ? 0 : (totalTripDays / trips.length).toStringAsFixed(1);
-    final uniqueCities = _uniqueCitiesCount(trips);
-    final topCountries = _topCountries(trips);
-    final yearlyTrips = _yearlyTrips(trips);
+        trips.isEmpty ? 0 : (totalDays / trips.length).toStringAsFixed(1);
+    final uniqueCities = uniqueCitiesCount(trips);
+    final topCountryEntries = topCountries(trips);
+    final yearlyTripEntries = yearlyTrips(trips);
 
     return Scaffold(
       appBar: AppBar(title: const Text('My Stats')),
@@ -72,19 +74,19 @@ class StatsScreen extends ConsumerWidget {
                   Row(
                     children: <Widget>[
                       Expanded(
-                        child: _StatMetric(
+                        child: StatMetric(
                           label: 'Countries',
                           value: '${dashboard.visitedCount}',
                         ),
                       ),
                       Expanded(
-                        child: _StatMetric(
+                        child: StatMetric(
                           label: 'Trips',
                           value: '${dashboard.totalTrips}',
                         ),
                       ),
                       Expanded(
-                        child: _StatMetric(
+                        child: StatMetric(
                           label: 'Wishlist',
                           value: '${wishlistItems.length}',
                         ),
@@ -110,19 +112,19 @@ class StatsScreen extends ConsumerWidget {
                   Row(
                     children: <Widget>[
                       Expanded(
-                        child: _StatMetric(
+                        child: StatMetric(
                           label: 'Travel days',
-                          value: '$totalTripDays',
+                          value: '$totalDays',
                         ),
                       ),
                       Expanded(
-                        child: _StatMetric(
+                        child: StatMetric(
                           label: 'Avg trip',
                           value: '$averageTripDays d',
                         ),
                       ),
                       Expanded(
-                        child: _StatMetric(
+                        child: StatMetric(
                           label: 'Unique cities',
                           value: '$uniqueCities',
                         ),
@@ -183,13 +185,13 @@ class StatsScreen extends ConsumerWidget {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 10),
-                  if (topCountries.isEmpty)
+                  if (topCountryEntries.isEmpty)
                     Text(
                       'No trip destinations yet.',
                       style: Theme.of(context).textTheme.bodyMedium,
                     )
                   else
-                    ...topCountries.map(
+                    ...topCountryEntries.map(
                       (entry) => ListTile(
                         dense: true,
                         contentPadding: EdgeInsets.zero,
@@ -213,13 +215,13 @@ class StatsScreen extends ConsumerWidget {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 10),
-                  if (yearlyTrips.isEmpty)
+                  if (yearlyTripEntries.isEmpty)
                     Text(
                       'No year trend available yet.',
                       style: Theme.of(context).textTheme.bodyMedium,
                     )
                   else
-                    ...yearlyTrips.map(
+                    ...yearlyTripEntries.map(
                       (entry) => ListTile(
                         dense: true,
                         contentPadding: EdgeInsets.zero,
@@ -236,81 +238,4 @@ class StatsScreen extends ConsumerWidget {
     );
   }
 
-  int _totalTripDays(List<TripRecord> trips) {
-    return trips.fold<int>(0, (sum, trip) {
-      final start = DateTime.fromMillisecondsSinceEpoch(trip.startDate);
-      final end = DateTime.fromMillisecondsSinceEpoch(trip.endDate);
-      final days = end.difference(start).inDays + 1;
-      return sum + (days < 1 ? 1 : days);
-    });
-  }
-
-  int _uniqueCitiesCount(List<TripRecord> trips) {
-    final cities = <String>{};
-    for (final trip in trips) {
-      final parts = trip.cities.split(',');
-      for (final part in parts) {
-        final city = part.trim().toLowerCase();
-        if (city.isNotEmpty) {
-          cities.add(city);
-        }
-      }
-    }
-    return cities.length;
-  }
-
-  List<MapEntry<String, int>> _topCountries(List<TripRecord> trips) {
-    final counts = <String, int>{};
-    for (final trip in trips) {
-      counts[trip.countryName] = (counts[trip.countryName] ?? 0) + 1;
-    }
-    final sorted = counts.entries.toList(growable: false)
-      ..sort((a, b) => b.value.compareTo(a.value));
-    if (sorted.length <= 5) {
-      return sorted;
-    }
-    return sorted.take(5).toList(growable: false);
-  }
-
-  List<MapEntry<int, int>> _yearlyTrips(List<TripRecord> trips) {
-    final counts = <int, int>{};
-    for (final trip in trips) {
-      final year = DateTime.fromMillisecondsSinceEpoch(trip.startDate).year;
-      counts[year] = (counts[year] ?? 0) + 1;
-    }
-    final sorted = counts.entries.toList(growable: false)
-      ..sort((a, b) => b.key.compareTo(a.key));
-    return sorted;
-  }
-}
-
-class _StatMetric extends StatelessWidget {
-  const _StatMetric({
-    required this.label,
-    required this.value,
-  });
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Column(
-        children: <Widget>[
-          Text(
-            value,
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall,
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
 }

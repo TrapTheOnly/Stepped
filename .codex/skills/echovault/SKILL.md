@@ -3,11 +3,11 @@ name: echovault
 description: Local-first memory for coding agents. You MUST retrieve memories at session start and save memories before session end. This is not optional.
 ---
 
-# EchoVault — Agent Memory System
+# EchoVault Agent Memory System
 
 You have persistent memory across sessions. USE IT.
 
-## Session start — MANDATORY
+## Session start MANDATORY
 
 Before doing ANY work, retrieve context from previous sessions:
 
@@ -29,7 +29,7 @@ memory details <memory-id>
 
 Do not skip this step. Prior sessions may contain decisions, bugs, and context that directly affect your current task.
 
-## Session end — MANDATORY
+## Session end MANDATORY
 
 Before ending your response to ANY task that involved making changes, debugging, deciding, or learning something, you MUST save a memory. This is not optional. If you did meaningful work, save it.
 
@@ -88,7 +88,7 @@ memory delete <id>  # remove a memory
 ## Rules
 
 - Retrieve before working. Save before finishing. No exceptions.
-- Always capture thorough details — write for a future agent with no context.
+- Always capture thorough details ï¿½ write for a future agent with no context.
 - Never include API keys, secrets, or credentials.
 - Wrap sensitive values in `<redacted>` tags.
 - Search before saving to avoid duplicates.

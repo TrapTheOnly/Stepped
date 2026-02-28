@@ -16,6 +16,7 @@ class SearchScreen extends ConsumerStatefulWidget {
   ConsumerState<SearchScreen> createState() => _SearchScreenState();
 }
 
+
 class _SearchScreenState extends ConsumerState<SearchScreen> {
   final TextEditingController _controller = TextEditingController();
   String _query = '';
@@ -309,6 +310,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     );
   }
 }
+
 
 class _CountrySearchEntry {
   const _CountrySearchEntry({

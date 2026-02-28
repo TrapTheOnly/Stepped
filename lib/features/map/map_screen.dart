@@ -247,6 +247,7 @@ class _GlobeCard extends StatelessWidget {
   }
 }
 
+
 class _JourneyOverviewCard extends StatelessWidget {
   const _JourneyOverviewCard({required this.dashboard});
 
@@ -503,6 +504,7 @@ Future<void> _showMapQuickActions(
     },
   );
 }
+
 
 Future<void> _showMapTips(BuildContext context) {
   return showDialog<void>(

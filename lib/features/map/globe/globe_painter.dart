@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'globe_country_data.dart';
 import 'globe_projection.dart';
 
+
 class GlobePainter extends CustomPainter {
+
   GlobePainter({
     required this.colorScheme,
     required this.rotation,
@@ -18,12 +20,19 @@ class GlobePainter extends CustomPainter {
   });
 
   final ColorScheme colorScheme;
+
   final double rotation;
+
   final double pitch;
+
   final double zoom;
+
   final int lodLevel;
+
   final List<GlobeCountryShape> countries;
+
   final Set<String> visitedCountryCodes;
+
   final String? selectedCountryCode;
 
   @override
@@ -83,6 +92,22 @@ class GlobePainter extends CustomPainter {
             oldDelegate.visitedCountryCodes, visitedCountryCodes);
   }
 
+}
+
+
+class _CountryPaintCandidate {
+  const _CountryPaintCandidate({
+    required this.country,
+    required this.projectedCentroid,
+    required this.opacity,
+  });
+
+  final GlobeCountryShape country;
+  final GlobeProjectedPoint projectedCentroid;
+  final double opacity;
+}
+
+extension _GlobePainterShapeMethods on GlobePainter {
   bool _sameVisitedCodes(Set<String> left, Set<String> right) {
     if (left.length != right.length) {
       return false;
@@ -299,6 +324,9 @@ class GlobePainter extends CustomPainter {
     }
   }
 
+}
+
+extension _GlobePainterProjectionMethods on GlobePainter {
   void _paintVisitedMarkers(
     Canvas canvas, {
     required double globeRadius,
@@ -493,16 +521,5 @@ class GlobePainter extends CustomPainter {
   Color _applyOpacity(Color color, double opacity) {
     return color.withValues(alpha: (color.a * opacity).clamp(0.0, 1.0));
   }
-}
 
-class _CountryPaintCandidate {
-  const _CountryPaintCandidate({
-    required this.country,
-    required this.projectedCentroid,
-    required this.opacity,
-  });
-
-  final GlobeCountryShape country;
-  final GlobeProjectedPoint projectedCentroid;
-  final double opacity;
 }

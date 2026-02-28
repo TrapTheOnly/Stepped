@@ -6,8 +6,10 @@ import '../../data/db/app_db.dart';
 import '../../data/repositories/trips_repository.dart';
 import '../../data/repositories/visits_repository.dart';
 import '../../data/repositories/wishlist_repository.dart';
+import '../auth/auth_controller.dart';
 import '../map/map_viewmodel.dart';
 import '../settings/app_preferences.dart';
+import 'widgets/profile_summary_widgets.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -18,12 +20,18 @@ class ProfileScreen extends ConsumerWidget {
     final tripsAsync = ref.watch(tripsStreamProvider);
     final wishlistAsync = ref.watch(wishlistStreamProvider);
     final preferencesAsync = ref.watch(appPreferencesProvider);
+    final authController = ref.watch(authControllerProvider);
 
     final visited = visitedAsync.valueOrNull ?? 0;
     final trips = tripsAsync.valueOrNull ?? const <TripRecord>[];
     final wishlistItems =
         wishlistAsync.valueOrNull ?? const <WishlistItemRecord>[];
     final preferences = preferencesAsync.valueOrNull ?? AppPreferences.defaults;
+    final authUser = authController.currentUser;
+    final displayName = authUser?.displayName.trim().isNotEmpty == true
+        ? authUser!.displayName
+        : preferences.displayName;
+    final profileMeta = authUser?.email ?? preferences.homeBase;
     final latestTrip = trips.isEmpty ? null : trips.first;
     final coverage = totalCountriesInWorld == 0
         ? 0.0
@@ -48,15 +56,15 @@ class ProfileScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
         children: <Widget>[
-          _ProfileHeaderCard(
-            displayName: preferences.displayName,
-            homeBase: preferences.homeBase,
+          ProfileHeaderCard(
+            displayName: displayName,
+            homeBase: profileMeta,
           ),
           const SizedBox(height: 14),
           Row(
             children: <Widget>[
               Expanded(
-                child: _StatCard(
+                child: ProfileStatCard(
                   label: 'Countries',
                   value: visitedAsync.isLoading ? '...' : '$visited',
                   icon: Icons.public,
@@ -64,7 +72,7 @@ class ProfileScreen extends ConsumerWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: _StatCard(
+                child: ProfileStatCard(
                   label: 'Trips',
                   value: tripsAsync.isLoading ? '...' : '${trips.length}',
                   icon: Icons.flight_takeoff,
@@ -72,7 +80,7 @@ class ProfileScreen extends ConsumerWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: _StatCard(
+                child: ProfileStatCard(
                   label: 'Wishlist',
                   value: wishlistAsync.isLoading
                       ? '...'
@@ -164,6 +172,26 @@ class ProfileScreen extends ConsumerWidget {
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => context.go('/trips'),
                 ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.logout),
+                  title: const Text('Sign out'),
+                  subtitle: const Text('Return to the auth screen'),
+                  onTap: authController.isBusy
+                      ? null
+                      : () async {
+                          try {
+                            await ref.read(authControllerProvider).signOut();
+                          } on AuthException catch (error) {
+                            if (!context.mounted) {
+                              return;
+                            }
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(error.message)),
+                            );
+                          }
+                        },
+                ),
               ],
             ),
           ),
@@ -183,102 +211,6 @@ class ProfileScreen extends ConsumerWidget {
             ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-class _ProfileHeaderCard extends StatelessWidget {
-  const _ProfileHeaderCard({
-    required this.displayName,
-    required this.homeBase,
-  });
-
-  final String displayName;
-  final String homeBase;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final trimmedName = displayName.trim();
-    final initials = displayName.trim().isEmpty
-        ? 'T'
-        : trimmedName.substring(0, 1).toUpperCase();
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-        child: Row(
-          children: <Widget>[
-            CircleAvatar(
-              radius: 26,
-              backgroundColor: colorScheme.primaryContainer,
-              child: Text(
-                initials,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: colorScheme.onPrimaryContainer,
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    displayName,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    homeBase.isEmpty ? 'Home base not set' : homeBase,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Icon(icon, size: 18),
-            const SizedBox(height: 10),
-            Text(
-              value,
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ],
-        ),
       ),
     );
   }

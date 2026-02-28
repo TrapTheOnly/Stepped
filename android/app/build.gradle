@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace 'com.example.stepped'
+    namespace 'com.gico.stepped'
     compileSdk flutter.compileSdkVersion
     ndkVersion flutter.ndkVersion
 
@@ -19,7 +19,7 @@ android {
     }
 
     defaultConfig {
-        applicationId 'com.example.stepped'
+        applicationId 'com.gico.stepped'
         minSdk 21
         targetSdk flutter.targetSdkVersion
         versionCode flutter.versionCode

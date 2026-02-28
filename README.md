@@ -10,6 +10,7 @@ Minimal Android-first travel tracking UI built with Material 3 and Material You 
 - Real country boundaries loaded from GeoJSON (`assets/data/countries.geojson`)
 - Countries visited pill, two progress rows, three primary actions
 - Horizontal recent trips carousel
+- Animated auth entry flow (Sign in / Register + Google sign-in)
 - Local persistence with `sqflite` (trips, country visits, wishlist)
 - Riverpod state management + `go_router` navigation
 - Seeded first-run data (Japan, Italy, Turkey, UAE)
@@ -22,6 +23,7 @@ Minimal Android-first travel tracking UI built with Material 3 and Material You 
 - `dynamic_color`
 - `sqflite`
 - `cached_network_image`
+- `google_sign_in`
 
 ## Run
 
@@ -30,8 +32,12 @@ Minimal Android-first travel tracking UI built with Material 3 and Material You 
 
 ```bash
 flutter pub get
-flutter run
+copy google_sign_in.env.example.json google_sign_in.env.json
+# then edit google_sign_in.env.json and set GOOGLE_SERVER_CLIENT_ID
+flutter run --dart-define-from-file=google_sign_in.env.json
 ```
+
+For OAuth setup details, see [docs/auth_setup.md](docs/auth_setup.md).
 
 ## Dynamic Color
 

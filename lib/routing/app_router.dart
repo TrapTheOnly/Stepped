@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/auth/auth_controller.dart';
+import '../features/auth/auth_screen.dart';
 import '../features/map/map_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/search/search_screen.dart';
@@ -20,10 +22,58 @@ final _shellNavigatorKey =
     GlobalKey<NavigatorState>(debugLabel: 'shellNavigator');
 
 final appRouterProvider = Provider<GoRouter>((ref) {
+  final authController = ref.read(authControllerProvider);
+
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
-    initialLocation: '/',
+    initialLocation: '/auth',
+    refreshListenable: authController,
+    redirect: (context, state) {
+      final onAuthRoute = state.uri.path == '/auth';
+      if (!authController.isInitialized) {
+        return onAuthRoute ? null : '/auth';
+      }
+
+      if (!authController.isAuthenticated) {
+        return onAuthRoute ? null : '/auth';
+      }
+
+      if (onAuthRoute) {
+        return '/';
+      }
+      return null;
+    },
     routes: <RouteBase>[
+      GoRoute(
+        path: '/auth',
+        name: 'auth',
+        pageBuilder: (context, state) {
+          return CustomTransitionPage<void>(
+            key: state.pageKey,
+            child: const AuthScreen(),
+            transitionDuration: const Duration(milliseconds: 520),
+            reverseTransitionDuration: const Duration(milliseconds: 420),
+            transitionsBuilder: (
+              context,
+              animation,
+              secondaryAnimation,
+              child,
+            ) {
+              final curved = CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              );
+              return FadeTransition(
+                opacity: curved,
+                child: ScaleTransition(
+                  scale: Tween<double>(begin: 0.985, end: 1.0).animate(curved),
+                  child: child,
+                ),
+              );
+            },
+          );
+        },
+      ),
       ShellRoute(
         navigatorKey: _shellNavigatorKey,
         builder: (context, state, child) {

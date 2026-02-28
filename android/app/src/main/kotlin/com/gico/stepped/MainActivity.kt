@@ -1,4 +1,4 @@
-package com.example.stepped
+package com.gico.stepped
 
 import io.flutter.embedding.android.FlutterActivity
 

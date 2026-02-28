@@ -225,6 +225,7 @@ class _EmptyPlanState extends StatelessWidget {
   }
 }
 
+
 class _PlanResultCard extends StatelessWidget {
   const _PlanResultCard({required this.plan});
 
@@ -344,6 +345,7 @@ class _PlanResultCard extends StatelessWidget {
     );
   }
 }
+
 
 class _CityPlanCard extends StatelessWidget {
   const _CityPlanCard({
