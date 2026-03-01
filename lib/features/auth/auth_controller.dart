@@ -148,6 +148,13 @@ class AuthController extends ChangeNotifier {
       } on PlatformException catch (error) {
         throw AuthException(_toUserMessageForPlatformException(error));
       } on AuthApiException catch (error) {
+        if (_looksLikeFirebaseGoogleProviderMisconfiguration(error.message)) {
+          throw const AuthException(
+            'Google auth is not enabled for this Firebase project. '
+            'Enable Google in Firebase Authentication > Sign-in method and ensure '
+            'the backend FIREBASE_WEB_API_KEY is from the same project.',
+          );
+        }
         throw AuthException(error.message);
       } on AuthException {
         rethrow;
@@ -300,7 +307,10 @@ class AuthController extends ChangeNotifier {
     ]);
 
     return switch (error.code) {
-      GoogleSignInExceptionCode.canceled => 'Google sign-in was canceled.',
+      GoogleSignInExceptionCode.canceled =>
+        'Google sign-in was canceled. If this happens right after choosing an account, '
+            'it is usually a configuration issue (SHA fingerprints, package name, or '
+            'Google provider setup in Firebase).',
       GoogleSignInExceptionCode.interrupted =>
         'Google sign-in was interrupted. Please try again.',
       GoogleSignInExceptionCode.uiUnavailable =>
@@ -353,6 +363,12 @@ class AuthController extends ChangeNotifier {
         (message.contains(
                 'google_sign_in_android.googlesigninapi.getcredential') ||
             message.contains('unable to establish connection on channel'));
+  }
+
+  bool _looksLikeFirebaseGoogleProviderMisconfiguration(String message) {
+    final normalized = message.trim().toLowerCase();
+    return normalized.contains('google auth is not configured in firebase') ||
+        normalized.contains('configuration_not_found');
   }
 
   Future<void> _setSession({
