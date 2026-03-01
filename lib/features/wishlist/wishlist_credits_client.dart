@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../config/runtime_config.dart';
 import '../settings/app_preferences.dart';
 
 class WishlistCreditsSnapshot {
@@ -126,7 +127,7 @@ class WishlistCreditsClient {
   Uri _buildCreditsUri(String baseUrl) {
     final parsed = Uri.tryParse(baseUrl.trim());
     if (parsed == null || !parsed.hasScheme || !parsed.hasAuthority) {
-      return Uri.parse('https://api.stepped.world/v1/wishlist/credits');
+      return Uri.parse('$defaultSteppedApiBaseUrl/v1/wishlist/credits');
     }
     final normalizedPath = parsed.path.endsWith('/')
         ? parsed.path.substring(0, parsed.path.length - 1)

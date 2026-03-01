@@ -1,18 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 
-import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'auth_api_client.dart';
 import 'auth_user.dart';
 
-const _sessionKey = 'stepped_auth_session_v1';
-const _accountsKey = 'stepped_auth_accounts_v1';
+const _sessionKey = 'stepped_auth_session_v2';
 
 final authControllerProvider = ChangeNotifierProvider<AuthController>((ref) {
   final controller = AuthController();
@@ -22,21 +20,27 @@ final authControllerProvider = ChangeNotifierProvider<AuthController>((ref) {
 });
 
 class AuthController extends ChangeNotifier {
-  AuthController({GoogleSignIn? googleSignIn})
-      : _googleSignIn = googleSignIn ?? GoogleSignIn.instance;
+  AuthController({
+    GoogleSignIn? googleSignIn,
+    AuthApiClient? authApiClient,
+  })  : _googleSignIn = googleSignIn ?? GoogleSignIn.instance,
+        _authApiClient = authApiClient ?? AuthApiClient();
 
   final GoogleSignIn _googleSignIn;
+  final AuthApiClient _authApiClient;
   final String _serverClientId =
       const String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
 
   SharedPreferences? _preferences;
   AuthUser? _currentUser;
+  String? _accessToken;
   bool _initialized = false;
   bool _isBusy = false;
   bool _googleInitialized = false;
 
   AuthUser? get currentUser => _currentUser;
-  bool get isAuthenticated => _currentUser != null;
+  String? get accessToken => _accessToken;
+  bool get isAuthenticated => _currentUser != null && _accessToken != null;
   bool get isInitialized => _initialized;
   bool get isBusy => _isBusy;
 
@@ -48,11 +52,8 @@ class AuthController extends ChangeNotifier {
     _setBusy(true, notify: false);
     try {
       _preferences = await SharedPreferences.getInstance();
-      final raw = _preferences?.getString(_sessionKey);
-      if (raw != null && raw.isNotEmpty) {
-        final decoded = jsonDecode(raw);
-        _currentUser = AuthUser.fromJson(decoded);
-      }
+      await _hydrateSessionFromDisk();
+      await _refreshSessionFromBackend();
     } finally {
       _initialized = true;
       _setBusy(false, notify: false);
@@ -82,29 +83,15 @@ class AuthController extends ChangeNotifier {
     }
 
     await _runBusy(() async {
-      final accounts = await _readAccounts();
-      if (accounts.containsKey(normalizedEmail)) {
-        throw const AuthException(
-          'This email is already registered. Try signing in instead.',
-        );
-      }
-
-      final salt = _generateSalt();
-      accounts[normalizedEmail] = _PasswordAccount(
-        email: normalizedEmail,
+      final session = await _authApiClient.registerWithEmail(
         displayName: normalizedName,
-        passwordHash: _hashPassword(password, salt),
-        salt: salt,
-      );
-      await _writeAccounts(accounts);
-
-      final user = AuthUser(
-        id: 'local_${DateTime.now().microsecondsSinceEpoch}',
         email: normalizedEmail,
-        displayName: normalizedName,
-        provider: AuthProvider.password,
+        password: password,
       );
-      await _setCurrentUser(user);
+      await _setSession(
+        accessToken: session.accessToken,
+        user: session.user,
+      );
     });
   }
 
@@ -123,26 +110,14 @@ class AuthController extends ChangeNotifier {
     }
 
     await _runBusy(() async {
-      final accounts = await _readAccounts();
-      final account = accounts[normalizedEmail];
-      if (account == null) {
-        throw const AuthException(
-          'No account found with this email. Create one first.',
-        );
-      }
-
-      final providedHash = _hashPassword(password, account.salt);
-      if (providedHash != account.passwordHash) {
-        throw const AuthException('Incorrect password.');
-      }
-
-      final user = AuthUser(
-        id: 'local_${normalizedEmail.hashCode.abs()}',
-        email: account.email,
-        displayName: account.displayName,
-        provider: AuthProvider.password,
+      final session = await _authApiClient.signInWithEmail(
+        email: normalizedEmail,
+        password: password,
       );
-      await _setCurrentUser(user);
+      await _setSession(
+        accessToken: session.accessToken,
+        user: session.user,
+      );
     });
   }
 
@@ -151,28 +126,41 @@ class AuthController extends ChangeNotifier {
     await _runBusy(() async {
       try {
         final account = await _authenticateGoogleWithRetry();
-        final user = AuthUser(
-          id: account.id,
+        final idToken = account.authentication.idToken?.trim();
+        if (idToken == null || idToken.isEmpty) {
+          throw const AuthException(
+            'Google sign-in did not return a valid identity token. Please try again.',
+          );
+        }
+
+        final session = await _authApiClient.signInWithGoogle(
+          idToken: idToken,
           email: account.email,
           displayName: account.displayName ?? account.email,
-          provider: AuthProvider.google,
           photoUrl: account.photoUrl,
         );
-        await _setCurrentUser(user);
+        await _setSession(
+          accessToken: session.accessToken,
+          user: session.user,
+        );
       } on GoogleSignInException catch (error) {
         throw AuthException(_toUserMessageForGoogleException(error));
       } on PlatformException catch (error) {
         throw AuthException(_toUserMessageForPlatformException(error));
+      } on AuthApiException catch (error) {
+        throw AuthException(error.message);
       } on AuthException {
         rethrow;
-      } catch (error) {
-        final message = error.toString().toLowerCase();
-        if (message.contains('canceled') || message.contains('cancelled')) {
-          throw const AuthException('Google sign-in was canceled.');
+      } catch (error, stackTrace) {
+        if (kDebugMode) {
+          debugPrint('Google sign-in unexpected error: $error');
+          debugPrintStack(stackTrace: stackTrace);
         }
-        throw AuthException(
-          'Google sign-in failed. Please try again in a moment.',
-        );
+        final detail = _normalizeUnknownError(error);
+        if (detail != null) {
+          throw AuthException('Google sign-in failed: $detail');
+        }
+        throw const AuthException('Google sign-in failed. Please try again.');
       }
     });
   }
@@ -180,11 +168,10 @@ class AuthController extends ChangeNotifier {
   Future<void> signOut() async {
     await _ensureInitialized();
     await _runBusy(() async {
-      final user = _currentUser;
-      _currentUser = null;
-      await _preferences?.remove(_sessionKey);
+      final previousUser = _currentUser;
+      await _clearSession(notify: false);
 
-      if (user?.provider == AuthProvider.google) {
+      if (previousUser?.provider == AuthProvider.google) {
         try {
           await _googleSignIn.signOut();
         } catch (_) {}
@@ -198,6 +185,53 @@ class AuthController extends ChangeNotifier {
       return;
     }
     await initialize();
+  }
+
+  Future<void> _hydrateSessionFromDisk() async {
+    final raw = _preferences?.getString(_sessionKey);
+    if (raw == null || raw.trim().isEmpty) {
+      return;
+    }
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) {
+        await _preferences?.remove(_sessionKey);
+        return;
+      }
+
+      final accessToken = _readNonEmptyString(decoded['access_token']);
+      final user = AuthUser.fromJson(decoded['user']);
+      if (accessToken == null || user == null) {
+        await _preferences?.remove(_sessionKey);
+        return;
+      }
+
+      _accessToken = accessToken;
+      _currentUser = user;
+    } catch (_) {
+      await _preferences?.remove(_sessionKey);
+    }
+  }
+
+  Future<void> _refreshSessionFromBackend() async {
+    final token = _accessToken;
+    if (token == null || token.trim().isEmpty) {
+      return;
+    }
+
+    try {
+      final user = await _authApiClient.fetchCurrentUser(accessToken: token);
+      await _setSession(
+        accessToken: token,
+        user: user,
+        notify: false,
+      );
+    } on AuthApiException catch (error) {
+      if (error.isUnauthorized) {
+        await _clearSession(notify: false);
+      }
+    } catch (_) {}
   }
 
   Future<void> _initializeGoogleSignIn({bool force = false}) async {
@@ -226,18 +260,45 @@ class AuthController extends ChangeNotifier {
     }
 
     try {
+      final lightweightAccount = await _attemptGoogleBottomSheetSignIn();
+      if (lightweightAccount != null) {
+        return lightweightAccount;
+      }
+
       return await _googleSignIn.authenticate();
     } on PlatformException catch (error) {
       if (_isCredentialChannelError(error)) {
         _googleInitialized = false;
         await _initializeGoogleSignIn(force: true);
+        final lightweightAccount = await _attemptGoogleBottomSheetSignIn();
+        if (lightweightAccount != null) {
+          return lightweightAccount;
+        }
         return _googleSignIn.authenticate();
       }
       rethrow;
     }
   }
 
+  Future<GoogleSignInAccount?> _attemptGoogleBottomSheetSignIn() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return null;
+    }
+    final attempt = _googleSignIn.attemptLightweightAuthentication(
+      reportAllExceptions: true,
+    );
+    if (attempt == null) {
+      return null;
+    }
+    return attempt;
+  }
+
   String _toUserMessageForGoogleException(GoogleSignInException error) {
+    final detail = _firstNonEmpty(<String?>[
+      _cleanErrorText(error.description),
+      _cleanErrorText(error.details?.toString()),
+    ]);
+
     return switch (error.code) {
       GoogleSignInExceptionCode.canceled => 'Google sign-in was canceled.',
       GoogleSignInExceptionCode.interrupted =>
@@ -245,18 +306,44 @@ class AuthController extends ChangeNotifier {
       GoogleSignInExceptionCode.uiUnavailable =>
         'Google sign-in is unavailable right now on this device.',
       GoogleSignInExceptionCode.clientConfigurationError =>
-        'Google sign-in is not available in this app build yet. Please use email sign-in for now.',
+        'Google sign-in is not configured for this build. Verify OAuth Android client package and SHA fingerprints for com.gico.stepped.',
       GoogleSignInExceptionCode.providerConfigurationError =>
         'Google sign-in is temporarily unavailable on this device. Please use email sign-in for now.',
-      _ => 'Google sign-in failed. Please try again.',
+      GoogleSignInExceptionCode.userMismatch =>
+        'Google account mismatch detected. Sign out and try again.',
+      GoogleSignInExceptionCode.unknownError => detail == null
+          ? 'Google sign-in failed.'
+          : 'Google sign-in failed: $detail',
     };
   }
 
   String _toUserMessageForPlatformException(PlatformException error) {
+    final code = error.code.toLowerCase();
+    final message = _cleanErrorText(error.message);
+
     if (_isCredentialChannelError(error)) {
       return 'Google sign-in could not start. Fully close and reopen the app, then try again.';
     }
-    return 'Google sign-in failed. Please try again.';
+    if (code.contains('network') ||
+        (message != null && message.toLowerCase().contains('network'))) {
+      return 'Network issue while contacting Google. Check your connection and try again.';
+    }
+    if (code.contains('sign_in_failed') ||
+        (message != null &&
+            (message.contains('ApiException: 10') ||
+                message.toLowerCase().contains('developer error')))) {
+      return 'Google sign-in is misconfigured for this build. Ensure OAuth Android client uses package com.gico.stepped with correct SHA-1 and SHA-256.';
+    }
+    if (code.contains('canceled') ||
+        (message != null &&
+            (message.contains('12501') ||
+                message.toLowerCase().contains('cancel')))) {
+      return 'Google sign-in was canceled.';
+    }
+    if (message != null) {
+      return 'Google sign-in failed: $message';
+    }
+    return 'Google sign-in failed.';
   }
 
   bool _isCredentialChannelError(PlatformException error) {
@@ -268,17 +355,40 @@ class AuthController extends ChangeNotifier {
             message.contains('unable to establish connection on channel'));
   }
 
-  Future<void> _setCurrentUser(AuthUser user) async {
+  Future<void> _setSession({
+    required String accessToken,
+    required AuthUser user,
+    bool notify = true,
+  }) async {
+    _accessToken = accessToken;
     _currentUser = user;
-    final serialized = jsonEncode(user.toJson());
+    final serialized = jsonEncode(
+      <String, dynamic>{
+        'access_token': accessToken,
+        'user': user.toJson(),
+      },
+    );
     await _preferences?.setString(_sessionKey, serialized);
-    notifyListeners();
+    if (notify) {
+      notifyListeners();
+    }
+  }
+
+  Future<void> _clearSession({bool notify = true}) async {
+    _accessToken = null;
+    _currentUser = null;
+    await _preferences?.remove(_sessionKey);
+    if (notify) {
+      notifyListeners();
+    }
   }
 
   Future<void> _runBusy(Future<void> Function() action) async {
     _setBusy(true);
     try {
       await action();
+    } on AuthApiException catch (error) {
+      throw AuthException(error.message);
     } finally {
       _setBusy(false);
     }
@@ -294,33 +404,6 @@ class AuthController extends ChangeNotifier {
     }
   }
 
-  Future<Map<String, _PasswordAccount>> _readAccounts() async {
-    final raw = _preferences?.getString(_accountsKey);
-    if (raw == null || raw.trim().isEmpty) {
-      return <String, _PasswordAccount>{};
-    }
-
-    final decoded = jsonDecode(raw);
-    if (decoded is! List<dynamic>) {
-      return <String, _PasswordAccount>{};
-    }
-
-    final results = <String, _PasswordAccount>{};
-    for (final item in decoded) {
-      final account = _PasswordAccount.fromJson(item);
-      if (account == null) {
-        continue;
-      }
-      results[account.email] = account;
-    }
-    return results;
-  }
-
-  Future<void> _writeAccounts(Map<String, _PasswordAccount> accounts) async {
-    final list = accounts.values.map((account) => account.toJson()).toList();
-    await _preferences?.setString(_accountsKey, jsonEncode(list));
-  }
-
   static String _normalizeEmail(String raw) => raw.trim().toLowerCase();
 
   static bool _isValidEmail(String email) {
@@ -328,15 +411,50 @@ class AuthController extends ChangeNotifier {
     return RegExp(pattern).hasMatch(email);
   }
 
-  static String _generateSalt() {
-    final random = Random.secure();
-    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
-    return base64Url.encode(bytes);
+  static String? _readNonEmptyString(dynamic value) {
+    if (value is! String) {
+      return null;
+    }
+    final normalized = value.trim();
+    return normalized.isEmpty ? null : normalized;
   }
 
-  static String _hashPassword(String password, String salt) {
-    final input = utf8.encode('$salt::$password');
-    return sha256.convert(input).toString();
+  static String? _normalizeUnknownError(Object error) {
+    final text = _cleanErrorText(error.toString());
+    if (text == null) {
+      return null;
+    }
+    if (text == 'null') {
+      return null;
+    }
+    return text;
+  }
+
+  static String? _cleanErrorText(String? value) {
+    if (value == null) {
+      return null;
+    }
+    var normalized = value.trim();
+    if (normalized.isEmpty) {
+      return null;
+    }
+    if (normalized.startsWith('Exception: ')) {
+      normalized = normalized.substring('Exception: '.length).trim();
+    }
+    if (normalized.startsWith('AuthException: ')) {
+      normalized = normalized.substring('AuthException: '.length).trim();
+    }
+    return normalized.isEmpty ? null : normalized;
+  }
+
+  static String? _firstNonEmpty(List<String?> values) {
+    for (final value in values) {
+      final cleaned = _cleanErrorText(value);
+      if (cleaned != null) {
+        return cleaned;
+      }
+    }
+    return null;
   }
 }
 
@@ -347,59 +465,4 @@ class AuthException implements Exception {
 
   @override
   String toString() => message;
-}
-
-class _PasswordAccount {
-  const _PasswordAccount({
-    required this.email,
-    required this.displayName,
-    required this.passwordHash,
-    required this.salt,
-  });
-
-  final String email;
-  final String displayName;
-  final String passwordHash;
-  final String salt;
-
-  Map<String, dynamic> toJson() {
-    return <String, dynamic>{
-      'email': email,
-      'display_name': displayName,
-      'password_hash': passwordHash,
-      'salt': salt,
-    };
-  }
-
-  static _PasswordAccount? fromJson(dynamic raw) {
-    if (raw is! Map) {
-      return null;
-    }
-
-    final email = _readString(raw['email']);
-    final displayName = _readString(raw['display_name']);
-    final passwordHash = _readString(raw['password_hash']);
-    final salt = _readString(raw['salt']);
-    if (email == null ||
-        displayName == null ||
-        passwordHash == null ||
-        salt == null) {
-      return null;
-    }
-
-    return _PasswordAccount(
-      email: email.toLowerCase(),
-      displayName: displayName,
-      passwordHash: passwordHash,
-      salt: salt,
-    );
-  }
-
-  static String? _readString(dynamic value) {
-    if (value is! String) {
-      return null;
-    }
-    final normalized = value.trim();
-    return normalized.isEmpty ? null : normalized;
-  }
 }

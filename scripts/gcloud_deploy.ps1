@@ -1,9 +1,20 @@
 $PROJECT="stepped-488711"
 $REGION="us-central1"
 $SERVICE="stepped-cloud-api"
-$SECRET="stepped-gemini-key"
-$MODEL="gemini-3-flash"   # change to gemini-3-flash if you want
-$GEMINI_KEY="AIzaSyBQ8zrqL03bSOPBViPLw0rfVCQH6JVg9wA"
+$GEMINI_SECRET="stepped-gemini-key"
+$FIREBASE_WEB_API_KEY_SECRET="stepped-firebase-web-api-key"
+$MODEL="gemini-3-flash"
+
+$GEMINI_KEY=$env:GEMINI_API_KEY
+$FIREBASE_WEB_API_KEY=$env:FIREBASE_WEB_API_KEY
+
+if ([string]::IsNullOrWhiteSpace($GEMINI_KEY)) {
+    throw "Set GEMINI_API_KEY in your shell environment before running this script."
+}
+
+if ([string]::IsNullOrWhiteSpace($FIREBASE_WEB_API_KEY)) {
+    throw "Set FIREBASE_WEB_API_KEY in your shell environment before running this script."
+}
 
 gcloud config set project $PROJECT
 
@@ -11,15 +22,24 @@ gcloud services enable `
     run.googleapis.com `
     cloudbuild.googleapis.com `
     artifactregistry.googleapis.com `
-    secretmanager.googleapis.com
+    secretmanager.googleapis.com `
+    identitytoolkit.googleapis.com
 
-if (-not (gcloud secrets describe $SECRET --project $PROJECT 2>$null)) {
-    gcloud secrets create $SECRET --replication-policy=automatic
+if (-not (gcloud secrets describe $GEMINI_SECRET --project $PROJECT 2>$null)) {
+    gcloud secrets create $GEMINI_SECRET --replication-policy=automatic
+}
+
+if (-not (gcloud secrets describe $FIREBASE_WEB_API_KEY_SECRET --project $PROJECT 2>$null)) {
+    gcloud secrets create $FIREBASE_WEB_API_KEY_SECRET --replication-policy=automatic
 }
 
 $GEMINI_KEY | Set-Content -Path gemini_key.txt -NoNewline
-gcloud secrets versions add $SECRET --data-file=gemini_key.txt
+gcloud secrets versions add $GEMINI_SECRET --data-file=gemini_key.txt
 Remove-Item gemini_key.txt
+
+$FIREBASE_WEB_API_KEY | Set-Content -Path firebase_web_api_key.txt -NoNewline
+gcloud secrets versions add $FIREBASE_WEB_API_KEY_SECRET --data-file=firebase_web_api_key.txt
+Remove-Item firebase_web_api_key.txt
 
 gcloud run deploy $SERVICE `
     --source backend `
@@ -30,7 +50,7 @@ gcloud run deploy $SERVICE `
     --cpu 1 `
     --memory 256Mi `
     --set-env-vars GEMINI_MODEL=$MODEL `
-    --set-secrets GEMINI_API_KEY="stepped-gemini-key:latest"
+    --set-secrets GEMINI_API_KEY="$GEMINI_SECRET`:latest",FIREBASE_WEB_API_KEY="$FIREBASE_WEB_API_KEY_SECRET`:latest"
 
 $URL = gcloud run services describe $SERVICE --region $REGION --format="value(status.url)"
 Write-Host "Cloud Run URL: $URL"

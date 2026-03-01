@@ -243,32 +243,39 @@ class _AuthHero extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: colorScheme.primaryContainer.withValues(alpha: 0.82),
-            borderRadius: BorderRadius.circular(26),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Image.asset(
-              'assets/branding/stepped_monochrome_logo.png',
-              width: 84,
-              height: 84,
-              fit: BoxFit.cover,
-              color: colorScheme.onPrimaryContainer,
-              filterQuality: FilterQuality.high,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: <Widget>[
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer.withValues(alpha: 0.82),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Image.asset(
+                  'assets/branding/stepped_monochrome_logo.png',
+                  width: 72,
+                  height: 72,
+                  fit: BoxFit.cover,
+                  color: colorScheme.onPrimaryContainer,
+                  filterQuality: FilterQuality.high,
+                ),
+              ),
             ),
-          ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                'Stepped',
+                style: textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.3,
+                ),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 16),
-        Text(
-          'Stepped',
-          style: textTheme.headlineMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.3,
-          ),
-        ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 10),
         Text(
           'Sign in to save every trip, track your progress, and share your adventures with friends.',
           style: textTheme.bodyLarge?.copyWith(
@@ -440,13 +447,8 @@ class _SignInCard extends StatelessWidget {
               child: Text(isBusy ? 'Please wait...' : 'Sign in'),
             ),
             const SizedBox(height: 10),
-            OutlinedButton.icon(
+            _GoogleSignInButton(
               onPressed: isBusy ? null : onGooglePressed,
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-              icon: const _GoogleBadge(),
-              label: const Text('Continue with Google'),
             ),
           ],
         ),
@@ -559,13 +561,8 @@ class _RegisterCard extends StatelessWidget {
               child: Text(isBusy ? 'Please wait...' : 'Create account'),
             ),
             const SizedBox(height: 10),
-            OutlinedButton.icon(
+            _GoogleSignInButton(
               onPressed: isBusy ? null : onGooglePressed,
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-              icon: const _GoogleBadge(),
-              label: const Text('Continue with Google'),
             ),
           ],
         ),
@@ -655,24 +652,134 @@ class _GoogleBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return const _GoogleMark(size: 20);
+  }
+}
+
+class _GoogleSignInButton extends StatelessWidget {
+  const _GoogleSignInButton({
+    required this.onPressed,
+  });
+
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      width: 20,
-      height: 20,
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: colorScheme.outlineVariant),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final baseBorderColor =
+        isDark ? const Color(0xFF8E918F) : const Color(0xFF747775);
+    final foregroundColor =
+        isDark ? colorScheme.onSurface.withValues(alpha: 0.96) : const Color(0xFF1F1F1F);
+    final baseSurface =
+        isDark ? colorScheme.surfaceContainerHigh : const Color(0xFFFFFFFF);
+    final backgroundColor = Color.alphaBlend(
+      colorScheme.primary.withValues(alpha: isDark ? 0.18 : 0.05),
+      baseSurface,
+    );
+    final borderColor = Color.alphaBlend(
+      colorScheme.primary.withValues(alpha: isDark ? 0.30 : 0.14),
+      baseBorderColor,
+    );
+
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(48),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        side: BorderSide(color: borderColor, width: 1.1),
+        shape: const StadiumBorder(),
+        foregroundColor: foregroundColor,
+        backgroundColor: backgroundColor,
+        disabledForegroundColor: foregroundColor.withValues(alpha: 0.5),
+        disabledBackgroundColor: backgroundColor.withValues(alpha: 0.8),
       ),
-      alignment: Alignment.center,
-      child: Text(
-        'G',
-        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+      icon: const _GoogleBadge(),
+      label: const Text(
+        'Continue with Google',
+        style: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.1,
+        ),
       ),
     );
   }
+}
+
+class _GoogleMark extends StatelessWidget {
+  const _GoogleMark({
+    required this.size,
+  });
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: size,
+      child: CustomPaint(
+        painter: _GoogleMarkPainter(),
+      ),
+    );
+  }
+}
+
+class _GoogleMarkPainter extends CustomPainter {
+  static const _blue = Color(0xFF4285F4);
+  static const _red = Color(0xFFEA4335);
+  static const _yellow = Color(0xFFFBBC05);
+  static const _green = Color(0xFF34A853);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final strokeWidth = size.width * 0.24;
+    final radius = (size.width - strokeWidth) / 2;
+    final rect = Rect.fromCircle(center: center, radius: radius);
+
+    final bluePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.butt
+      ..strokeWidth = strokeWidth
+      ..color = _blue;
+    final redPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.butt
+      ..strokeWidth = strokeWidth
+      ..color = _red;
+    final yellowPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.butt
+      ..strokeWidth = strokeWidth
+      ..color = _yellow;
+    final greenPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.butt
+      ..strokeWidth = strokeWidth
+      ..color = _green;
+
+    canvas.drawArc(rect, _deg(-40), _deg(90), false, bluePaint);
+    canvas.drawArc(rect, _deg(50), _deg(80), false, greenPaint);
+    canvas.drawArc(rect, _deg(130), _deg(70), false, yellowPaint);
+    canvas.drawArc(rect, _deg(200), _deg(115), false, redPaint);
+
+    final barPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.butt
+      ..strokeWidth = strokeWidth
+      ..color = _blue;
+    canvas.drawLine(
+      Offset(center.dx, center.dy),
+      Offset(size.width - strokeWidth * 0.15, center.dy),
+      barPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _GoogleMarkPainter oldDelegate) => false;
+
+  double _deg(double value) => value * math.pi / 180.0;
 }
 
 class _AnimatedBackdrop extends StatelessWidget {

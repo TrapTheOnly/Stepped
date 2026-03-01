@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../config/runtime_config.dart';
+
 const _themeModeKey = 'stepped_theme_mode';
 const _displayNameKey = 'stepped_display_name';
 const _homeBaseKey = 'stepped_home_base';
@@ -28,7 +30,7 @@ class AppPreferences {
     required this.cloudAiBaseUrl,
   });
 
-  static const defaults = AppPreferences(
+  static final defaults = AppPreferences(
     themeMode: ThemeMode.system,
     displayName: 'Traveler',
     homeBase: '',
@@ -36,7 +38,7 @@ class AppPreferences {
     showWishlistDates: true,
     geminiApiKey: '',
     aiPlannerSource: AiPlannerSource.cloud,
-    cloudAiBaseUrl: 'https://api.stepped.world',
+    cloudAiBaseUrl: defaultSteppedApiBaseUrl,
   );
 
   final ThemeMode themeMode;
@@ -176,7 +178,7 @@ class AppPreferencesController extends AsyncNotifier<AppPreferences> {
       _cloudAiBaseUrlKey,
       AppPreferences.defaults.cloudAiBaseUrl,
     );
-    state = const AsyncData(AppPreferences.defaults);
+    state = AsyncData(AppPreferences.defaults);
   }
 
   Future<SharedPreferences> _ensurePreferences() async {

@@ -7,10 +7,12 @@ import 'gemini_trip_planner_parser.dart';
 class GeminiPlannerRequestClient {
   const GeminiPlannerRequestClient({
     required this.models,
+    required this.apiVersion,
     required this.maxRetryOutputTokens,
   });
 
   final List<String> models;
+  final String apiVersion;
   final int maxRetryOutputTokens;
 
   Future<String> requestText({
@@ -19,38 +21,50 @@ class GeminiPlannerRequestClient {
     required double temperature,
     required int maxOutputTokens,
   }) async {
-    GeminiPlannerException? lastMissingModelError;
-    for (var index = 0; index < models.length; index += 1) {
-      final model = models[index];
+    final versionCandidates = _buildVersionCandidates(apiVersion);
+    final attempts = <_GeminiRequestAttempt>[
+      for (final version in versionCandidates)
+        for (final model in models)
+          _GeminiRequestAttempt(model: model, apiVersion: version),
+    ];
+
+    GeminiPlannerException? lastRecoverableError;
+    for (var index = 0; index < attempts.length; index += 1) {
+      final attempt = attempts[index];
       try {
         return await _requestTextForModel(
-          model: model,
+          model: attempt.model,
+          apiVersion: attempt.apiVersion,
           apiKey: apiKey,
           prompt: prompt,
           temperature: temperature,
           maxOutputTokens: maxOutputTokens,
         );
       } on GeminiPlannerException catch (error) {
-        final isLast = index == models.length - 1;
-        if (!isLast && _looksLikeMissingModel(error.message)) {
-          lastMissingModelError = error;
+        final isLast = index == attempts.length - 1;
+        final recoverable = _looksLikeMissingModel(error.message) ||
+            _looksLikeApiVersionError(error.message);
+        if (!isLast && recoverable) {
+          lastRecoverableError = error;
           continue;
         }
         rethrow;
       }
     }
-    throw lastMissingModelError ?? const GeminiPlannerException('Gemini request failed.');
+    throw lastRecoverableError ??
+        const GeminiPlannerException('Gemini request failed.');
   }
 
   Future<String> _requestTextForModel({
     required String model,
+    required String apiVersion,
     required String apiKey,
     required String prompt,
     required double temperature,
     required int maxOutputTokens,
   }) async {
     final uri = Uri.parse(
-      'https://generativelanguage.googleapis.com/v1beta/models/'
+      'https://generativelanguage.googleapis.com/$apiVersion/models/'
       '$model:generateContent?key=$apiKey',
     );
 
@@ -61,7 +75,8 @@ class GeminiPlannerRequestClient {
       if (maxRetryOutputTokens > (maxOutputTokens * 2)) maxRetryOutputTokens,
     ];
 
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
     try {
       for (var attempt = 0; attempt < tokenBudgets.length; attempt += 1) {
         final tokenBudget = tokenBudgets[attempt];
@@ -103,14 +118,15 @@ class GeminiPlannerRequestClient {
         final responsePayload = _extractTextPayload(body);
         final responseText = responsePayload.text?.trim();
         if (responseText == null || responseText.isEmpty) {
-          throw const GeminiPlannerException('Gemini returned an empty response.');
+          throw const GeminiPlannerException(
+              'Gemini returned an empty response.');
         }
 
         final hitTokenLimit =
             responsePayload.finishReason.toUpperCase() == 'MAX_TOKENS';
         final looksTruncated = looksLikeTruncatedGeminiJson(responseText);
-        final shouldRetry =
-            (hitTokenLimit || looksTruncated) && attempt < tokenBudgets.length - 1;
+        final shouldRetry = (hitTokenLimit || looksTruncated) &&
+            attempt < tokenBudgets.length - 1;
         if (shouldRetry) {
           continue;
         }
@@ -122,9 +138,11 @@ class GeminiPlannerRequestClient {
         return responseText;
       }
 
-      throw const GeminiPlannerException('Gemini response could not be completed.');
+      throw const GeminiPlannerException(
+          'Gemini response could not be completed.');
     } on SocketException {
-      throw const GeminiPlannerException('Network error while contacting Gemini.');
+      throw const GeminiPlannerException(
+          'Network error while contacting Gemini.');
     } on HandshakeException {
       throw const GeminiPlannerException(
         'TLS/SSL handshake failed while contacting Gemini.',
@@ -144,6 +162,24 @@ class GeminiPlannerRequestClient {
         normalized.contains('not found for api version') ||
         normalized.contains('unsupported model') ||
         normalized.contains('does not exist');
+  }
+
+  bool _looksLikeApiVersionError(String message) {
+    final normalized = message.toLowerCase();
+    return normalized.contains('api version') ||
+        normalized.contains('unsupported version') ||
+        normalized.contains('version is not supported');
+  }
+
+  List<String> _buildVersionCandidates(String preferredVersion) {
+    final normalizedPreferred = preferredVersion.trim();
+    if (normalizedPreferred.isEmpty) {
+      return const <String>['v1beta'];
+    }
+    if (normalizedPreferred.toLowerCase() == 'v1beta') {
+      return <String>[normalizedPreferred];
+    }
+    return <String>[normalizedPreferred, 'v1beta'];
   }
 
   String? _extractApiErrorMessage(dynamic body) {
@@ -200,6 +236,16 @@ class GeminiPlannerRequestClient {
     }
     return _GeminiTextPayload(text: aggregated, finishReason: finishReason);
   }
+}
+
+class _GeminiRequestAttempt {
+  const _GeminiRequestAttempt({
+    required this.model,
+    required this.apiVersion,
+  });
+
+  final String model;
+  final String apiVersion;
 }
 
 class _GeminiTextPayload {

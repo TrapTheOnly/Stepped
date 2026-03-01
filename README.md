@@ -33,7 +33,11 @@ Minimal Android-first travel tracking UI built with Material 3 and Material You 
 ```bash
 flutter pub get
 copy google_sign_in.env.example.json google_sign_in.env.json
-# then edit google_sign_in.env.json and set GOOGLE_SERVER_CLIENT_ID
+# then edit google_sign_in.env.json:
+# - GOOGLE_SERVER_CLIENT_ID
+# - STEPPED_API_BASE_URL (optional; default is https://api.stepped.world)
+# - GEMINI_MODEL (optional; default is gemini-3-flash)
+# - GEMINI_API_VERSION (optional; default is v1beta)
 flutter run --dart-define-from-file=google_sign_in.env.json
 ```
 
@@ -50,6 +54,17 @@ Required GitHub Actions value:
 - Environment: `Main`
 - Key: `GOOGLE_SERVER_CLIENT_ID`
 - Location: `Settings -> Environments -> Main -> Variables` (or `Secrets`)
+- Optional key: `STEPPED_API_BASE_URL` (if you build against a non-default API host)
+- Optional key: `GEMINI_MODEL` (fallback: `gemini-3-flash`)
+- Optional key: `GEMINI_API_VERSION` (fallback: `v1beta`)
+
+## CI Backend Deploy
+
+- Workflow: `.github/workflows/backend-cloud-run-deploy.yml`
+- Trigger: pushes touching `backend/**` on `main`, plus manual run
+- Deploy target: Google Cloud Run (`stepped-cloud-api` by default)
+- Auth in CI: `GCP_WORKLOAD_IDENTITY_PROVIDER` + `GCP_SERVICE_ACCOUNT` (preferred), or `GCP_SA_KEY_JSON` fallback
+- Full backend CI variable list: see [backend/README.md](backend/README.md)
 
 ## Dynamic Color
 

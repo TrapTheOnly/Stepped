@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../config/runtime_config.dart';
 import 'gemini_trip_models.dart';
 import 'gemini_trip_planner_merge.dart';
 import 'gemini_trip_planner_openverse.dart';
@@ -18,11 +19,6 @@ final geminiTripPlannerProvider = Provider<GeminiTripPlanner>((ref) {
 class GeminiTripPlanner {
   const GeminiTripPlanner();
 
-  static const List<String> _modelCandidates = <String>[
-    'gemini-3-flash',
-    'gemini-3.0-flash',
-    'gemini-3-flash-preview',
-  ];
   static const int _maxRetryOutputTokens = wishlistPlannerMaxOutputTokens;
 
   Future<GeminiTripPlan> generatePlan({
@@ -58,7 +54,8 @@ class GeminiTripPlanner {
       );
     }
     if (normalizedCities.length > wishlistMaxCitiesPerRequest) {
-      throw const GeminiPlannerException('You can add up to 4 cities per request.');
+      throw const GeminiPlannerException(
+          'You can add up to 4 cities per request.');
     }
     final normalizedMonth = (preferredMonth != null &&
             preferredMonth >= DateTime.january &&
@@ -137,8 +134,9 @@ class GeminiTripPlanner {
     required GeminiTripPlan plan,
     String? fallbackCountry,
   }) async {
-    final country =
-        readGeminiNonEmpty(plan.country) ?? readGeminiNonEmpty(fallbackCountry) ?? 'Unknown';
+    final country = readGeminiNonEmpty(plan.country) ??
+        readGeminiNonEmpty(fallbackCountry) ??
+        'Unknown';
     final details = await attachOpenverseImagesToGeminiCityDetails(
       cityDetails: plan.cityDetails,
       countryName: country,
@@ -150,7 +148,8 @@ class GeminiTripPlanner {
       stayDuration: plan.stayDuration,
       timeWindows: plan.timeWindows,
       cityPlan: plan.cityPlan,
-      cityDetails: alignGeminiCityDetails(cityPlan: plan.cityPlan, details: details),
+      cityDetails:
+          alignGeminiCityDetails(cityPlan: plan.cityPlan, details: details),
       rawText: plan.rawText,
     );
   }
@@ -180,8 +179,9 @@ class GeminiTripPlanner {
     required double temperature,
     required int maxOutputTokens,
   }) async {
-    const client = GeminiPlannerRequestClient(
-      models: _modelCandidates,
+    final client = GeminiPlannerRequestClient(
+      models: defaultGeminiModelCandidates,
+      apiVersion: defaultGeminiApiVersion,
       maxRetryOutputTokens: _maxRetryOutputTokens,
     );
     return client.requestText(
