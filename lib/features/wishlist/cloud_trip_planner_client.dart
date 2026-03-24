@@ -31,6 +31,9 @@ class CloudTripPlannerClient {
   Future<GeminiTripPlan> generatePlan({
     required String baseUrl,
     required String countryName,
+    required String accessToken,
+    String? wishlistTitle,
+    String? tripPurpose,
     String? homeBase,
     DateTimeRange? preciseWindow,
     int? preferredMonth,
@@ -50,10 +53,18 @@ class CloudTripPlannerClient {
     if (normalizedCountryName.isEmpty) {
       throw const CloudTripPlannerException('Country is required.');
     }
+    final normalizedAccessToken = accessToken.trim();
+    if (normalizedAccessToken.isEmpty) {
+      throw const CloudTripPlannerException(
+        'Sign in again to use AI planning credits.',
+      );
+    }
 
     final uri = _buildTripPlannerUri(normalizedBaseUrl);
     final payload = <String, dynamic>{
+      'wishlist_title': wishlistTitle?.trim(),
       'country': normalizedCountryName,
+      'trip_purpose': tripPurpose?.trim(),
       'home_base': homeBase?.trim(),
       'preferred_month': preferredMonth,
       'preferred_cities': (preferredCities ?? const <String>[])
@@ -82,6 +93,8 @@ class CloudTripPlannerClient {
     try {
       final request = await client.postUrl(uri);
       request.headers.contentType = ContentType.json;
+      request.headers.set(
+          HttpHeaders.authorizationHeader, 'Bearer $normalizedAccessToken');
       request.write(jsonEncode(payload));
 
       final response = await request.close();

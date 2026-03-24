@@ -23,6 +23,8 @@ Minimal Android-first travel tracking UI built with Material 3 and Material You 
 - `dynamic_color`
 - `sqflite`
 - `cached_network_image`
+- `firebase_core`
+- `firebase_auth`
 - `google_sign_in`
 
 ## Run
@@ -34,14 +36,23 @@ Minimal Android-first travel tracking UI built with Material 3 and Material You 
 flutter pub get
 copy google_sign_in.env.example.json google_sign_in.env.json
 # then edit google_sign_in.env.json:
-# - GOOGLE_SERVER_CLIENT_ID
+# - GOOGLE_SERVER_CLIENT_ID (optional if google-services.json already matches your Firebase project)
 # - STEPPED_API_BASE_URL (optional; default is https://api.stepped.world)
 # - GEMINI_MODEL (optional; default is gemini-3-flash)
 # - GEMINI_API_VERSION (optional; default is v1beta)
 flutter run --dart-define-from-file=google_sign_in.env.json
 ```
 
-For OAuth setup details, see [docs/auth_setup.md](docs/auth_setup.md).
+This app now signs users into Firebase Auth first, then calls the backend with the Firebase ID token.
+
+For Firebase/Auth setup details, see [docs/auth_setup.md](docs/auth_setup.md).
+
+## Friend Invite Links
+
+- Android app links are configured for `https://app.stepped.world/friends/add/:token`.
+- Android custom-scheme links are configured for `stepped://friends/add/:token`.
+- Both link types resolve to the existing in-app route `/friends/add/:token`, and unauthenticated users are redirected through `/auth` before returning to the invite route.
+- If an iOS target is added later, enable the Associated Domains capability with `applinks:app.stepped.world` and host an `apple-app-site-association` file on `app.stepped.world` that allows `/friends/add/*` for the app's team ID and bundle ID.
 
 ## CI APK Release
 

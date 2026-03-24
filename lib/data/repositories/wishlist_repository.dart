@@ -39,4 +39,11 @@ class WishlistRepository {
   Future<void> deleteWishlistItem(int id) {
     return _database.deleteWishlistItem(id);
   }
+
+  Future<void> setPinnedState({
+    required int id,
+    required bool isPinned,
+  }) {
+    return _database.setWishlistPinnedState(id: id, isPinned: isPinned);
+  }
 }

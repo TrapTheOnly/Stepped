@@ -59,10 +59,12 @@ class ProfileSettingsSection extends StatelessWidget {
     super.key,
     required this.nameController,
     required this.homeBaseController,
+    required this.bioController,
   });
 
   final TextEditingController nameController;
   final TextEditingController homeBaseController;
+  final TextEditingController bioController;
 
   @override
   Widget build(BuildContext context) {
@@ -85,11 +87,26 @@ class ProfileSettingsSection extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: TextField(
             controller: homeBaseController,
-            textInputAction: TextInputAction.done,
+            textInputAction: TextInputAction.next,
             decoration: const InputDecoration(
               labelText: 'Home base',
               hintText: 'City or country',
               prefixIcon: Icon(Icons.home_outlined),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: TextField(
+            controller: bioController,
+            textInputAction: TextInputAction.done,
+            maxLines: 3,
+            minLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Bio',
+              hintText: 'Traveler and planner.',
+              prefixIcon: Icon(Icons.menu_book_outlined),
+              alignLabelWithHint: true,
             ),
           ),
         ),

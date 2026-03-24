@@ -7,18 +7,23 @@ import 'add_trip_form_types.dart';
 InputDecorationTheme roundedTripInputDecorationTheme(BuildContext context) {
   final scheme = Theme.of(context).colorScheme;
   final border = OutlineInputBorder(
-    borderRadius: BorderRadius.circular(18),
-    borderSide: BorderSide(color: scheme.outlineVariant),
+    borderRadius: BorderRadius.circular(24),
+    borderSide: BorderSide(
+      color: scheme.outlineVariant.withValues(alpha: 0.18),
+    ),
   );
   return InputDecorationTheme(
     filled: true,
-    fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
+    fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.44),
     border: border,
     enabledBorder: border,
     focusedBorder: border.copyWith(
-      borderSide: BorderSide(color: scheme.primary, width: 1.4),
+      borderSide: BorderSide(
+        color: scheme.primary.withValues(alpha: 0.34),
+        width: 1.1,
+      ),
     ),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
   );
 }
 

@@ -4,22 +4,33 @@ import 'package:go_router/go_router.dart';
 
 import '../features/auth/auth_controller.dart';
 import '../features/auth/auth_screen.dart';
+import '../features/friends/friend_link_accept_screen.dart';
+import '../features/friends/friend_profile_screen.dart';
+import '../features/friends/friend_trip_detail_screen.dart';
+import '../features/friends/friends_screen.dart';
 import '../features/map/map_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/search/search_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/stats/stats_screen.dart';
 import '../features/trips/add_trip_screen.dart';
+import '../features/trips/trip_detail_screen.dart';
 import '../features/trips/trips_screen.dart';
+import '../features/wishlist/wishlist_add_idea_screen.dart';
 import '../features/wishlist/wishlist_plan_manual_edit_screen.dart';
+import '../features/wishlist/wishlist_plan_city_detail_screen.dart';
 import '../features/wishlist/wishlist_plan_review_screen.dart';
 import '../features/wishlist/wishlist_plan_screen.dart';
 import '../features/wishlist/wishlist_screen.dart';
+import '../widgets/frosted_squircle.dart';
 
 final _rootNavigatorKey =
     GlobalKey<NavigatorState>(debugLabel: 'rootNavigator');
 final _shellNavigatorKey =
     GlobalKey<NavigatorState>(debugLabel: 'shellNavigator');
+
+const _inviteAppLinkHost = 'app.stepped.world';
+const _inviteCustomScheme = 'stepped';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final authController = ref.read(authControllerProvider);
@@ -28,17 +39,36 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/auth',
     refreshListenable: authController,
+    onException: (context, state, router) {
+      final normalizedRoute = _normalizedInviteRoute(state.uri);
+      if (normalizedRoute != null) {
+        router.go(normalizedRoute);
+      }
+    },
     redirect: (context, state) {
       final onAuthRoute = state.uri.path == '/auth';
+      final requestedLocation = state.uri.toString();
+      final from = state.uri.queryParameters['from'];
       if (!authController.isInitialized) {
-        return onAuthRoute ? null : '/auth';
+        if (onAuthRoute) {
+          return null;
+        }
+        final encoded = Uri.encodeComponent(requestedLocation);
+        return '/auth?from=$encoded';
       }
 
       if (!authController.isAuthenticated) {
-        return onAuthRoute ? null : '/auth';
+        if (onAuthRoute) {
+          return null;
+        }
+        final encoded = Uri.encodeComponent(requestedLocation);
+        return '/auth?from=$encoded';
       }
 
       if (onAuthRoute) {
+        if (from != null && from.trim().isNotEmpty) {
+          return Uri.decodeComponent(from);
+        }
         return '/';
       }
       return null;
@@ -97,7 +127,23 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: 'add',
                 parentNavigatorKey: _rootNavigatorKey,
-                builder: (context, state) => const AddTripScreen(),
+                builder: (context, state) {
+                  final rawWishlistId = state.uri.queryParameters['wishlistId'];
+                  final wishlistItemId = int.tryParse(rawWishlistId ?? '');
+                  return AddTripScreen(wishlistItemId: wishlistItemId);
+                },
+              ),
+              GoRoute(
+                path: 'view/:id',
+                parentNavigatorKey: _rootNavigatorKey,
+                builder: (context, state) {
+                  final rawId = state.pathParameters['id'];
+                  final id = int.tryParse(rawId ?? '');
+                  if (id == null) {
+                    return const _RouteErrorScreen(message: 'Invalid trip id');
+                  }
+                  return TripDetailScreen(tripId: id);
+                },
               ),
               GoRoute(
                 path: 'edit/:id',
@@ -120,6 +166,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               return const NoTransitionPage<void>(child: WishlistScreen());
             },
             routes: <RouteBase>[
+              GoRoute(
+                path: 'add',
+                parentNavigatorKey: _rootNavigatorKey,
+                builder: (context, state) => const WishlistAddIdeaScreen(),
+              ),
               GoRoute(
                 path: 'plan/:id',
                 parentNavigatorKey: _rootNavigatorKey,
@@ -162,25 +213,91 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                       return WishlistPlanManualEditScreen(itemId: id);
                     },
                   ),
+                  GoRoute(
+                    path: 'city/:cityIndex',
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (context, state) {
+                      final rawId = state.pathParameters['id'];
+                      final id = int.tryParse(rawId ?? '');
+                      final rawCityIndex = state.pathParameters['cityIndex'];
+                      final cityIndex = int.tryParse(rawCityIndex ?? '');
+                      if (id == null || cityIndex == null) {
+                        return const _RouteErrorScreen(
+                          message: 'Invalid wishlist city route',
+                        );
+                      }
+                      return WishlistPlanCityDetailScreen(
+                        itemId: id,
+                        cityIndex: cityIndex,
+                      );
+                    },
+                  ),
                 ],
               ),
             ],
           ),
           GoRoute(
-            path: '/profile',
-            name: 'profile',
+            path: '/friends',
+            name: 'friends',
             pageBuilder: (context, state) {
-              return const NoTransitionPage<void>(child: ProfileScreen());
+              return const NoTransitionPage<void>(child: FriendsScreen());
             },
-            routes: <RouteBase>[
-              GoRoute(
-                path: 'settings',
-                parentNavigatorKey: _rootNavigatorKey,
-                builder: (context, state) => const SettingsScreen(),
-              ),
-            ],
           ),
         ],
+      ),
+      GoRoute(
+        path: '/profile',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const ProfileScreen(),
+        routes: <RouteBase>[
+          GoRoute(
+            path: 'settings',
+            parentNavigatorKey: _rootNavigatorKey,
+            builder: (context, state) => const SettingsScreen(),
+          ),
+        ],
+      ),
+      GoRoute(
+        path: '/friends/profile/:friendUserId',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final friendUserId = state.pathParameters['friendUserId'];
+          if (friendUserId == null || friendUserId.trim().isEmpty) {
+            return const _RouteErrorScreen(message: 'Invalid friend id');
+          }
+          return FriendProfileScreen(friendUserId: friendUserId);
+        },
+        routes: <RouteBase>[
+          GoRoute(
+            path: 'trips/:tripId',
+            parentNavigatorKey: _rootNavigatorKey,
+            builder: (context, state) {
+              final friendUserId = state.pathParameters['friendUserId'];
+              final tripId = state.pathParameters['tripId'];
+              if (friendUserId == null ||
+                  friendUserId.trim().isEmpty ||
+                  tripId == null ||
+                  tripId.trim().isEmpty) {
+                return const _RouteErrorScreen(message: 'Invalid friend trip');
+              }
+              return FriendTripDetailScreen(
+                friendUserId: friendUserId,
+                tripId: tripId,
+              );
+            },
+          ),
+        ],
+      ),
+      GoRoute(
+        path: '/friends/add/:token',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final token = state.pathParameters['token'];
+          if (token == null || token.trim().isEmpty) {
+            return const _RouteErrorScreen(message: 'Invalid friend invite');
+          }
+          return FriendLinkAcceptScreen(token: token);
+        },
       ),
       GoRoute(
         path: '/search',
@@ -196,42 +313,107 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   );
 });
 
+String? _normalizedInviteRoute(Uri uri) {
+  final scheme = uri.scheme.toLowerCase();
+  late final List<String> segments;
+
+  if (scheme == _inviteCustomScheme) {
+    segments = <String>[
+      if (uri.host.isNotEmpty) uri.host,
+      ...uri.pathSegments.where((segment) => segment.isNotEmpty),
+    ];
+  } else if (scheme == 'https' &&
+      uri.host.toLowerCase() == _inviteAppLinkHost) {
+    segments = uri.pathSegments.where((segment) => segment.isNotEmpty).toList();
+  } else {
+    return null;
+  }
+
+  final isInviteRoute = segments.length >= 3 &&
+      segments[0].toLowerCase() == 'friends' &&
+      segments[1].toLowerCase() == 'add';
+  if (!isInviteRoute) {
+    return null;
+  }
+
+  final token = segments[2].trim();
+  if (token.isEmpty) {
+    return null;
+  }
+
+  final normalized = Uri(
+    path: '/friends/add/$token',
+    queryParameters: uri.queryParameters.isEmpty ? null : uri.queryParameters,
+  );
+  return normalized.toString();
+}
+
 class _AppShell extends StatelessWidget {
   const _AppShell({required this.location, required this.child});
+
+  static const List<_ShellDestination> _destinations = <_ShellDestination>[
+    _ShellDestination(
+      label: 'Map',
+      icon: Icons.public_outlined,
+      selectedIcon: Icons.public,
+      route: '/',
+    ),
+    _ShellDestination(
+      label: 'Trips',
+      icon: Icons.flight_takeoff_outlined,
+      selectedIcon: Icons.flight_takeoff,
+      route: '/trips',
+    ),
+    _ShellDestination(
+      label: 'Wishlist',
+      icon: Icons.favorite_border,
+      selectedIcon: Icons.favorite,
+      route: '/wishlist',
+    ),
+    _ShellDestination(
+      label: 'Friends',
+      icon: Icons.people_outline_rounded,
+      selectedIcon: Icons.people_rounded,
+      route: '/friends',
+    ),
+  ];
 
   final String location;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final selectedIndex = _indexForLocation(location);
+    final isFloatingNavRoute = selectedIndex >= 0;
+
     return Scaffold(
+      extendBody: isFloatingNavRoute,
       body: child,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _indexForLocation(location),
-        onDestinationSelected: (index) =>
-            _onDestinationSelected(context, index),
-        destinations: const <NavigationDestination>[
-          NavigationDestination(
-            icon: Icon(Icons.public_outlined),
-            selectedIcon: Icon(Icons.public),
-            label: 'Map',
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: FrostedSquircle(
+          radius: 34,
+          blurSigma: 20,
+          color: colorScheme.surface.withValues(
+            alpha: isFloatingNavRoute ? 0.66 : 0.92,
           ),
-          NavigationDestination(
-            icon: Icon(Icons.flight_takeoff_outlined),
-            selectedIcon: Icon(Icons.flight_takeoff),
-            label: 'Trips',
+          borderColor: colorScheme.outlineVariant.withValues(alpha: 0.16),
+          shadowColor: colorScheme.primary.withValues(alpha: 0.12),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
+            children: List<Widget>.generate(_destinations.length, (index) {
+              final destination = _destinations[index];
+              return Expanded(
+                child: _ShellNavItem(
+                  destination: destination,
+                  selected: selectedIndex == index,
+                  onTap: () => _onDestinationSelected(context, index),
+                ),
+              );
+            }),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.favorite_border),
-            selectedIcon: Icon(Icons.favorite),
-            label: 'Wishlist',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -243,7 +425,7 @@ class _AppShell extends StatelessWidget {
     if (location.startsWith('/wishlist')) {
       return 2;
     }
-    if (location.startsWith('/profile')) {
+    if (location.startsWith('/friends')) {
       return 3;
     }
     return 0;
@@ -261,7 +443,7 @@ class _AppShell extends StatelessWidget {
         context.go('/wishlist');
         return;
       case 3:
-        context.go('/profile');
+        context.go('/friends');
         return;
     }
   }
@@ -278,6 +460,98 @@ class _RouteErrorScreen extends StatelessWidget {
       appBar: AppBar(title: const Text('Route Error')),
       body: SafeArea(
         child: Center(child: Text(message)),
+      ),
+    );
+  }
+}
+
+class _ShellDestination {
+  const _ShellDestination({
+    required this.label,
+    required this.icon,
+    required this.selectedIcon,
+    required this.route,
+  });
+
+  final String label;
+  final IconData icon;
+  final IconData selectedIcon;
+  final String route;
+}
+
+class _ShellNavItem extends StatelessWidget {
+  const _ShellNavItem({
+    required this.destination,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final _ShellDestination destination;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final iconColor = selected
+        ? colorScheme.onSurface
+        : colorScheme.onSurfaceVariant.withValues(alpha: 0.82);
+    final labelColor = selected
+        ? colorScheme.onSurface
+        : colorScheme.onSurfaceVariant.withValues(alpha: 0.74);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: squircleShape(24),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(
+                selected ? destination.selectedIcon : destination.icon,
+                size: 22,
+                color: iconColor,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                destination.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: labelColor,
+                      letterSpacing: 0.8,
+                    ),
+              ),
+              const SizedBox(height: 6),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                width: selected ? 18 : 6,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: selected
+                      ? colorScheme.primaryContainer
+                      : colorScheme.primaryContainer.withValues(alpha: 0.0),
+                  borderRadius: BorderRadius.circular(999),
+                  boxShadow: selected
+                      ? <BoxShadow>[
+                          BoxShadow(
+                            color: colorScheme.primaryContainer.withValues(
+                              alpha: 0.55,
+                            ),
+                            blurRadius: 12,
+                            offset: const Offset(0, 3),
+                          ),
+                        ]
+                      : const <BoxShadow>[],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

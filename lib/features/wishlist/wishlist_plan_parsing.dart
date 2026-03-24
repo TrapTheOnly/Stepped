@@ -11,12 +11,14 @@ class WishlistStoredRequestOptions {
     required this.selectedMonth,
     required this.selectedDurationPreference,
     required this.allowAdditionalCities,
+    required this.purpose,
   });
 
   final WishlistTimeInputMode timeInputMode;
   final int? selectedMonth;
   final GeminiDurationPreference? selectedDurationPreference;
   final bool? allowAdditionalCities;
+  final String? purpose;
 }
 
 WishlistStoredRequestOptions? parseWishlistStoredRequestOptions(
@@ -68,12 +70,14 @@ WishlistStoredRequestOptions? parseWishlistStoredRequestOptions(
     selectedMonth: selectedMonth,
     selectedDurationPreference: selectedDurationPreference,
     allowAdditionalCities: _readBool(request['allow_extra_cities']),
+    purpose: _readString(request['purpose']),
   );
 }
 
 Map<String, dynamic> buildWishlistRequestPayload({
   required WishlistTimeInputMode timeInputMode,
   required bool allowAdditionalCities,
+  required String? purpose,
   required int? selectedMonth,
   required GeminiDurationPreference? selectedDurationPreference,
   required DateTimeRange? dateRange,
@@ -85,6 +89,7 @@ Map<String, dynamic> buildWishlistRequestPayload({
       WishlistTimeInputMode.monthAndDuration => 'month_and_duration',
     },
     'allow_extra_cities': allowAdditionalCities,
+    if (purpose != null && purpose.trim().isNotEmpty) 'purpose': purpose.trim(),
   };
 
   if (timeInputMode == WishlistTimeInputMode.monthAndDuration) {
@@ -144,4 +149,15 @@ bool? _readBool(dynamic value) {
     return false;
   }
   return null;
+}
+
+String? _readString(dynamic value) {
+  if (value is! String) {
+    return null;
+  }
+  final normalized = value.trim();
+  if (normalized.isEmpty) {
+    return null;
+  }
+  return normalized;
 }

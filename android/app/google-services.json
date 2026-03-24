@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "586837938900",
+    "project_id": "stepped-488711",
+    "storage_bucket": "stepped-488711.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:586837938900:android:26f7989024390826106141",
+        "android_client_info": {
+          "package_name": "com.gico.stepped"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "586837938900-rjabq7jol5lv25rfcdllrakleqhl8pad.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAnS2ROZeOQeqrm8gAUlnzDteENwaBliSE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "586837938900-915bk97cjddgi3anpl331cr31cks9ui4.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

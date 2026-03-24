@@ -32,6 +32,8 @@ class GlobeFocusRequest {
 final globeFocusRequestProvider =
     StateProvider<GlobeFocusRequest?>((ref) => null);
 
+final globeResetRequestProvider = StateProvider<int?>((ref) => null);
+
 class ContinentProgress {
   const ContinentProgress({
     required this.continent,

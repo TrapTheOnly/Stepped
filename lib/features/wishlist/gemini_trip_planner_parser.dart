@@ -14,6 +14,9 @@ GeminiTripPlan? parseStoredGeminiPlan(
 
   final decoded = tryDecodeGeminiJson(normalizedRaw);
   if (decoded is Map<String, dynamic>) {
+    if (!_containsStoredPlanData(decoded)) {
+      return null;
+    }
     return geminiTripPlanFromDecodedMap(
       decoded: decoded,
       fallbackCountry: fallbackCountry,
@@ -31,6 +34,51 @@ GeminiTripPlan? parseStoredGeminiPlan(
     return null;
   }
   return parsedFromText;
+}
+
+bool _containsStoredPlanData(Map<String, dynamic> decoded) {
+  if (readGeminiString(decoded['summary']) != null) {
+    return true;
+  }
+  if (isValidGeminiStayDuration(
+      _readCandidateStayDuration(decoded['duration']))) {
+    return true;
+  }
+  final timeWindows = decoded['time_windows'];
+  if (timeWindows is List && timeWindows.isNotEmpty) {
+    return true;
+  }
+  final cityPlan = decoded['city_plan'];
+  if (cityPlan is List && cityPlan.isNotEmpty) {
+    return true;
+  }
+  final cityCards = decoded['city_cards'];
+  if (cityCards is List && cityCards.isNotEmpty) {
+    return true;
+  }
+  return false;
+}
+
+GeminiStayDuration? _readCandidateStayDuration(dynamic raw) {
+  if (raw is! Map) {
+    return null;
+  }
+  final days = raw['days'];
+  final parsedDays = days is int
+      ? days
+      : days is num
+          ? days.round()
+          : days is String
+              ? int.tryParse(days.trim())
+              : null;
+  if (parsedDays == null || parsedDays <= 0) {
+    return null;
+  }
+  return GeminiStayDuration(
+    days: parsedDays,
+    reason: readGeminiString(raw['reason']) ?? '',
+    source: readGeminiString(raw['source']) ?? 'ai_recommended',
+  );
 }
 
 GeminiTripPlan parseBaseGeminiPlanText({

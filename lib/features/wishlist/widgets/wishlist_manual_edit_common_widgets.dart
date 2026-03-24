@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'wishlist_editor_shell.dart';
+
 class WishlistManualEditSectionHeader extends StatelessWidget {
   const WishlistManualEditSectionHeader({
     super.key,
@@ -17,12 +19,14 @@ class WishlistManualEditSectionHeader extends StatelessWidget {
         Expanded(
           child: Text(
             title,
-            style: Theme.of(context).textTheme.titleMedium,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
           ),
         ),
-        FilledButton.tonalIcon(
+        FilledButton.icon(
           onPressed: onAdd,
-          icon: const Icon(Icons.add),
+          icon: const Icon(Icons.add_rounded),
           label: const Text('Add'),
         ),
       ],
@@ -47,7 +51,9 @@ class WishlistManualEditSubSectionHeader extends StatelessWidget {
         Expanded(
           child: Text(
             title,
-            style: Theme.of(context).textTheme.titleSmall,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
           ),
         ),
         TextButton.icon(
@@ -62,6 +68,24 @@ class WishlistManualEditSubSectionHeader extends StatelessWidget {
 
 class WishlistManualEditMutedHint extends StatelessWidget {
   const WishlistManualEditMutedHint({super.key, required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return WishlistEditorSectionCard(
+      title: 'Nothing here yet',
+      subtitle: text,
+      child: const SizedBox.shrink(),
+    );
+  }
+}
+
+class WishlistManualEditInlineHint extends StatelessWidget {
+  const WishlistManualEditInlineHint({
+    super.key,
+    required this.text,
+  });
 
   final String text;
 

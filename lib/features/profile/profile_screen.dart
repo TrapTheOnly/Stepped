@@ -28,10 +28,14 @@ class ProfileScreen extends ConsumerWidget {
         wishlistAsync.valueOrNull ?? const <WishlistItemRecord>[];
     final preferences = preferencesAsync.valueOrNull ?? AppPreferences.defaults;
     final authUser = authController.currentUser;
-    final displayName = authUser?.displayName.trim().isNotEmpty == true
-        ? authUser!.displayName
-        : preferences.displayName;
+    final displayName = preferences.displayName.trim().isNotEmpty
+        ? preferences.displayName
+        : (authUser?.displayName.trim().isNotEmpty == true
+            ? authUser!.displayName
+            : AppPreferences.defaults.displayName);
     final profileMeta = authUser?.email ?? preferences.homeBase;
+    final homeBase =
+        preferences.homeBase.trim().isEmpty ? profileMeta : preferences.homeBase;
     final latestTrip = trips.isEmpty ? null : trips.first;
     final coverage = totalCountriesInWorld == 0
         ? 0.0
@@ -58,7 +62,9 @@ class ProfileScreen extends ConsumerWidget {
         children: <Widget>[
           ProfileHeaderCard(
             displayName: displayName,
-            homeBase: profileMeta,
+            homeBase: homeBase,
+            photoUrl: authUser?.photoUrl,
+            bio: preferences.bio,
           ),
           const SizedBox(height: 14),
           Row(
@@ -155,6 +161,14 @@ class ProfileScreen extends ConsumerWidget {
                   subtitle: const Text('Appearance and behavior'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => context.push('/profile/settings'),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.people_outline_rounded),
+                  title: const Text('Friends'),
+                  subtitle: const Text('Invite friends and browse shared travel'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.go('/friends'),
                 ),
                 const Divider(height: 1),
                 ListTile(

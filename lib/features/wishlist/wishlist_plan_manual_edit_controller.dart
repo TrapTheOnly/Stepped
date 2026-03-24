@@ -12,12 +12,16 @@ class WishlistPlanManualEditController {
   final TextEditingController countryController = TextEditingController();
   final TextEditingController summaryController = TextEditingController();
   final TextEditingController durationDaysController = TextEditingController();
-  final TextEditingController durationReasonController = TextEditingController();
+  final TextEditingController durationReasonController =
+      TextEditingController();
 
   bool didHydrate = false;
   bool isSaving = false;
   String? errorText;
   String durationSource = 'ai_recommended';
+  String _seedDurationDays = '';
+  String _seedDurationReason = '';
+  String _seedDurationSource = 'ai_recommended';
 
   int _nextId = 1;
   List<EditableTimeWindow> timeWindows = <EditableTimeWindow>[];
@@ -44,6 +48,9 @@ class WishlistPlanManualEditController {
     summaryController.text = hydrated.summary;
     durationDaysController.text = hydrated.durationDays;
     durationReasonController.text = hydrated.durationReason;
+    _seedDurationDays = hydrated.durationDays.trim();
+    _seedDurationReason = hydrated.durationReason.trim();
+    _seedDurationSource = hydrated.durationSource;
     durationSource = hydrated.durationSource;
     timeWindows = hydrated.timeWindows;
     cities = hydrated.cities;
@@ -230,9 +237,22 @@ class WishlistPlanManualEditController {
       summary: summaryController.text,
       durationDaysRaw: durationDaysController.text,
       durationReason: durationReasonController.text,
-      durationSource: durationSource,
+      durationSource: _resolvedDurationSource(),
       timeWindows: timeWindows,
       cities: cities,
     );
+  }
+
+  String _resolvedDurationSource() {
+    final durationDays = durationDaysController.text.trim();
+    final durationReason = durationReasonController.text.trim();
+    if (durationDays.isEmpty) {
+      return _seedDurationSource;
+    }
+    if (durationDays != _seedDurationDays ||
+        durationReason != _seedDurationReason) {
+      return 'user_selected';
+    }
+    return _seedDurationSource;
   }
 }

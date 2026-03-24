@@ -25,6 +25,8 @@ class AddTripController extends AutoDisposeAsyncNotifier<void> {
     required DateTime startDate,
     required DateTime endDate,
     required String cities,
+    int? sourceWishlistItemId,
+    String? cityDataJson,
     String? coverImageUri,
     String? notes,
   }) async {
@@ -54,6 +56,8 @@ class AddTripController extends AutoDisposeAsyncNotifier<void> {
       startDate: startDate.millisecondsSinceEpoch,
       endDate: endDate.millisecondsSinceEpoch,
       cities: cities.trim(),
+      sourceWishlistItemId: sourceWishlistItemId,
+      cityDataJson: _nullableTrim(cityDataJson),
       coverImageUri: _nullableTrim(coverImageUri),
       notes: _nullableTrim(notes),
     );

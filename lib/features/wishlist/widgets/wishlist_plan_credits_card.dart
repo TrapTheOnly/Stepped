@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../wishlist_credits_client.dart';
+import 'wishlist_editor_shell.dart';
 
 class WishlistPlanCreditsCard extends StatelessWidget {
   const WishlistPlanCreditsCard({
@@ -18,56 +19,48 @@ class WishlistPlanCreditsCard extends StatelessWidget {
         ? 'Reset date unavailable'
         : 'Resets on ${_formatDate(credits.nextResetAt!)}';
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Icon(
-                  Icons.bolt_outlined,
-                  color: scheme.primary,
+    return WishlistEditorSectionCard(
+      title: '$planName credits',
+      subtitle: resetLabel,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(
+                Icons.bolt_outlined,
+                color: scheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${credits.remainingCredits}/${credits.monthlyLimit} generations left this month',
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '$planName credits: ${credits.remainingCredits}/${credits.monthlyLimit}',
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
+              ),
+              Text(
+                '$planName plan',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: scheme.primary,
+                    ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          LinearProgressIndicator(
+            value: credits.usageProgress,
+            minHeight: 6,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Daily burst: ${credits.dailyBurstLimit} · '
+            'Rewarded ads left: ${credits.rewardedAdRemaining}/${credits.rewardedAdMonthlyLimit}',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
                 ),
-                Text(
-                  '$planName plan',
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: scheme.primary,
-                      ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            LinearProgressIndicator(
-              value: credits.usageProgress,
-              minHeight: 6,
-              borderRadius: BorderRadius.circular(999),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Daily burst: ${credits.dailyBurstLimit} · '
-              'Ad credits left: ${credits.rewardedAdRemaining}/${credits.rewardedAdMonthlyLimit}',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              resetLabel,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

@@ -7,19 +7,24 @@ import '../../data/repositories/wishlist_repository.dart';
 import '../settings/app_preferences.dart';
 import 'cloud_trip_planner_client.dart';
 import 'gemini_trip_planner.dart';
+import 'gemini_trip_planner_openverse.dart';
 import 'wishlist_plan_form_types.dart';
 import 'wishlist_plan_limits.dart';
 import 'wishlist_plan_parsing.dart';
+import 'wishlist_plan_ui_state.dart';
 
 Future<GeminiTripPlan> generateWishlistPlan({
   required AppPreferences prefs,
   required GeminiTripPlanner planner,
   required CloudTripPlannerClient cloudClient,
+  required String? accessToken,
   required WishlistTimeInputMode timeInputMode,
   required DateTimeRange? dateRange,
   required int? selectedMonth,
   required GeminiDurationPreference? selectedDurationPreference,
+  required String itemTitle,
   required String countryName,
+  required String? tripPurpose,
   required List<String> preferredCities,
   required bool allowAdditionalCities,
   required GeminiTripPlan? currentPlan,
@@ -27,6 +32,9 @@ Future<GeminiTripPlan> generateWishlistPlan({
   final generatedPlan = prefs.aiPlannerSource == AiPlannerSource.cloud
       ? await cloudClient.generatePlan(
           baseUrl: prefs.cloudAiBaseUrl,
+          accessToken: accessToken ?? '',
+          wishlistTitle: itemTitle,
+          tripPurpose: tripPurpose,
           countryName: countryName,
           homeBase: prefs.homeBase,
           preciseWindow: timeInputMode == WishlistTimeInputMode.preciseDates
@@ -47,6 +55,8 @@ Future<GeminiTripPlan> generateWishlistPlan({
         )
       : await planner.generatePlan(
           apiKey: prefs.geminiApiKey,
+          wishlistTitle: itemTitle,
+          tripPurpose: tripPurpose,
           countryName: countryName,
           homeBase: prefs.homeBase,
           preciseWindow: timeInputMode == WishlistTimeInputMode.preciseDates
@@ -148,7 +158,10 @@ Future<void> saveWishlistPlanDraft({
   required int? selectedMonth,
   required GeminiDurationPreference? selectedDurationPreference,
   required bool allowAdditionalCities,
+  required String? tripPurpose,
   required String? plannedCities,
+  String? coverImageQuery,
+  GeminiCityImage? coverImage,
   GeminiTripPlan? plan,
 }) async {
   final id = item.id;
@@ -156,20 +169,27 @@ Future<void> saveWishlistPlanDraft({
     return;
   }
 
-  final payload = plan == null
-      ? item.aiPlan
-      : jsonEncode(
-          <String, dynamic>{
-            ...planner.toStorageJson(plan),
-            'request': buildWishlistRequestPayload(
-              timeInputMode: timeInputMode,
-              allowAdditionalCities: allowAdditionalCities,
-              selectedMonth: selectedMonth,
-              selectedDurationPreference: selectedDurationPreference,
-              dateRange: dateRange,
-            ),
-          },
-        );
+  final requestPayload = buildWishlistRequestPayload(
+    timeInputMode: timeInputMode,
+    allowAdditionalCities: allowAdditionalCities,
+    purpose: tripPurpose,
+    selectedMonth: selectedMonth,
+    selectedDurationPreference: selectedDurationPreference,
+    dateRange: dateRange,
+  );
+  final payload = jsonEncode(
+    mergeWishlistPlanUiState(
+      payload: _buildStoredWishlistPlanPayload(
+        planner: planner,
+        rawExistingPlan: item.aiPlan,
+        plan: plan,
+        requestPayload: requestPayload,
+        coverImageQuery: coverImageQuery,
+        coverImage: coverImage,
+      ),
+      existingRawPlan: item.aiPlan,
+    ),
+  );
 
   await repository.updateWishlistItem(
     item.copyWith(
@@ -193,12 +213,14 @@ Future<GeminiTripPlan> generateAndSaveWishlistPlan({
   required AppPreferences prefs,
   required GeminiTripPlanner planner,
   required CloudTripPlannerClient cloudClient,
+  required String? accessToken,
   required WishlistItemRecord item,
   required WishlistTimeInputMode timeInputMode,
   required DateTimeRange? dateRange,
   required int? selectedMonth,
   required GeminiDurationPreference? selectedDurationPreference,
   required String countryName,
+  required String? tripPurpose,
   required bool noCities,
   required String rawCities,
   required bool allowAdditionalCities,
@@ -213,14 +235,27 @@ Future<GeminiTripPlan> generateAndSaveWishlistPlan({
     prefs: prefs,
     planner: planner,
     cloudClient: cloudClient,
+    accessToken: accessToken,
     timeInputMode: timeInputMode,
     dateRange: dateRange,
     selectedMonth: selectedMonth,
     selectedDurationPreference: selectedDurationPreference,
+    itemTitle: item.title,
     countryName: countryName,
+    tripPurpose: tripPurpose,
     preferredCities: preferredCities,
     allowAdditionalCities: allowAdditionalCities,
     currentPlan: currentPlan,
+  );
+  final coverImageQuery = buildWishlistCoverImageQuery(
+    title: item.title,
+    countryName: countryName,
+    purpose: tripPurpose,
+  );
+  final coverImage = await findOpenverseImageForWishlistCover(
+    title: item.title,
+    countryName: countryName,
+    purpose: tripPurpose,
   );
   await saveWishlistPlanDraft(
     repository: repository,
@@ -233,7 +268,10 @@ Future<GeminiTripPlan> generateAndSaveWishlistPlan({
     selectedMonth: selectedMonth,
     selectedDurationPreference: selectedDurationPreference,
     allowAdditionalCities: allowAdditionalCities,
+    tripPurpose: tripPurpose,
     plannedCities: noCities ? null : rawCities.trim(),
+    coverImageQuery: coverImageQuery,
+    coverImage: coverImage,
     plan: finalizedPlan,
   );
   return finalizedPlan;
@@ -243,4 +281,56 @@ int _inclusiveDays(DateTime start, DateTime end) {
   final normalizedStart = DateTime(start.year, start.month, start.day);
   final normalizedEnd = DateTime(end.year, end.month, end.day);
   return normalizedEnd.difference(normalizedStart).inDays + 1;
+}
+
+Map<String, dynamic> _buildStoredWishlistPlanPayload({
+  required GeminiTripPlanner planner,
+  required String? rawExistingPlan,
+  required GeminiTripPlan? plan,
+  required Map<String, dynamic> requestPayload,
+  required String? coverImageQuery,
+  required GeminiCityImage? coverImage,
+}) {
+  final payload = _decodeStoredPlanMap(rawExistingPlan) ?? <String, dynamic>{};
+  if (plan != null) {
+    payload
+      ..clear()
+      ..addAll(planner.toStorageJson(plan));
+  }
+  payload['request'] = requestPayload;
+  if (coverImageQuery != null && coverImageQuery.trim().isNotEmpty) {
+    payload['cover_image_query'] = coverImageQuery.trim();
+  }
+  if (coverImage != null) {
+    payload['cover_image'] = <String, dynamic>{
+      'image_url': coverImage.imageUrl,
+      'source_page_url': coverImage.sourcePageUrl,
+      'title': coverImage.title,
+      'creator': coverImage.creator,
+      'license': coverImage.license,
+      'license_url': coverImage.licenseUrl,
+      'source': coverImage.source,
+    };
+  }
+  return payload;
+}
+
+Map<String, dynamic>? _decodeStoredPlanMap(String? rawPlan) {
+  final raw = rawPlan?.trim();
+  if (raw == null || raw.isEmpty) {
+    return null;
+  }
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map) {
+      return null;
+    }
+    final converted = <String, dynamic>{};
+    for (final entry in decoded.entries) {
+      converted['${entry.key}'] = entry.value;
+    }
+    return converted;
+  } catch (_) {
+    return null;
+  }
 }

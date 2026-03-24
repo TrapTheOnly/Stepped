@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,11 +22,14 @@ final authControllerProvider = ChangeNotifierProvider<AuthController>((ref) {
 
 class AuthController extends ChangeNotifier {
   AuthController({
+    firebase_auth.FirebaseAuth? firebaseAuth,
     GoogleSignIn? googleSignIn,
     AuthApiClient? authApiClient,
-  })  : _googleSignIn = googleSignIn ?? GoogleSignIn.instance,
+  })  : _firebaseAuth = firebaseAuth ?? firebase_auth.FirebaseAuth.instance,
+        _googleSignIn = googleSignIn ?? GoogleSignIn.instance,
         _authApiClient = authApiClient ?? AuthApiClient();
 
+  final firebase_auth.FirebaseAuth _firebaseAuth;
   final GoogleSignIn _googleSignIn;
   final AuthApiClient _authApiClient;
   final String _serverClientId =
@@ -53,7 +57,7 @@ class AuthController extends ChangeNotifier {
     try {
       _preferences = await SharedPreferences.getInstance();
       await _hydrateSessionFromDisk();
-      await _refreshSessionFromBackend();
+      await _refreshSessionFromFirebase();
     } finally {
       _initialized = true;
       _setBusy(false, notify: false);
@@ -83,14 +87,22 @@ class AuthController extends ChangeNotifier {
     }
 
     await _runBusy(() async {
-      final session = await _authApiClient.registerWithEmail(
-        displayName: normalizedName,
+      final credentials = await _firebaseAuth.createUserWithEmailAndPassword(
         email: normalizedEmail,
         password: password,
       );
-      await _setSession(
-        accessToken: session.accessToken,
-        user: session.user,
+      final user = credentials.user;
+      if (user == null) {
+        throw const AuthException('Account was created, but no user session was returned.');
+      }
+
+      if ((user.displayName ?? '').trim() != normalizedName) {
+        await user.updateDisplayName(normalizedName);
+      }
+
+      await _syncSessionFromFirebaseUser(
+        user,
+        forceRefreshToken: true,
       );
     });
   }
@@ -110,13 +122,18 @@ class AuthController extends ChangeNotifier {
     }
 
     await _runBusy(() async {
-      final session = await _authApiClient.signInWithEmail(
+      final credentials = await _firebaseAuth.signInWithEmailAndPassword(
         email: normalizedEmail,
         password: password,
       );
-      await _setSession(
-        accessToken: session.accessToken,
-        user: session.user,
+      final user = credentials.user;
+      if (user == null) {
+        throw const AuthException('Sign-in succeeded, but no user session was returned.');
+      }
+
+      await _syncSessionFromFirebaseUser(
+        user,
+        forceRefreshToken: true,
       );
     });
   }
@@ -126,35 +143,35 @@ class AuthController extends ChangeNotifier {
     await _runBusy(() async {
       try {
         final account = await _authenticateGoogleWithRetry();
-        final idToken = account.authentication.idToken?.trim();
+        final auth = account.authentication;
+        final idToken = auth.idToken?.trim();
         if (idToken == null || idToken.isEmpty) {
           throw const AuthException(
-            'Google sign-in did not return a valid identity token. Please try again.',
+            'Google sign-in did not return a valid identity token. Check Firebase Android app setup and try again.',
           );
         }
 
-        final session = await _authApiClient.signInWithGoogle(
+        final credential = firebase_auth.GoogleAuthProvider.credential(
           idToken: idToken,
-          email: account.email,
-          displayName: account.displayName ?? account.email,
-          photoUrl: account.photoUrl,
         );
-        await _setSession(
-          accessToken: session.accessToken,
-          user: session.user,
+
+        final userCredential = await _firebaseAuth.signInWithCredential(credential);
+        final user = userCredential.user;
+        if (user == null) {
+          throw const AuthException('Google sign-in succeeded, but no Firebase user was returned.');
+        }
+
+        await _syncSessionFromFirebaseUser(
+          user,
+          forceRefreshToken: true,
         );
       } on GoogleSignInException catch (error) {
         throw AuthException(_toUserMessageForGoogleException(error));
       } on PlatformException catch (error) {
         throw AuthException(_toUserMessageForPlatformException(error));
+      } on firebase_auth.FirebaseAuthException catch (error) {
+        throw AuthException(_toUserMessageForFirebaseAuthException(error));
       } on AuthApiException catch (error) {
-        if (_looksLikeFirebaseGoogleProviderMisconfiguration(error.message)) {
-          throw const AuthException(
-            'Google auth is not enabled for this Firebase project. '
-            'Enable Google in Firebase Authentication > Sign-in method and ensure '
-            'the backend FIREBASE_WEB_API_KEY is from the same project.',
-          );
-        }
         throw AuthException(error.message);
       } on AuthException {
         rethrow;
@@ -175,14 +192,13 @@ class AuthController extends ChangeNotifier {
   Future<void> signOut() async {
     await _ensureInitialized();
     await _runBusy(() async {
-      final previousUser = _currentUser;
       await _clearSession(notify: false);
 
-      if (previousUser?.provider == AuthProvider.google) {
-        try {
-          await _googleSignIn.signOut();
-        } catch (_) {}
-      }
+      try {
+        await _googleSignIn.signOut();
+      } catch (_) {}
+
+      await _firebaseAuth.signOut();
     });
     notifyListeners();
   }
@@ -221,24 +237,85 @@ class AuthController extends ChangeNotifier {
     }
   }
 
-  Future<void> _refreshSessionFromBackend() async {
-    final token = _accessToken;
-    if (token == null || token.trim().isEmpty) {
+  Future<void> _refreshSessionFromFirebase() async {
+    final firebaseUser = _firebaseAuth.currentUser;
+    if (firebaseUser == null) {
+      await _clearSession(notify: false);
       return;
     }
 
     try {
-      final user = await _authApiClient.fetchCurrentUser(accessToken: token);
-      await _setSession(
-        accessToken: token,
-        user: user,
+      await _syncSessionFromFirebaseUser(
+        firebaseUser,
         notify: false,
       );
     } on AuthApiException catch (error) {
       if (error.isUnauthorized) {
-        await _clearSession(notify: false);
+        try {
+          await _syncSessionFromFirebaseUser(
+            firebaseUser,
+            forceRefreshToken: true,
+            notify: false,
+          );
+          return;
+        } on AuthApiException catch (retryError) {
+          if (retryError.isUnauthorized) {
+            await _firebaseAuth.signOut();
+            await _clearSession(notify: false);
+          }
+        }
       }
     } catch (_) {}
+  }
+
+  Future<void> _syncSessionFromFirebaseUser(
+    firebase_auth.User firebaseUser, {
+    bool forceRefreshToken = false,
+    bool notify = true,
+  }) async {
+    final accessToken = await firebaseUser.getIdToken(forceRefreshToken);
+    final normalizedToken = accessToken?.trim();
+    if (normalizedToken == null || normalizedToken.isEmpty) {
+      throw const AuthException('Could not obtain a Firebase session token.');
+    }
+
+    AuthUser user;
+    try {
+      user = await _authApiClient.fetchCurrentUser(
+        accessToken: normalizedToken,
+      );
+    } on AuthApiException catch (_) {
+      user = _mapFirebaseUser(firebaseUser);
+    }
+
+    await _setSession(
+      accessToken: normalizedToken,
+      user: user,
+      notify: notify,
+    );
+  }
+
+  AuthUser _mapFirebaseUser(firebase_auth.User firebaseUser) {
+    final providerId = firebaseUser.providerData.any(
+      (entry) => entry.providerId == 'google.com',
+    )
+        ? AuthProvider.google
+        : AuthProvider.password;
+
+    final email = firebaseUser.email?.trim();
+    final displayName = _firstNonEmpty(<String?>[
+      _cleanErrorText(firebaseUser.displayName),
+      email?.split('@').first,
+      'Traveler',
+    ])!;
+
+    return AuthUser(
+      id: firebaseUser.uid,
+      email: email ?? '',
+      displayName: displayName,
+      provider: providerId,
+      photoUrl: _cleanErrorText(firebaseUser.photoURL),
+    );
   }
 
   Future<void> _initializeGoogleSignIn({bool force = false}) async {
@@ -253,12 +330,6 @@ class AuthController extends ChangeNotifier {
   }
 
   Future<GoogleSignInAccount> _authenticateGoogleWithRetry() async {
-    if (_serverClientId.trim().isEmpty) {
-      throw const AuthException(
-        'Google sign-in setup is incomplete. Add GOOGLE_SERVER_CLIENT_ID to google_sign_in.env.json.',
-      );
-    }
-
     await _initializeGoogleSignIn();
     if (!_googleSignIn.supportsAuthenticate()) {
       throw const AuthException(
@@ -308,15 +379,13 @@ class AuthController extends ChangeNotifier {
 
     return switch (error.code) {
       GoogleSignInExceptionCode.canceled =>
-        'Google sign-in was canceled. If this happens right after choosing an account, '
-            'it is usually a configuration issue (SHA fingerprints, package name, or '
-            'Google provider setup in Firebase).',
+        'Google sign-in was canceled. If this happens right after choosing an account, it is usually a configuration issue (Firebase Android app, SHA fingerprints, or Google provider setup).',
       GoogleSignInExceptionCode.interrupted =>
         'Google sign-in was interrupted. Please try again.',
       GoogleSignInExceptionCode.uiUnavailable =>
         'Google sign-in is unavailable right now on this device.',
       GoogleSignInExceptionCode.clientConfigurationError =>
-        'Google sign-in is not configured for this build. Verify OAuth Android client package and SHA fingerprints for com.gico.stepped.',
+        'Google sign-in is not configured for this build. Verify the Firebase Android app for package com.gico.stepped and its SHA fingerprints.',
       GoogleSignInExceptionCode.providerConfigurationError =>
         'Google sign-in is temporarily unavailable on this device. Please use email sign-in for now.',
       GoogleSignInExceptionCode.userMismatch =>
@@ -342,7 +411,7 @@ class AuthController extends ChangeNotifier {
         (message != null &&
             (message.contains('ApiException: 10') ||
                 message.toLowerCase().contains('developer error')))) {
-      return 'Google sign-in is misconfigured for this build. Ensure OAuth Android client uses package com.gico.stepped with correct SHA-1 and SHA-256.';
+      return 'Google sign-in is misconfigured for this build. Ensure Firebase Android app com.gico.stepped has the correct SHA-1 and SHA-256.';
     }
     if (code.contains('canceled') ||
         (message != null &&
@@ -356,6 +425,31 @@ class AuthController extends ChangeNotifier {
     return 'Google sign-in failed.';
   }
 
+  String _toUserMessageForFirebaseAuthException(
+    firebase_auth.FirebaseAuthException error,
+  ) {
+    return switch (error.code) {
+      'account-exists-with-different-credential' =>
+        'This email is already linked to a different sign-in method.',
+      'invalid-credential' =>
+        'Google returned an invalid credential. Please try again.',
+      'operation-not-allowed' =>
+        'Google auth is not enabled in Firebase Authentication. Enable Google in Firebase Console > Authentication > Sign-in method.',
+      'user-disabled' => 'This account has been disabled.',
+      'network-request-failed' =>
+        'Network issue while contacting Firebase. Check your connection and try again.',
+      'email-already-in-use' =>
+        'This email is already registered. Try signing in instead.',
+      'invalid-email' => 'Enter a valid email address.',
+      'wrong-password' => 'Incorrect email or password.',
+      'user-not-found' => 'Incorrect email or password.',
+      'weak-password' => 'Password should be at least 8 characters.',
+      _ => error.message?.trim().isNotEmpty == true
+          ? error.message!.trim()
+          : 'Authentication failed.',
+    };
+  }
+
   bool _isCredentialChannelError(PlatformException error) {
     final code = error.code.toLowerCase();
     final message = (error.message ?? '').toLowerCase();
@@ -363,12 +457,6 @@ class AuthController extends ChangeNotifier {
         (message.contains(
                 'google_sign_in_android.googlesigninapi.getcredential') ||
             message.contains('unable to establish connection on channel'));
-  }
-
-  bool _looksLikeFirebaseGoogleProviderMisconfiguration(String message) {
-    final normalized = message.trim().toLowerCase();
-    return normalized.contains('google auth is not configured in firebase') ||
-        normalized.contains('configuration_not_found');
   }
 
   Future<void> _setSession({

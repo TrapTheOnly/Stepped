@@ -88,24 +88,24 @@ class AddTripCountryAutocompleteField extends StatelessWidget {
         return Align(
           alignment: Alignment.topLeft,
           child: Material(
-            elevation: 8,
-            borderRadius: BorderRadius.circular(16),
+            color: Theme.of(context).colorScheme.surfaceContainerLow,
+            elevation: 10,
+            borderRadius: BorderRadius.circular(24),
             clipBehavior: Clip.antiAlias,
             child: SizedBox(
               width: width.toDouble(),
               child: ConstrainedBox(
                 constraints: BoxConstraints(maxHeight: maxHeight.toDouble()),
-                child: ListView.separated(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
                   itemCount: optionList.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (context, index) {
                     final option = optionList[index];
                     return InkWell(
                       onTap: () => onSelected(option),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
+                          horizontal: 14,
                           vertical: 10,
                         ),
                         child: Row(
@@ -121,11 +121,22 @@ class AddTripCountryAutocompleteField extends StatelessWidget {
                                 option.name,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(fontWeight: FontWeight.w600),
                               ),
                             ),
                             Text(
                               option.code,
-                              style: Theme.of(context).textTheme.bodySmall,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
                             ),
                           ],
                         ),

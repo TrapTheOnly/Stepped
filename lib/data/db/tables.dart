@@ -18,6 +18,8 @@ CREATE TABLE $tripsTable (
   startDate INTEGER NOT NULL,
   endDate INTEGER NOT NULL,
   cities TEXT NOT NULL,
+  sourceWishlistItemId INTEGER,
+  cityDataJson TEXT,
   coverImageUri TEXT,
   notes TEXT
 )
@@ -33,7 +35,8 @@ CREATE TABLE $wishlistTable (
   plannedStartDate INTEGER,
   plannedEndDate INTEGER,
   plannedCities TEXT,
-  aiPlan TEXT
+  aiPlan TEXT,
+  isPinned INTEGER NOT NULL DEFAULT 0
 )
 ''';
 

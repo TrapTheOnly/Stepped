@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../config/runtime_config.dart';
+import '../auth/auth_controller.dart';
 import '../settings/app_preferences.dart';
 
 class WishlistCreditsSnapshot {
@@ -88,7 +89,10 @@ final wishlistCreditsProvider =
     FutureProvider<WishlistCreditsSnapshot>((ref) async {
   final prefs =
       ref.watch(appPreferencesProvider).valueOrNull ?? AppPreferences.defaults;
-  return ref.watch(wishlistCreditsClientProvider).fetchCredits(prefs: prefs);
+  final accessToken = ref.watch(authControllerProvider).accessToken;
+  return ref
+      .watch(wishlistCreditsClientProvider)
+      .fetchCredits(prefs: prefs, accessToken: accessToken);
 });
 
 class WishlistCreditsClient {
@@ -96,9 +100,12 @@ class WishlistCreditsClient {
 
   Future<WishlistCreditsSnapshot> fetchCredits({
     required AppPreferences prefs,
+    required String? accessToken,
   }) async {
     if (prefs.aiPlannerSource != AiPlannerSource.cloud ||
-        prefs.cloudAiBaseUrl.trim().isEmpty) {
+        prefs.cloudAiBaseUrl.trim().isEmpty ||
+        accessToken == null ||
+        accessToken.trim().isEmpty) {
       return WishlistCreditsSnapshot.fallbackFree;
     }
 
@@ -106,7 +113,8 @@ class WishlistCreditsClient {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
       final request = await client.getUrl(uri);
-      request.headers.add('X-Stepped-Plan', 'free');
+      request.headers
+          .set(HttpHeaders.authorizationHeader, 'Bearer ${accessToken.trim()}');
       final response = await request.close();
       final rawBody = await response.transform(utf8.decoder).join();
       if (response.statusCode < 200 || response.statusCode >= 300) {

@@ -12,6 +12,7 @@ class WishlistHydrationData {
     required this.selectedCountryCode,
     required this.citiesText,
     required this.noCities,
+    required this.purpose,
     required this.timeInputMode,
     required this.dateRange,
     required this.selectedMonth,
@@ -24,6 +25,7 @@ class WishlistHydrationData {
   final String? selectedCountryCode;
   final String citiesText;
   final bool noCities;
+  final String purpose;
   final WishlistTimeInputMode timeInputMode;
   final DateTimeRange? dateRange;
   final int? selectedMonth;
@@ -96,6 +98,7 @@ WishlistHydrationData hydrateWishlistStateFromItem({
     selectedCountryCode: item.countryCode,
     citiesText: seededCities ?? '',
     noCities: !hasSeededCities,
+    purpose: parsedOptions?.purpose ?? '',
     timeInputMode: timeInputMode,
     dateRange: dateRange,
     selectedMonth: selectedMonth,

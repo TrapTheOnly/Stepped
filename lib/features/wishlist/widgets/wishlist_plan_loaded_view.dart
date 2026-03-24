@@ -6,15 +6,17 @@ import '../wishlist_credits_client.dart';
 import 'wishlist_plan_city_preferences_section.dart';
 import 'wishlist_plan_credits_card.dart';
 import 'wishlist_plan_destination_section.dart';
+import 'wishlist_plan_purpose_section.dart';
 import 'wishlist_plan_generation_section.dart';
-import 'wishlist_plan_header_card.dart';
 import 'wishlist_plan_missing_ai_config_card.dart';
 import 'wishlist_plan_timing_section.dart';
+import 'wishlist_editor_shell.dart';
 
 class WishlistPlanLoadedView extends StatelessWidget {
   const WishlistPlanLoadedView({
     super.key,
     required this.itemTitle,
+    required this.itemImageUrl,
     required this.hasAiConfiguration,
     required this.usingCloudApi,
     required this.datasetIsLoading,
@@ -24,6 +26,9 @@ class WishlistPlanLoadedView extends StatelessWidget {
     required this.countryFocusNode,
     required this.selectedCountryCode,
     required this.selectedCountryName,
+    required this.purposeController,
+    required this.purposeLength,
+    required this.maxPurposeLength,
     required this.timeInputMode,
     required this.dateRange,
     required this.selectedMonth,
@@ -47,6 +52,7 @@ class WishlistPlanLoadedView extends StatelessWidget {
     required this.onOpenSettings,
     required this.onCountrySelected,
     required this.onCountryInputChanged,
+    required this.onPurposeChanged,
     required this.onTimeInputModeChanged,
     required this.onPickDateRange,
     required this.onMonthChanged,
@@ -59,6 +65,7 @@ class WishlistPlanLoadedView extends StatelessWidget {
   });
 
   final String itemTitle;
+  final String? itemImageUrl;
   final bool hasAiConfiguration;
   final bool usingCloudApi;
   final bool datasetIsLoading;
@@ -68,6 +75,9 @@ class WishlistPlanLoadedView extends StatelessWidget {
   final FocusNode countryFocusNode;
   final String? selectedCountryCode;
   final String selectedCountryName;
+  final TextEditingController purposeController;
+  final int purposeLength;
+  final int maxPurposeLength;
   final WishlistTimeInputMode timeInputMode;
   final DateTimeRange? dateRange;
   final int? selectedMonth;
@@ -91,6 +101,7 @@ class WishlistPlanLoadedView extends StatelessWidget {
   final VoidCallback onOpenSettings;
   final ValueChanged<WishlistCountryOption> onCountrySelected;
   final ValueChanged<String> onCountryInputChanged;
+  final ValueChanged<String> onPurposeChanged;
   final ValueChanged<WishlistTimeInputMode> onTimeInputModeChanged;
   final VoidCallback onPickDateRange;
   final ValueChanged<int?> onMonthChanged;
@@ -103,40 +114,60 @@ class WishlistPlanLoadedView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final subtitle = selectedCountryName.isNotEmpty
+        ? selectedCountryName
+        : 'Shape the destination, timing, and route with AI';
+
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+      physics: const BouncingScrollPhysics(),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: const EdgeInsets.fromLTRB(
+        16,
+        wishlistEditorTopOverlayClearance,
+        16,
+        wishlistEditorBottomDockClearance + 48,
+      ),
       children: <Widget>[
-        WishlistPlanHeaderCard(itemTitle: itemTitle),
-        const SizedBox(height: 12),
+        WishlistEditorHeroCard(
+          title: itemTitle,
+          badge: 'AI planner',
+          subtitle: subtitle,
+          imageUrl: itemImageUrl,
+          chips: <String>[
+            if (selectedCountryName.isNotEmpty) selectedCountryName,
+            if (timeInputMode == WishlistTimeInputMode.preciseDates &&
+                dateRange != null)
+              '${formatDate(dateRange!.start)} - ${formatDate(dateRange!.end)}',
+            if (timeInputMode == WishlistTimeInputMode.monthAndDuration &&
+                selectedMonth != null)
+              _monthName(selectedMonth!),
+          ],
+        ),
+        const SizedBox(height: 18),
         if (credits != null) ...<Widget>[
           WishlistPlanCreditsCard(credits: credits!),
         ] else if (creditsLoading) ...<Widget>[
-          const Card(
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Row(
-                children: <Widget>[
-                  SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  SizedBox(width: 10),
-                  Expanded(child: Text('Loading credit balance...')),
-                ],
-              ),
+          const WishlistEditorSectionCard(
+            title: 'Credits',
+            subtitle: 'Loading your current balance.',
+            child: Row(
+              children: <Widget>[
+                SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 10),
+                Expanded(child: Text('Loading credit balance...')),
+              ],
             ),
           ),
         ] else if (creditsError != null) ...<Widget>[
-          Card(
-            color: Theme.of(context).colorScheme.errorContainer,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Text(
-                'Could not load credits right now.',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onErrorContainer,
-                ),
-              ),
+          WishlistEditorSectionCard(
+            title: 'Credits unavailable',
+            subtitle: 'Could not load credits right now.',
+            child: Text(
+              'You can still review the form, but generation may fail until the balance is available.',
+              style: Theme.of(context).textTheme.bodyMedium,
             ),
           ),
         ],
@@ -158,6 +189,13 @@ class WishlistPlanLoadedView extends StatelessWidget {
           selectedCountryName: selectedCountryName,
           onCountrySelected: onCountrySelected,
           onCountryInputChanged: onCountryInputChanged,
+        ),
+        const SizedBox(height: 12),
+        WishlistPlanPurposeSection(
+          controller: purposeController,
+          currentLength: purposeLength,
+          maxLength: maxPurposeLength,
+          onChanged: onPurposeChanged,
         ),
         const SizedBox(height: 12),
         WishlistPlanTimingSection(
@@ -186,15 +224,32 @@ class WishlistPlanLoadedView extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         WishlistPlanGenerationSection(
-          canGenerate: canGenerate,
-          isGenerating: isGenerating,
           errorText: errorText,
           plan: plan,
-          onGenerate: onGenerate,
+          onGenerate: canGenerate ? onGenerate : null,
+          isGenerating: isGenerating,
           generationCostCredits: generationCostCredits,
           maxOutputTokens: maxOutputTokens,
         ),
       ],
     );
   }
+}
+
+String _monthName(int month) {
+  const names = <String>[
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+  return names[month - 1];
 }

@@ -1,9 +1,10 @@
-import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'data/seed/seed_data.dart';
+import 'features/social/social_state.dart';
 import 'features/settings/app_preferences.dart';
+import 'routing/app_link_listener.dart';
 import 'routing/app_router.dart';
 import 'theme/app_theme.dart';
 
@@ -15,43 +16,32 @@ class SteppedAppBootstrap extends ConsumerWidget {
     final startup = ref.watch(appStartupProvider);
     final router = ref.watch(appRouterProvider);
     final preferencesAsync = ref.watch(appPreferencesProvider);
+    ref.watch(socialSyncBootstrapProvider);
+    ref.watch(appLinkBootstrapProvider);
     final themeMode =
         preferencesAsync.valueOrNull?.themeMode ?? ThemeMode.system;
 
-    return DynamicColorBuilder(
-      builder: (lightDynamic, darkDynamic) {
-        final fallbackLight = ColorScheme.fromSeed(seedColor: Colors.teal);
-        final fallbackDark = ColorScheme.fromSeed(
-          seedColor: Colors.teal,
-          brightness: Brightness.dark,
-        );
-
-        final lightScheme = (lightDynamic ?? fallbackLight).harmonized();
-        final darkScheme = (darkDynamic ?? fallbackDark).harmonized();
-
-        return MaterialApp.router(
-          title: 'Stepped',
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.light(lightScheme),
-          darkTheme: AppTheme.dark(darkScheme),
-          themeMode: themeMode,
-          routerConfig: router,
-          builder: (context, child) {
-            return startup.when(
-              loading: () => const _LaunchScaffold(
-                child: Center(child: CircularProgressIndicator()),
+    return MaterialApp.router(
+      title: 'Stepped',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      themeMode: themeMode,
+      routerConfig: router,
+      builder: (context, child) {
+        return startup.when(
+          loading: () => const _LaunchScaffold(
+            child: Center(child: CircularProgressIndicator()),
+          ),
+          error: (error, _) => _LaunchScaffold(
+            child: Center(
+              child: Text(
+                'Startup failed: $error',
+                textAlign: TextAlign.center,
               ),
-              error: (error, _) => _LaunchScaffold(
-                child: Center(
-                  child: Text(
-                    'Startup failed: $error',
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
-              data: (_) => child ?? const SizedBox.shrink(),
-            );
-          },
+            ),
+          ),
+          data: (_) => child ?? const SizedBox.shrink(),
         );
       },
     );

@@ -61,6 +61,78 @@ Future<GeminiCityImage?> findOpenverseImageForCity({
   return null;
 }
 
+String buildWishlistCoverImageQuery({
+  required String title,
+  required String countryName,
+  String? purpose,
+}) {
+  final normalizedPurpose = _normalizeWishlistSearchSeed(purpose);
+  final normalizedTitle = _normalizeWishlistSearchSeed(title);
+  final normalizedCountry = countryName.trim();
+
+  if (normalizedPurpose.isNotEmpty && normalizedCountry.isNotEmpty) {
+    return '$normalizedPurpose $normalizedCountry';
+  }
+  if (normalizedPurpose.isNotEmpty) {
+    return normalizedPurpose;
+  }
+  if (normalizedTitle.isNotEmpty && normalizedCountry.isNotEmpty) {
+    return '$normalizedTitle $normalizedCountry';
+  }
+  if (normalizedTitle.isNotEmpty) {
+    return normalizedTitle;
+  }
+  if (normalizedCountry.isNotEmpty) {
+    return '$normalizedCountry travel landscape';
+  }
+  return 'travel destination landscape';
+}
+
+Future<GeminiCityImage?> findOpenverseImageForWishlistCover({
+  required String title,
+  required String countryName,
+  String? purpose,
+}) async {
+  final normalizedTitle = _normalizeWishlistSearchSeed(title);
+  final normalizedPurpose = _normalizeWishlistSearchSeed(purpose);
+  final normalizedCountry = countryName.trim();
+  final primaryQuery = buildWishlistCoverImageQuery(
+    title: title,
+    countryName: countryName,
+    purpose: purpose,
+  );
+  final queryQueue = <String>[
+    primaryQuery,
+    if (normalizedTitle.isNotEmpty && normalizedCountry.isNotEmpty)
+      '$normalizedTitle destination $normalizedCountry',
+    if (normalizedPurpose.isNotEmpty) normalizedPurpose,
+    if (normalizedCountry.isNotEmpty) '$normalizedCountry scenic landscape',
+    if (normalizedCountry.isNotEmpty) '$normalizedCountry travel',
+  ];
+
+  return _findOpenverseImageForQueries(queryQueue);
+}
+
+Future<GeminiCityImage?> _findOpenverseImageForQueries(
+  List<String> queryQueue,
+) async {
+  final tried = <String>{};
+
+  for (final rawQuery in queryQueue) {
+    final query = rawQuery.trim();
+    if (query.isEmpty || !tried.add(query.toLowerCase())) {
+      continue;
+    }
+    final results = await _searchOpenverse(query);
+    final image = _pickBestOpenverseResult(results);
+    if (image != null) {
+      return image;
+    }
+  }
+
+  return null;
+}
+
 Future<List<Map<String, dynamic>>> _searchOpenverse(String query) async {
   final uri = Uri.https(
     'api.openverse.org',
@@ -158,4 +230,17 @@ String? _readString(dynamic value) {
     return null;
   }
   return normalized;
+}
+
+String _normalizeWishlistSearchSeed(String? raw) {
+  if (raw == null) {
+    return '';
+  }
+  final parts = raw
+      .split(RegExp(r'\s+'))
+      .map((part) => part.trim())
+      .where((part) => part.isNotEmpty)
+      .take(8)
+      .toList(growable: false);
+  return parts.join(' ');
 }

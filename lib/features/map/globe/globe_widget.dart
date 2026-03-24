@@ -18,6 +18,7 @@ class GlobeWidget extends StatefulWidget {
     this.sensitivity = 0.0095,
     this.focusCountryCode,
     this.focusRequestToken,
+    this.resetViewRequestToken,
   });
 
   final List<String> visitedCountryCodes;
@@ -28,6 +29,7 @@ class GlobeWidget extends StatefulWidget {
   final double sensitivity;
   final String? focusCountryCode;
   final int? focusRequestToken;
+  final int? resetViewRequestToken;
 
   @override
   State<GlobeWidget> createState() => _GlobeWidgetState();
@@ -65,6 +67,7 @@ class _GlobeWidgetState extends State<GlobeWidget>
   Offset? _lastTapPosition;
   bool _doubleTapEnabled = true;
   int? _lastHandledFocusToken;
+  int? _lastHandledResetToken;
   final Set<int> _activePointers = <int>{};
   bool _isInteracting = false;
 
@@ -87,6 +90,7 @@ class _GlobeWidgetState extends State<GlobeWidget>
   @override
   void didUpdateWidget(covariant GlobeWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _maybeApplyResetView(previousToken: oldWidget.resetViewRequestToken);
     _maybeApplyExternalFocus(
       previousCode: oldWidget.focusCountryCode,
       previousToken: oldWidget.focusRequestToken,
@@ -724,6 +728,31 @@ class _GlobeWidgetState extends State<GlobeWidget>
   void _setZoom(double zoom) {
     _zoom = zoom.clamp(_minZoom, _maxZoom);
     _activeLod = _lodForZoom(_zoom);
+  }
+
+  void _maybeApplyResetView({
+    int? previousToken,
+  }) {
+    final token = widget.resetViewRequestToken;
+    if (token == null ||
+        token == previousToken ||
+        token == _lastHandledResetToken) {
+      return;
+    }
+
+    _lastHandledResetToken = token;
+    _stopCameraAnimation();
+    _lastTapAt = null;
+    _lastTapPosition = null;
+    setState(() {
+      _selectedCountry = null;
+    });
+    _animateCameraTo(
+      rotation: 0,
+      pitch: 0,
+      zoom: _minZoom,
+      duration: const Duration(milliseconds: 420),
+    );
   }
 
   void _maybeApplyExternalFocus({

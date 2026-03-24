@@ -1,38 +1,36 @@
 import 'package:flutter/material.dart';
 
+import '../../../widgets/person_avatar.dart';
+
 class ProfileHeaderCard extends StatelessWidget {
   const ProfileHeaderCard({
     super.key,
     required this.displayName,
     required this.homeBase,
+    this.photoUrl,
+    this.bio,
   });
 
   final String displayName;
   final String homeBase;
+  final String? photoUrl;
+  final String? bio;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final trimmedName = displayName.trim();
-    final initials = displayName.trim().isEmpty
-        ? 'T'
-        : trimmedName.substring(0, 1).toUpperCase();
+    final normalizedBio = bio?.trim() ?? '';
 
     return Card(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            CircleAvatar(
+            PersonAvatar(
+              displayName: displayName,
+              photoUrl: photoUrl,
               radius: 26,
-              backgroundColor: colorScheme.primaryContainer,
-              child: Text(
-                initials,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: colorScheme.onPrimaryContainer,
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -50,6 +48,18 @@ class ProfileHeaderCard extends StatelessWidget {
                           color: colorScheme.onSurfaceVariant,
                         ),
                   ),
+                  if (normalizedBio.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 10),
+                    Text(
+                      normalizedBio,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurface.withValues(
+                              alpha: 0.82,
+                            ),
+                            height: 1.35,
+                          ),
+                    ),
+                  ],
                 ],
               ),
             ),

@@ -24,6 +24,8 @@ class GeminiTripPlanner {
   Future<GeminiTripPlan> generatePlan({
     required String apiKey,
     required String countryName,
+    String? wishlistTitle,
+    String? tripPurpose,
     String? homeBase,
     DateTimeRange? preciseWindow,
     int? preferredMonth,
@@ -65,6 +67,8 @@ class GeminiTripPlanner {
 
     final basePrompt = buildGeminiBasePrompt(
       countryName: normalizedCountry,
+      wishlistTitle: wishlistTitle,
+      tripPurpose: tripPurpose,
       homeBase: homeBase?.trim(),
       preciseWindow: preciseWindow,
       preferredMonth: normalizedMonth,
@@ -92,6 +96,7 @@ class GeminiTripPlanner {
     final detailsPrompt = buildGeminiCityDetailsPrompt(
       countryName: normalizedCountry,
       cityPlan: basePlan.cityPlan,
+      tripPurpose: tripPurpose,
     );
     final detailsText = await _requestGeminiText(
       apiKey: normalizedKey,

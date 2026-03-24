@@ -36,6 +36,8 @@ class TripRecord {
     required this.startDate,
     required this.endDate,
     required this.cities,
+    this.sourceWishlistItemId,
+    this.cityDataJson,
     this.coverImageUri,
     this.notes,
   });
@@ -46,6 +48,8 @@ class TripRecord {
   final int startDate;
   final int endDate;
   final String cities;
+  final int? sourceWishlistItemId;
+  final String? cityDataJson;
   final String? coverImageUri;
   final String? notes;
 
@@ -57,6 +61,8 @@ class TripRecord {
       startDate: map['startDate'] as int,
       endDate: map['endDate'] as int,
       cities: map['cities'] as String,
+      sourceWishlistItemId: map['sourceWishlistItemId'] as int?,
+      cityDataJson: map['cityDataJson'] as String?,
       coverImageUri: map['coverImageUri'] as String?,
       notes: map['notes'] as String?,
     );
@@ -69,6 +75,8 @@ class TripRecord {
     int? startDate,
     int? endDate,
     String? cities,
+    Object? sourceWishlistItemId = _noWishlistValue,
+    Object? cityDataJson = _noWishlistValue,
     String? coverImageUri,
     String? notes,
   }) {
@@ -79,6 +87,12 @@ class TripRecord {
       startDate: startDate ?? this.startDate,
       endDate: endDate ?? this.endDate,
       cities: cities ?? this.cities,
+      sourceWishlistItemId: identical(sourceWishlistItemId, _noWishlistValue)
+          ? this.sourceWishlistItemId
+          : sourceWishlistItemId as int?,
+      cityDataJson: identical(cityDataJson, _noWishlistValue)
+          ? this.cityDataJson
+          : cityDataJson as String?,
       coverImageUri: coverImageUri ?? this.coverImageUri,
       notes: notes ?? this.notes,
     );
@@ -91,6 +105,8 @@ class TripRecord {
       'startDate': startDate,
       'endDate': endDate,
       'cities': cities,
+      'sourceWishlistItemId': sourceWishlistItemId,
+      'cityDataJson': cityDataJson,
       'coverImageUri': coverImageUri,
       'notes': notes,
     };
@@ -114,6 +130,7 @@ class WishlistItemRecord {
     this.plannedEndDate,
     this.plannedCities,
     this.aiPlan,
+    this.isPinned = false,
   });
 
   final int? id;
@@ -125,6 +142,7 @@ class WishlistItemRecord {
   final int? plannedEndDate;
   final String? plannedCities;
   final String? aiPlan;
+  final bool isPinned;
 
   factory WishlistItemRecord.fromMap(Map<String, Object?> map) {
     return WishlistItemRecord(
@@ -137,6 +155,7 @@ class WishlistItemRecord {
       plannedEndDate: map['plannedEndDate'] as int?,
       plannedCities: map['plannedCities'] as String?,
       aiPlan: map['aiPlan'] as String?,
+      isPinned: ((map['isPinned'] as int?) ?? 0) != 0,
     );
   }
 
@@ -150,6 +169,7 @@ class WishlistItemRecord {
     Object? plannedEndDate = _noWishlistValue,
     Object? plannedCities = _noWishlistValue,
     Object? aiPlan = _noWishlistValue,
+    Object? isPinned = _noWishlistValue,
   }) {
     return WishlistItemRecord(
       id: id ?? this.id,
@@ -170,7 +190,11 @@ class WishlistItemRecord {
       plannedCities: identical(plannedCities, _noWishlistValue)
           ? this.plannedCities
           : plannedCities as String?,
-      aiPlan: identical(aiPlan, _noWishlistValue) ? this.aiPlan : aiPlan as String?,
+      aiPlan:
+          identical(aiPlan, _noWishlistValue) ? this.aiPlan : aiPlan as String?,
+      isPinned: identical(isPinned, _noWishlistValue)
+          ? this.isPinned
+          : isPinned as bool,
     );
   }
 
@@ -184,6 +208,7 @@ class WishlistItemRecord {
       'plannedEndDate': plannedEndDate,
       'plannedCities': plannedCities,
       'aiPlan': aiPlan,
+      'isPinned': isPinned ? 1 : 0,
     };
 
     if (includeId && id != null) {

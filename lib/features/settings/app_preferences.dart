@@ -7,6 +7,7 @@ import '../../config/runtime_config.dart';
 const _themeModeKey = 'stepped_theme_mode';
 const _displayNameKey = 'stepped_display_name';
 const _homeBaseKey = 'stepped_home_base';
+const _bioKey = 'stepped_bio';
 const _confirmWishlistDeleteKey = 'stepped_confirm_wishlist_delete';
 const _showWishlistDatesKey = 'stepped_show_wishlist_dates';
 const _geminiApiKeyKey = 'stepped_gemini_api_key';
@@ -23,6 +24,7 @@ class AppPreferences {
     required this.themeMode,
     required this.displayName,
     required this.homeBase,
+    required this.bio,
     required this.confirmWishlistDelete,
     required this.showWishlistDates,
     required this.geminiApiKey,
@@ -34,6 +36,7 @@ class AppPreferences {
     themeMode: ThemeMode.system,
     displayName: 'Traveler',
     homeBase: '',
+    bio: '',
     confirmWishlistDelete: true,
     showWishlistDates: true,
     geminiApiKey: '',
@@ -44,6 +47,7 @@ class AppPreferences {
   final ThemeMode themeMode;
   final String displayName;
   final String homeBase;
+  final String bio;
   final bool confirmWishlistDelete;
   final bool showWishlistDates;
   final String geminiApiKey;
@@ -54,6 +58,7 @@ class AppPreferences {
     ThemeMode? themeMode,
     String? displayName,
     String? homeBase,
+    String? bio,
     bool? confirmWishlistDelete,
     bool? showWishlistDates,
     String? geminiApiKey,
@@ -64,6 +69,7 @@ class AppPreferences {
       themeMode: themeMode ?? this.themeMode,
       displayName: displayName ?? this.displayName,
       homeBase: homeBase ?? this.homeBase,
+      bio: bio ?? this.bio,
       confirmWishlistDelete:
           confirmWishlistDelete ?? this.confirmWishlistDelete,
       showWishlistDates: showWishlistDates ?? this.showWishlistDates,
@@ -114,6 +120,17 @@ class AppPreferencesController extends AsyncNotifier<AppPreferences> {
     _emitUpdated((current) => current.copyWith(homeBase: normalized));
   }
 
+  Future<void> updateBio(String bio) async {
+    final normalized = bio.trim();
+    final prefs = await _ensurePreferences();
+    if (normalized.isEmpty) {
+      await prefs.remove(_bioKey);
+    } else {
+      await prefs.setString(_bioKey, normalized);
+    }
+    _emitUpdated((current) => current.copyWith(bio: normalized));
+  }
+
   Future<void> updateConfirmWishlistDelete(bool value) async {
     final prefs = await _ensurePreferences();
     await prefs.setBool(_confirmWishlistDeleteKey, value);
@@ -161,6 +178,7 @@ class AppPreferencesController extends AsyncNotifier<AppPreferences> {
     );
     await prefs.setString(_displayNameKey, AppPreferences.defaults.displayName);
     await prefs.remove(_homeBaseKey);
+    await prefs.remove(_bioKey);
     await prefs.setBool(
       _confirmWishlistDeleteKey,
       AppPreferences.defaults.confirmWishlistDelete,
@@ -206,6 +224,7 @@ class AppPreferencesController extends AsyncNotifier<AppPreferences> {
       displayName: prefs.getString(_displayNameKey) ??
           AppPreferences.defaults.displayName,
       homeBase: prefs.getString(_homeBaseKey) ?? '',
+      bio: prefs.getString(_bioKey) ?? '',
       confirmWishlistDelete: prefs.getBool(_confirmWishlistDeleteKey) ??
           AppPreferences.defaults.confirmWishlistDelete,
       showWishlistDates: prefs.getBool(_showWishlistDatesKey) ??

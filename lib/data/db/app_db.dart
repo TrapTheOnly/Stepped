@@ -8,7 +8,6 @@ import 'tables.dart';
 import 'app_db_models.dart';
 export 'app_db_models.dart';
 
-
 final databaseProvider = Provider<AppDatabase>((ref) {
   final database = AppDatabase();
   ref.onDispose(database.close);
@@ -16,10 +15,9 @@ final databaseProvider = Provider<AppDatabase>((ref) {
 });
 
 class AppDatabase {
-
   static const _databaseName = 'stepped.db';
 
-  static const _databaseVersion = 2;
+  static const _databaseVersion = 4;
 
   Database? _database;
 
@@ -206,7 +204,10 @@ class AppDatabase {
 
   Future<List<WishlistItemRecord>> getWishlistOrderedByCreatedAtDesc() async {
     final db = await _db;
-    final rows = await db.query(wishlistTable, orderBy: 'createdAt DESC');
+    final rows = await db.query(
+      wishlistTable,
+      orderBy: 'isPinned DESC, createdAt DESC',
+    );
     return rows.map(WishlistItemRecord.fromMap).toList(growable: false);
   }
 
@@ -253,6 +254,28 @@ class AppDatabase {
     _wishlistChanges.add(null);
   }
 
+  Future<void> setWishlistPinnedState({
+    required int id,
+    required bool isPinned,
+  }) async {
+    final db = await _db;
+    await db.transaction((txn) async {
+      if (isPinned) {
+        await txn.update(
+          wishlistTable,
+          <String, Object?>{'isPinned': 0},
+        );
+      }
+      await txn.update(
+        wishlistTable,
+        <String, Object?>{'isPinned': isPinned ? 1 : 0},
+        where: 'id = ?',
+        whereArgs: <Object?>[id],
+      );
+    });
+    _wishlistChanges.add(null);
+  }
+
   Future<void> close() async {
     final db = _database;
     if (db != null) {
@@ -264,7 +287,6 @@ class AppDatabase {
     await _visitChanges.close();
     await _wishlistChanges.close();
   }
-
 }
 
 extension _AppDatabaseInternalMethods on AppDatabase {
@@ -315,6 +337,22 @@ extension _AppDatabaseInternalMethods on AppDatabase {
             'ALTER TABLE $wishlistTable ADD COLUMN aiPlan TEXT',
           );
         }
+        if (oldVersion < 3) {
+          await _addColumnIfMissing(
+            db,
+            'ALTER TABLE $wishlistTable ADD COLUMN isPinned INTEGER NOT NULL DEFAULT 0',
+          );
+        }
+        if (oldVersion < 4) {
+          await _addColumnIfMissing(
+            db,
+            'ALTER TABLE $tripsTable ADD COLUMN sourceWishlistItemId INTEGER',
+          );
+          await _addColumnIfMissing(
+            db,
+            'ALTER TABLE $tripsTable ADD COLUMN cityDataJson TEXT',
+          );
+        }
       },
     );
 
@@ -339,5 +377,4 @@ extension _AppDatabaseInternalMethods on AppDatabase {
       // Ignore duplicate-column failures for defensive migrations.
     }
   }
-
 }

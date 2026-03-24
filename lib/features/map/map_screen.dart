@@ -1,13 +1,20 @@
-import 'dart:math';
-
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../domain/models/trip_ui.dart';
-import '../../widgets/trip_card.dart';
+import '../../widgets/frosted_squircle.dart';
+import '../../widgets/stepped_top_bar.dart';
+import 'globe/globe_country_data.dart';
 import 'globe/globe_widget.dart';
 import 'map_viewmodel.dart';
+
+const _bottomDockHeight = 187.0;
+const _bottomDockOffset = 110.0;
+const _floatingControlGap = 10.0;
 
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
@@ -17,16 +24,7 @@ class MapScreen extends ConsumerStatefulWidget {
 }
 
 class _MapScreenState extends ConsumerState<MapScreen> {
-  bool _isGlobeInteracting = false;
-
-  void _handleGlobeInteractionChanged(bool interacting) {
-    if (_isGlobeInteracting == interacting || !mounted) {
-      return;
-    }
-    setState(() {
-      _isGlobeInteracting = interacting;
-    });
-  }
+  bool _isLocatingCurrentCountry = false;
 
   @override
   Widget build(BuildContext context) {
@@ -47,199 +45,242 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     final dashboardAsync = ref.watch(mapDashboardProvider);
     final focusRequest = ref.watch(globeFocusRequestProvider);
+    final resetToken = ref.watch(globeResetRequestProvider);
+    final colorScheme = Theme.of(context).colorScheme;
 
-    final random = Random();
-    final visitedCountryCodes = dashboardAsync.valueOrNull?.visitedCountryCodes;
-    void onFocusRandomVisited() {
-      final visited = visitedCountryCodes ?? const <String>[];
-      if (visited.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content:
-                Text('No visited countries yet. Mark one on the globe first.'),
+    return ColoredBox(
+      color: colorScheme.surface,
+      child: Stack(
+        children: <Widget>[
+          Positioned.fill(
+            child: Transform.translate(
+              offset: const Offset(0, -52),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(0, 8, 0, 30),
+                child: GlobeWidget(
+                  visitedCountryCodes:
+                      dashboardAsync.valueOrNull?.visitedCountryCodes ??
+                          const <String>[],
+                  focusCountryCode: focusRequest?.countryCode,
+                  focusRequestToken: focusRequest?.token,
+                  resetViewRequestToken: resetToken,
+                  onFocusRequestConsumed: (countryCode, token) {
+                    final activeRequest = ref.read(globeFocusRequestProvider);
+                    if (activeRequest == null) {
+                      return;
+                    }
+
+                    final matchesCountry =
+                        activeRequest.countryCode.toUpperCase() ==
+                            countryCode.toUpperCase();
+                    final matchesToken =
+                        token == null || activeRequest.token == token;
+                    if (!matchesCountry || !matchesToken) {
+                      return;
+                    }
+
+                    ref.read(globeFocusRequestProvider.notifier).state = null;
+                  },
+                  onSetVisited: (countryCode, countryName, visited) {
+                    return ref
+                        .read(mapVisitToggleControllerProvider.notifier)
+                        .setVisited(
+                          countryCode: countryCode,
+                          countryName: countryName,
+                          visited: visited,
+                        );
+                  },
+                ),
+              ),
+            ),
           ),
+          const Positioned.fill(
+            child: IgnorePointer(
+              child: _MapAtmosphere(),
+            ),
+          ),
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  SteppedTopBar(
+                    onOpenSettings: () => context.push('/profile/settings'),
+                    onOpenProfile: () => context.push('/profile'),
+                  ),
+                  const SizedBox(height: 14),
+                  _SearchDock(
+                    onTap: () => context.push('/search'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            right: 16,
+            bottom: _bottomDockOffset + _bottomDockHeight + _floatingControlGap,
+            child: _MapActionButton(
+              icon: Icons.my_location_rounded,
+              tooltip: _isLocatingCurrentCountry
+                  ? 'Locating current country'
+                  : 'Focus current country',
+              isBusy: _isLocatingCurrentCountry,
+              onTap: _focusCurrentCountry,
+            ),
+          ),
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: _bottomDockOffset,
+            child: _DashboardDock(dashboardAsync: dashboardAsync),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _focusCurrentCountry() async {
+    if (_isLocatingCurrentCountry) {
+      return;
+    }
+
+    setState(() {
+      _isLocatingCurrentCountry = true;
+    });
+
+    try {
+      final locationEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!locationEnabled) {
+        _showMapMessage(
+            'Turn on location services to focus your current country.');
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        _showMapMessage(
+          'Location permission is needed to focus the globe on your current country.',
         );
         return;
       }
 
-      final randomCode = visited[random.nextInt(visited.length)];
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 12),
+        ),
+      );
+      final placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+      final dataset = await ref.read(globeCountryDatasetProvider.future);
+      final countryCode = _resolveCurrentCountryCode(
+        placemarks: placemarks,
+        dataset: dataset,
+      );
+      if (countryCode == null) {
+        _showMapMessage(
+            'Could not determine your current country from location.');
+        return;
+      }
+
       ref.read(globeFocusRequestProvider.notifier).state = GlobeFocusRequest(
-        countryCode: randomCode,
+        countryCode: countryCode,
         token: DateTime.now().microsecondsSinceEpoch,
       );
+    } on MissingPluginException {
+      _showMapMessage(
+        'Location services are not loaded in this app instance yet. Fully stop and relaunch the app once.',
+      );
+    } catch (error) {
+      _showMapMessage('Unable to focus your current country: $error');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLocatingCurrentCountry = false;
+        });
+      }
+    }
+  }
+
+  String? _resolveCurrentCountryCode({
+    required List<Placemark> placemarks,
+    required GlobeCountryDataset dataset,
+  }) {
+    for (final placemark in placemarks) {
+      final isoCode = placemark.isoCountryCode?.trim().toUpperCase();
+      if (isoCode != null && dataset.byIso2.containsKey(isoCode)) {
+        return isoCode;
+      }
     }
 
-    Widget bodySliver;
-    if (dashboardAsync.hasError) {
-      bodySliver = SliverFillRemaining(
-        hasScrollBody: false,
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text('Unable to load dashboard: ${dashboardAsync.error}'),
-          ),
-        ),
-      );
-    } else if (dashboardAsync.isLoading || dashboardAsync.value == null) {
-      bodySliver = const SliverFillRemaining(
-        hasScrollBody: false,
-        child: Center(child: CircularProgressIndicator()),
-      );
-    } else {
-      final dashboard = dashboardAsync.value!;
-      bodySliver = SliverPadding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-        sliver: SliverList(
-          delegate: SliverChildListDelegate(
-            <Widget>[
-              _GlobeCard(
-                visitedCountryCodes: dashboard.visitedCountryCodes,
-                focusCountryCode: focusRequest?.countryCode,
-                focusRequestToken: focusRequest?.token,
-                onInteractionChanged: _handleGlobeInteractionChanged,
-                onFocusRequestConsumed: (countryCode, token) {
-                  final activeRequest = ref.read(globeFocusRequestProvider);
-                  if (activeRequest == null) {
-                    return;
-                  }
+    for (final placemark in placemarks) {
+      final countryName = placemark.country?.trim().toLowerCase();
+      if (countryName == null || countryName.isEmpty) {
+        continue;
+      }
 
-                  final matchesCountry =
-                      activeRequest.countryCode.toUpperCase() ==
-                          countryCode.toUpperCase();
-                  final matchesToken =
-                      token == null || activeRequest.token == token;
-                  if (!matchesCountry || !matchesToken) {
-                    return;
-                  }
-
-                  ref.read(globeFocusRequestProvider.notifier).state = null;
-                },
-                onSetVisited: (countryCode, countryName, visited) {
-                  return ref
-                      .read(mapVisitToggleControllerProvider.notifier)
-                      .setVisited(
-                        countryCode: countryCode,
-                        countryName: countryName,
-                        visited: visited,
-                      );
-                },
-              ),
-              const SizedBox(height: 14),
-              _JourneyOverviewCard(dashboard: dashboard),
-              const SizedBox(height: 12),
-              _ContinentCoverageCard(progress: dashboard.continentProgress),
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: () => context.push('/trips/add'),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add a new trip'),
-                ),
-              ),
-              const SizedBox(height: 22),
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Text(
-                      'Recent Trips',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => context.go('/trips'),
-                    child: const Text('See all'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              if (dashboard.recentTrips.isEmpty)
-                const _NoTripsCard()
-              else
-                _RecentTripsRail(trips: dashboard.recentTrips),
-            ],
-          ),
-        ),
-      );
+      for (final country in dataset.countries) {
+        if (country.name.trim().toLowerCase() == countryName) {
+          return country.iso2;
+        }
+      }
     }
 
-    return CustomScrollView(
-      physics: _isGlobeInteracting
-          ? const NeverScrollableScrollPhysics()
-          : const ClampingScrollPhysics(),
-      slivers: <Widget>[
-        SliverAppBar.large(
-          title: const Text('Stepped'),
-          leading: IconButton(
-            icon: const Icon(Icons.menu),
-            onPressed: () => _showMapQuickActions(
-              context,
-              onAddTrip: () => context.push('/trips/add'),
-              onOpenStats: () => context.push('/stats'),
-              onFocusRandomVisited: onFocusRandomVisited,
-              onShowMapTips: () => _showMapTips(context),
-            ),
-            tooltip: 'Menu',
-          ),
-          actions: <Widget>[
-            IconButton(
-              icon: const Icon(Icons.settings),
-              tooltip: 'Settings',
-              onPressed: () => context.push('/profile/settings'),
-            ),
-          ],
-        ),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-            child: SearchBar(
-              hintText: 'Search countries on the globe',
-              leading: const Icon(Icons.search),
-              trailing: const <Widget>[
-                Icon(Icons.keyboard_arrow_right),
-              ],
-              onTap: () => context.push('/search'),
-            ),
-          ),
-        ),
-        bodySliver,
-      ],
+    return null;
+  }
+
+  void _showMapMessage(String message) {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) {
+      return;
+    }
+    messenger.showSnackBar(
+      SnackBar(content: Text(message)),
     );
   }
 }
 
-class _GlobeCard extends StatelessWidget {
-  const _GlobeCard({
-    required this.visitedCountryCodes,
-    required this.focusCountryCode,
-    required this.focusRequestToken,
-    required this.onInteractionChanged,
-    required this.onFocusRequestConsumed,
-    required this.onSetVisited,
-  });
-
-  final List<String> visitedCountryCodes;
-  final String? focusCountryCode;
-  final int? focusRequestToken;
-  final ValueChanged<bool> onInteractionChanged;
-  final void Function(String countryCode, int? token) onFocusRequestConsumed;
-  final Future<void> Function(
-      String countryCode, String countryName, bool visited) onSetVisited;
+class _MapAtmosphere extends StatelessWidget {
+  const _MapAtmosphere();
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: SizedBox(
-          height: 320,
-          child: GlobeWidget(
-            visitedCountryCodes: visitedCountryCodes,
-            onSetVisited: onSetVisited,
-            focusCountryCode: focusCountryCode,
-            focusRequestToken: focusRequestToken,
-            onInteractionChanged: onInteractionChanged,
-            onFocusRequestConsumed: onFocusRequestConsumed,
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: <Color>[
+            colorScheme.surface.withValues(alpha: 0.22),
+            Colors.transparent,
+            colorScheme.surface.withValues(alpha: 0.74),
+          ],
+          stops: const <double>[0, 0.42, 1],
+        ),
+      ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: RadialGradient(
+            center: const Alignment(-0.32, 0.88),
+            radius: 1.08,
+            colors: <Color>[
+              colorScheme.secondary.withValues(alpha: 0.24),
+              colorScheme.primary.withValues(alpha: 0.14),
+              Colors.transparent,
+            ],
+            stops: const <double>[0, 0.38, 1],
           ),
         ),
       ),
@@ -247,61 +288,326 @@ class _GlobeCard extends StatelessWidget {
   }
 }
 
+class _SearchDock extends StatelessWidget {
+  const _SearchDock({required this.onTap});
 
-class _JourneyOverviewCard extends StatelessWidget {
-  const _JourneyOverviewCard({required this.dashboard});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: squircleShape(30),
+        child: FrostedSquircle(
+          radius: 30,
+          blurSigma: 16,
+          color: colorScheme.surface.withValues(alpha: 0.52),
+          borderColor: colorScheme.outlineVariant.withValues(alpha: 0.12),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  'Search destinations...',
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.92,
+                        ),
+                      ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              DecoratedBox(
+                decoration: ShapeDecoration(
+                  color: colorScheme.primaryContainer.withValues(alpha: 0.24),
+                  shape: squircleShape(18),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Icon(
+                    Icons.search_rounded,
+                    size: 18,
+                    color: colorScheme.primaryContainer,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MapActionButton extends StatelessWidget {
+  const _MapActionButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.isBusy = false,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final bool isBusy;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: isBusy ? null : onTap,
+          customBorder: squircleShape(24),
+          child: FrostedSquircle(
+            radius: 24,
+            blurSigma: 18,
+            color: colorScheme.surface.withValues(alpha: 0.62),
+            borderColor: colorScheme.outlineVariant.withValues(alpha: 0.14),
+            padding: const EdgeInsets.all(12),
+            child: isBusy
+                ? SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        colorScheme.onSurface,
+                      ),
+                    ),
+                  )
+                : Icon(
+                    icon,
+                    size: 18,
+                    color: colorScheme.onSurface,
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardDock extends StatelessWidget {
+  const _DashboardDock({required this.dashboardAsync});
+
+  final AsyncValue<MapDashboardState> dashboardAsync;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 260),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      child: dashboardAsync.when(
+        loading: () => const _StatusDock(
+          key: ValueKey<String>('loading'),
+          title: 'Syncing field journal',
+          subtitle: 'Loading your latest travel stats...',
+        ),
+        error: (error, _) => const _StatusDock(
+          key: ValueKey<String>('error'),
+          title: 'Field journal unavailable',
+          subtitle: 'Unable to load your latest travel stats right now.',
+        ),
+        data: (dashboard) => _JourneyDock(
+          key: const ValueKey<String>('journey'),
+          dashboard: dashboard,
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusDock extends StatelessWidget {
+  const _StatusDock({
+    super.key,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return SizedBox(
+      height: _bottomDockHeight,
+      child: FrostedSquircle(
+        radius: 38,
+        blurSigma: 22,
+        color: colorScheme.surface.withValues(alpha: 0.78),
+        borderColor: colorScheme.primaryContainer.withValues(alpha: 0.16),
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              title,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              subtitle,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+            ),
+            const Spacer(),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: const LinearProgressIndicator(minHeight: 6),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _JourneyDock extends StatelessWidget {
+  const _JourneyDock({
+    super.key,
+    required this.dashboard,
+  });
 
   final MapDashboardState dashboard;
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final progress = totalCountriesInWorld == 0
         ? 0.0
         : (dashboard.visitedCount / totalCountriesInWorld).clamp(0.0, 1.0);
-    final progressText = '${(progress * 100).toStringAsFixed(1)}% explored';
+    final latestTrip =
+        dashboard.recentTrips.isEmpty ? null : dashboard.recentTrips.first;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+    return SizedBox(
+      height: _bottomDockHeight,
+      child: FrostedSquircle(
+        radius: 38,
+        blurSigma: 22,
+        color: colorScheme.surface.withValues(alpha: 0.8),
+        borderColor: colorScheme.primaryContainer.withValues(alpha: 0.18),
+        shadowColor: colorScheme.secondary.withValues(alpha: 0.12),
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(
-              'Journey progress',
-              style: Theme.of(context).textTheme.titleMedium,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: <Widget>[
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: RichText(
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      text: TextSpan(
+                        children: <InlineSpan>[
+                          TextSpan(
+                            text: 'You\'ve ',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                          ),
+                          TextSpan(
+                            text: 'Stepped',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(
+                                  fontSize: 24,
+                                  letterSpacing: 1.4,
+                                  color: colorScheme.onSurface,
+                                ),
+                          ),
+                          TextSpan(
+                            text: ' on',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                _VisitedCounter(visitedCount: dashboard.visitedCount),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: SizedBox(
+                height: 7,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: <Widget>[
+                    ColoredBox(
+                      color: colorScheme.surfaceContainerHighest.withValues(
+                        alpha: 0.72,
+                      ),
+                    ),
+                    FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: progress,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: <Color>[
+                              colorScheme.primary,
+                              colorScheme.primaryContainer,
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 10),
             Row(
               children: <Widget>[
-                _MetricChip(
-                  label: 'Visited',
-                  value: '${dashboard.visitedCount}/$totalCountriesInWorld',
+                Expanded(
+                  child: _SummaryMetric(
+                    label: 'Trips logged',
+                    value: '${dashboard.totalTrips}',
+                  ),
                 ),
-                const SizedBox(width: 8),
-                _MetricChip(
-                  label: 'Continents',
-                  value:
-                      '${dashboard.continentsVisited}/$totalContinentsInWorld',
-                ),
-                const SizedBox(width: 8),
-                _MetricChip(
-                  label: 'Trips',
-                  value: '${dashboard.totalTrips}',
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _SummaryMetric(
+                    label: 'Continent reach',
+                    value:
+                        '${dashboard.continentsVisited}/$totalContinentsInWorld',
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 14),
-            LinearProgressIndicator(
-              value: progress,
-              minHeight: 10,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              progressText,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+            const SizedBox(height: 10),
+            _DockFooter(
+              latestTrip: latestTrip,
+              coveragePercent: (progress * 100).round(),
             ),
           ],
         ),
@@ -310,8 +616,44 @@ class _JourneyOverviewCard extends StatelessWidget {
   }
 }
 
-class _MetricChip extends StatelessWidget {
-  const _MetricChip({
+class _VisitedCounter extends StatelessWidget {
+  const _VisitedCounter({required this.visitedCount});
+
+  final int visitedCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return RichText(
+      textAlign: TextAlign.right,
+      text: TextSpan(
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+        children: <InlineSpan>[
+          TextSpan(
+            text: '$visitedCount',
+            style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                  fontSize: 31,
+                  color: colorScheme.onSurface,
+                ),
+          ),
+          TextSpan(
+            text: '/$totalCountriesInWorld',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  fontSize: 13,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryMetric extends StatelessWidget {
+  const _SummaryMetric({
     required this.label,
     required this.value,
   });
@@ -321,72 +663,33 @@ class _MetricChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          children: <Widget>[
-            Text(
-              value,
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
-        ),
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      decoration: ShapeDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.46),
+        shape: squircleShape(24),
       ),
-    );
-  }
-}
-
-class _ContinentCoverageCard extends StatelessWidget {
-  const _ContinentCoverageCard({required this.progress});
-
-  final List<ContinentProgress> progress;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text(
-              'Continent coverage',
-              style: Theme.of(context).textTheme.titleMedium,
+              value,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: colorScheme.onSurface,
+                    fontSize: 17,
+                  ),
             ),
-            const SizedBox(height: 10),
-            ...progress.map(
-              (item) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Row(
-                      children: <Widget>[
-                        Expanded(child: Text(item.continent)),
-                        Text('${item.visitedCount}/${item.totalCount}'),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: LinearProgressIndicator(
-                        value: item.progress,
-                        minHeight: 7,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    letterSpacing: 0.75,
+                    fontSize: 10,
+                  ),
             ),
           ],
         ),
@@ -395,133 +698,46 @@ class _ContinentCoverageCard extends StatelessWidget {
   }
 }
 
-class _RecentTripsRail extends StatelessWidget {
-  const _RecentTripsRail({required this.trips});
+class _DockFooter extends StatelessWidget {
+  const _DockFooter({
+    required this.latestTrip,
+    required this.coveragePercent,
+  });
 
-  final List<TripUi> trips;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 236,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: trips.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
-        itemBuilder: (context, index) {
-          final trip = trips[index];
-          return TripCard(
-            trip: trip,
-            onTap: () => context.push('/trips/edit/${trip.id}'),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _NoTripsCard extends StatelessWidget {
-  const _NoTripsCard();
+  final TripUi? latestTrip;
+  final int coveragePercent;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-        child: Row(
-          children: <Widget>[
-            CircleAvatar(
-              radius: 22,
-              backgroundColor: colorScheme.primaryContainer,
-              child: Icon(Icons.flight_takeoff,
-                  color: colorScheme.onPrimaryContainer),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'No recent trips yet. Add your first trip to start your timeline.',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-            ),
-          ],
+    final latestText = latestTrip == null
+        ? 'FIELD JOURNAL ACTIVE'
+        : 'LATEST ENTRY · ${latestTrip!.countryName.toUpperCase()}';
+
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: Text(
+            latestText,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  letterSpacing: 0.9,
+                  fontSize: 10,
+                ),
+          ),
         ),
-      ),
+        const SizedBox(width: 12),
+        Text(
+          'COVERAGE $coveragePercent%',
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: colorScheme.primaryContainer,
+                letterSpacing: 0.9,
+                fontSize: 10,
+              ),
+        ),
+      ],
     );
   }
-}
-
-Future<void> _showMapQuickActions(
-  BuildContext context, {
-  required VoidCallback onAddTrip,
-  required VoidCallback onOpenStats,
-  required VoidCallback onFocusRandomVisited,
-  required VoidCallback onShowMapTips,
-}) {
-  return showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    builder: (sheetContext) {
-      return SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            ListTile(
-              leading: const Icon(Icons.add_circle_outline),
-              title: const Text('Add trip'),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                onAddTrip();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.shuffle),
-              title: const Text('Focus random visited country'),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                onFocusRandomVisited();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.insights_outlined),
-              title: const Text('Open travel stats'),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                onOpenStats();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.help_outline),
-              title: const Text('Map tips'),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                onShowMapTips();
-              },
-            ),
-          ],
-        ),
-      );
-    },
-  );
-}
-
-
-Future<void> _showMapTips(BuildContext context) {
-  return showDialog<void>(
-    context: context,
-    builder: (dialogContext) {
-      return AlertDialog(
-        title: const Text('Map tips'),
-        content: const Text(
-          'Double-tap a country to focus it. Double-tap the same country again to unselect. Use pinch or mouse wheel to zoom.',
-        ),
-        actions: <Widget>[
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Got it'),
-          ),
-        ],
-      );
-    },
-  );
 }

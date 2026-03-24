@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../wishlist_plan_manual_edit_models.dart';
 import 'wishlist_manual_edit_common_widgets.dart';
+import '../../../widgets/frosted_squircle.dart';
 
 class WishlistManualEditCityCard extends StatelessWidget {
   const WishlistManualEditCityCard({
@@ -41,10 +42,19 @@ class WishlistManualEditCityCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: FrostedSquircle(
+        radius: 28,
+        blurSigma: 16,
+        color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.72),
+        borderColor: Theme.of(context)
+            .colorScheme
+            .outlineVariant
+            .withValues(alpha: 0.12),
+        shadowColor:
+            Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -53,12 +63,15 @@ class WishlistManualEditCityCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     city.city.trim().isEmpty ? 'Untitled city' : city.city,
-                    style: Theme.of(context).textTheme.titleSmall,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                   ),
                 ),
                 IconButton(
                   tooltip: 'Move up',
-                  onPressed: index == 0 ? null : () => onMoveCity(index, index - 1),
+                  onPressed:
+                      index == 0 ? null : () => onMoveCity(index, index - 1),
                   icon: const Icon(Icons.keyboard_arrow_up),
                 ),
                 IconButton(
@@ -75,19 +88,19 @@ class WishlistManualEditCityCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             TextFormField(
               initialValue: city.city,
               decoration: const InputDecoration(
                 labelText: 'City',
-                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.location_city_outlined),
               ),
               onChanged: (value) {
                 city.city = value;
                 onErrorClear();
               },
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Row(
               children: <Widget>[
                 Expanded(
@@ -96,7 +109,7 @@ class WishlistManualEditCityCard extends StatelessWidget {
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
                       labelText: 'Days',
-                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.schedule_outlined),
                     ),
                     onChanged: (value) {
                       city.days = int.tryParse(value.trim()) ?? city.days;
@@ -104,7 +117,7 @@ class WishlistManualEditCityCard extends StatelessWidget {
                     },
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 12),
                 Expanded(
                   child: SwitchListTile(
                     value: city.isExtra,
@@ -118,38 +131,39 @@ class WishlistManualEditCityCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             TextFormField(
               initialValue: city.reason,
               decoration: const InputDecoration(
-                labelText: 'Reason',
-                border: OutlineInputBorder(),
+                labelText: 'Why this city belongs',
+                prefixIcon: Icon(Icons.push_pin_outlined),
               ),
               onChanged: (value) {
                 city.reason = value;
                 onErrorClear();
               },
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             TextFormField(
               initialValue: city.overview,
-              minLines: 1,
-              maxLines: 3,
+              minLines: 2,
+              maxLines: 4,
               decoration: const InputDecoration(
-                labelText: 'Overview',
-                border: OutlineInputBorder(),
+                labelText: 'City overview',
+                alignLabelWithHint: true,
+                prefixIcon: Icon(Icons.menu_book_outlined),
               ),
               onChanged: (value) {
                 city.overview = value;
                 onErrorClear();
               },
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             TextFormField(
               initialValue: city.imageQuery,
               decoration: const InputDecoration(
-                labelText: 'Image query',
-                border: OutlineInputBorder(),
+                labelText: 'Cover image query',
+                prefixIcon: Icon(Icons.image_search_outlined),
               ),
               onChanged: (value) {
                 city.imageQuery = value;
@@ -158,20 +172,22 @@ class WishlistManualEditCityCard extends StatelessWidget {
             ),
             if (city.image != null)
               Padding(
-                padding: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.only(top: 10),
                 child: Text(
                   'Current image: ${city.image!.source} | ${city.image!.license}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 14),
             WishlistManualEditSubSectionHeader(
               title: 'Timeline',
               onAdd: () => onAddTimelineStep(city),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             if (city.timeline.isEmpty)
-              const WishlistManualEditMutedHint(text: 'No timeline steps for this city.'),
+              const WishlistManualEditInlineHint(
+                text: 'No timeline steps for this city.',
+              ),
             ...city.timeline.asMap().entries.map((timelineEntry) {
               final timelineIndex = timelineEntry.key;
               final timeline = timelineEntry.value;
@@ -212,21 +228,24 @@ class WishlistManualEditCityCard extends StatelessWidget {
                     ),
                     IconButton(
                       tooltip: 'Delete',
-                      onPressed: () => onDeleteTimelineStep(city, timelineIndex),
+                      onPressed: () =>
+                          onDeleteTimelineStep(city, timelineIndex),
                       icon: const Icon(Icons.delete_outline),
                     ),
                   ],
                 ),
               );
             }),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             WishlistManualEditSubSectionHeader(
-              title: 'Things to Do',
+              title: 'Things to do',
               onAdd: () => onAddThing(city),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             if (city.thingsToDo.isEmpty)
-              const WishlistManualEditMutedHint(text: 'No activity items for this city.'),
+              const WishlistManualEditInlineHint(
+                text: 'No activity items for this city.',
+              ),
             ...city.thingsToDo.asMap().entries.map((thingEntry) {
               final thingIndex = thingEntry.key;
               final thing = thingEntry.value;

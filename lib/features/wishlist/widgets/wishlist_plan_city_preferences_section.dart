@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'wishlist_editor_shell.dart';
+
 class WishlistPlanCityPreferencesSection extends StatelessWidget {
   const WishlistPlanCityPreferencesSection({
     super.key,
@@ -28,79 +30,73 @@ class WishlistPlanCityPreferencesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              '3) Cities in your mind',
-              style: Theme.of(context).textTheme.titleMedium,
+    return WishlistEditorSectionCard(
+      title: 'Route hints',
+      subtitle:
+          'If you already have cities in mind, add up to four. If not, AI can build the route from scratch.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SwitchListTile(
+            value: noCities,
+            title: const Text("I don't have cities yet"),
+            contentPadding: EdgeInsets.zero,
+            onChanged: onNoCitiesChanged,
+          ),
+          if (!noCities)
+            TextField(
+              controller: citiesController,
+              decoration: const InputDecoration(
+                labelText: 'Preferred cities',
+                hintText: 'Madrid, Barcelona',
+              ),
+              onChanged: onCitiesChanged,
             ),
+          if (!noCities) ...<Widget>[
+            const SizedBox(height: 10),
+            Row(
+              children: <Widget>[
+                Icon(
+                  Icons.location_city_outlined,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '$preferredCityCount / $maxCitiesPerRequest cities',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: preferredCityCount > maxCitiesPerRequest
+                            ? Theme.of(context).colorScheme.error
+                            : Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            ),
+          ],
+          if (cityValidationText != null) ...<Widget>[
+            const SizedBox(height: 10),
+            Text(
+              cityValidationText!,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+            ),
+          ],
+          if (hasPreferredCityInput) ...<Widget>[
             const SizedBox(height: 10),
             SwitchListTile(
-              value: noCities,
-              title: const Text("I don't have cities yet"),
+              value: allowAdditionalCities,
               contentPadding: EdgeInsets.zero,
-              onChanged: onNoCitiesChanged,
+              title: const Text(
+                'Allow nearby additions if they fit',
+              ),
+              subtitle: const Text(
+                'AI may add 1-2 nearby cities only when the schedule has room.',
+              ),
+              onChanged: onAllowAdditionalCitiesChanged,
             ),
-            if (!noCities)
-              TextField(
-                controller: citiesController,
-                decoration: const InputDecoration(
-                  labelText: 'Preferred cities',
-                  hintText: 'Madrid, Barcelona',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: onCitiesChanged,
-              ),
-            if (!noCities) ...<Widget>[
-              const SizedBox(height: 8),
-              Row(
-                children: <Widget>[
-                  Icon(
-                    Icons.location_city_outlined,
-                    size: 16,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '$preferredCityCount / $maxCitiesPerRequest cities',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: preferredCityCount > maxCitiesPerRequest
-                              ? Theme.of(context).colorScheme.error
-                              : Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                  ),
-                ],
-              ),
-            ],
-            if (cityValidationText != null) ...<Widget>[
-              const SizedBox(height: 8),
-              Text(
-                cityValidationText!,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-              ),
-            ],
-            if (hasPreferredCityInput) ...<Widget>[
-              const SizedBox(height: 8),
-              SwitchListTile(
-                value: allowAdditionalCities,
-                contentPadding: EdgeInsets.zero,
-                title: const Text(
-                  'Allow adding nearby cities when time allows',
-                ),
-                subtitle: const Text(
-                  'AI may add 1-2 cities only if your schedule has enough room.',
-                ),
-                onChanged: onAllowAdditionalCitiesChanged,
-              ),
-            ],
           ],
-        ),
+        ],
       ),
     );
   }

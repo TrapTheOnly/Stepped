@@ -10,6 +10,7 @@ class AddTripCoverImagePreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final normalized = uri.trim();
+    final colorScheme = Theme.of(context).colorScheme;
     Widget content;
 
     if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
@@ -35,13 +36,31 @@ class AddTripCoverImagePreview extends StatelessWidget {
     }
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(24),
       child: SizedBox(
-        height: 140,
+        height: 190,
         width: double.infinity,
-        child: ColoredBox(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: content,
+        child: Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            ColoredBox(
+              color: colorScheme.surfaceContainerHighest,
+              child: content,
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: <Color>[
+                    Colors.black.withValues(alpha: 0.04),
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.18),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -53,10 +72,24 @@ class _CoverPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Center(
-      child: Icon(
-        Icons.image_not_supported_outlined,
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(
+            Icons.image_not_supported_outlined,
+            color: colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Preview unavailable',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+          ),
+        ],
       ),
     );
   }

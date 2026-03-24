@@ -6,6 +6,8 @@ import 'gemini_trip_models.dart';
 
 String buildGeminiBasePrompt({
   required String countryName,
+  String? wishlistTitle,
+  String? tripPurpose,
   String? homeBase,
   DateTimeRange? preciseWindow,
   int? preferredMonth,
@@ -22,14 +24,24 @@ String buildGeminiBasePrompt({
   final durationText = durationPreference == null
       ? 'Not provided'
       : '${durationPreference.label} (${durationPreference.minDays}-${durationPreference.maxDays} days)';
-  final citiesText = preferredCities.isEmpty ? 'None' : preferredCities.join(', ');
-  final baseText = (homeBase == null || homeBase.isEmpty) ? 'Unknown' : homeBase;
+  final citiesText =
+      preferredCities.isEmpty ? 'None' : preferredCities.join(', ');
+  final baseText =
+      (homeBase == null || homeBase.isEmpty) ? 'Unknown' : homeBase;
+  final titleText = wishlistTitle == null || wishlistTitle.trim().isEmpty
+      ? 'Not provided'
+      : wishlistTitle.trim();
+  final purposeText = tripPurpose == null || tripPurpose.trim().isEmpty
+      ? 'Not provided'
+      : tripPurpose.trim();
 
   return '''
 You are a concise travel planner. Return strict JSON only.
 
 INPUT
+- trip_title: $titleText
 - country: $countryName
+- trip_purpose: $purposeText
 - traveler_home_base: $baseText
 - precise_date_window: $windowText
 - preferred_month: $monthText
@@ -66,6 +78,7 @@ OUTPUT JSON SCHEMA
 Rules:
 - City-level plan only (no hotels/flights).
 - Keep city_plan to 1-4 cities.
+- Use trip_purpose to influence the summary, timing windows, and city choices when it is provided.
 - Sum of city_plan days must match duration.days with max +/-1.
 - If precise_date_window is provided, duration.days must match that window length.
 - If duration_preference is provided, duration.days must stay inside the range.
@@ -80,6 +93,7 @@ Rules:
 String buildGeminiCityDetailsPrompt({
   required String countryName,
   required List<GeminiCityPlan> cityPlan,
+  String? tripPurpose,
 }) {
   final compactCityInput = jsonEncode(
     <Map<String, dynamic>>[
@@ -90,12 +104,16 @@ String buildGeminiCityDetailsPrompt({
         },
     ],
   );
+  final purposeText = tripPurpose == null || tripPurpose.trim().isEmpty
+      ? 'Not provided'
+      : tripPurpose.trim();
 
   return '''
 Create concise city cards for a travel app. Return JSON only.
 
 INPUT
 - country: $countryName
+- trip_purpose: $purposeText
 - city_plan: $compactCityInput
 
 OUTPUT JSON SCHEMA
@@ -119,6 +137,7 @@ OUTPUT JSON SCHEMA
 
 Rules:
 - Return exactly one city_cards item per input city, same city names.
+- Use trip_purpose to bias the timeline and things_to_do toward the traveler intent when it is provided.
 - Timeline must be 3-5 steps in visit order.
 - things_to_do must be 4-6 concise items.
 - Keep all strings short and practical.
