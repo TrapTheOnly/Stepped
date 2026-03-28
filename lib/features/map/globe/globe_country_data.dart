@@ -15,6 +15,8 @@ class GlobeGeoPoint {
     required this.lat,
   })  : lonRad = lon * _degreesToRadians,
         latRad = lat * _degreesToRadians,
+        sinLon = math.sin(lon * _degreesToRadians),
+        cosLon = math.cos(lon * _degreesToRadians),
         sinLat = math.sin(lat * _degreesToRadians),
         cosLat = math.cos(lat * _degreesToRadians);
 
@@ -22,6 +24,8 @@ class GlobeGeoPoint {
   final double lat;
   final double lonRad;
   final double latRad;
+  final double sinLon;
+  final double cosLon;
   final double sinLat;
   final double cosLat;
 }
@@ -107,7 +111,8 @@ class GlobeCountryDatasetLoader {
         }
       }
       if (lodRings[0].isEmpty) {
-        lodRings[0].add(List<GlobeGeoPoint>.unmodifiable(lowRings.first.points));
+        lodRings[0]
+            .add(List<GlobeGeoPoint>.unmodifiable(lowRings.first.points));
       }
 
       for (final ring in highRings) {

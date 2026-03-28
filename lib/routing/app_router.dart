@@ -37,7 +37,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
-    initialLocation: '/auth',
+    initialLocation: '/launch',
     refreshListenable: authController,
     onException: (context, state, router) {
       final normalizedRoute = _normalizedInviteRoute(state.uri);
@@ -46,34 +46,43 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
     },
     redirect: (context, state) {
+      final onLaunchRoute = state.uri.path == '/launch';
       final onAuthRoute = state.uri.path == '/auth';
       final requestedLocation = state.uri.toString();
+      final intendedLocation = onLaunchRoute ? '/' : requestedLocation;
       final from = state.uri.queryParameters['from'];
       if (!authController.isInitialized) {
-        if (onAuthRoute) {
+        if (onLaunchRoute) {
           return null;
         }
-        final encoded = Uri.encodeComponent(requestedLocation);
-        return '/auth?from=$encoded';
+        return '/launch';
       }
 
       if (!authController.isAuthenticated) {
         if (onAuthRoute) {
           return null;
         }
-        final encoded = Uri.encodeComponent(requestedLocation);
+        final encoded = Uri.encodeComponent(intendedLocation);
         return '/auth?from=$encoded';
       }
 
-      if (onAuthRoute) {
+      if (onAuthRoute || onLaunchRoute) {
         if (from != null && from.trim().isNotEmpty) {
-          return Uri.decodeComponent(from);
+          final decoded = Uri.decodeComponent(from);
+          return decoded == '/launch' ? '/' : decoded;
         }
         return '/';
       }
       return null;
     },
     routes: <RouteBase>[
+      GoRoute(
+        path: '/launch',
+        name: 'launch',
+        pageBuilder: (context, state) {
+          return const NoTransitionPage<void>(child: _AppLaunchScreen());
+        },
+      ),
       GoRoute(
         path: '/auth',
         name: 'auth',
@@ -460,6 +469,104 @@ class _RouteErrorScreen extends StatelessWidget {
       appBar: AppBar(title: const Text('Route Error')),
       body: SafeArea(
         child: Center(child: Text(message)),
+      ),
+    );
+  }
+}
+
+class _AppLaunchScreen extends StatelessWidget {
+  const _AppLaunchScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Scaffold(
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: <Color>[
+              colorScheme.surface,
+              colorScheme.surfaceContainerLow,
+              colorScheme.surfaceContainer,
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: FrostedSquircle(
+              radius: 36,
+              blurSigma: 22,
+              color: colorScheme.surface.withValues(alpha: 0.58),
+              borderColor: colorScheme.primaryContainer.withValues(alpha: 0.16),
+              shadowColor: colorScheme.primary.withValues(alpha: 0.08),
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  DecoratedBox(
+                    decoration: ShapeDecoration(
+                      shape: squircleShape(28),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: <Color>[
+                          colorScheme.primary,
+                          colorScheme.primaryContainer,
+                        ],
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Image.asset(
+                        'assets/branding/stepped_monochrome_logo.png',
+                        width: 44,
+                        height: 44,
+                        color: colorScheme.onPrimary,
+                        filterQuality: FilterQuality.high,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'STEPPED',
+                    style: textTheme.titleLarge?.copyWith(
+                      letterSpacing: 3.0,
+                      fontSize: 26,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Reopening your travel journal...',
+                    style: textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: 140,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        minHeight: 4,
+                        backgroundColor:
+                            colorScheme.surfaceContainerHighest.withValues(
+                          alpha: 0.75,
+                        ),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          colorScheme.primaryContainer,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

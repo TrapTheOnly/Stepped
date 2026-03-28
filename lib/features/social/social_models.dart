@@ -106,9 +106,8 @@ class SocialTripSummary {
       'start_date': startDate,
       'end_date': endDate,
       'cities': cities,
-      'city_entries': cityEntries
-          .map((entry) => entry.toJson())
-          .toList(growable: false),
+      'city_entries':
+          cityEntries.map((entry) => entry.toJson()).toList(growable: false),
       'cover_image_url': coverImageUrl,
       'notes': notes,
     };
@@ -305,6 +304,55 @@ class SocialStats {
             json['friendCount'],
           ]) ??
           0,
+    );
+  }
+}
+
+class SocialPrivacySettings {
+  const SocialPrivacySettings({
+    required this.shareWishlistWithFriends,
+    required this.wishlistVisibility,
+  });
+
+  final bool shareWishlistWithFriends;
+  final String wishlistVisibility;
+
+  bool get isPrivate => wishlistVisibility == 'private';
+  bool get isFriendsVisible => wishlistVisibility == 'friends';
+
+  SocialPrivacySettings copyWith({
+    bool? shareWishlistWithFriends,
+    String? wishlistVisibility,
+  }) {
+    return SocialPrivacySettings(
+      shareWishlistWithFriends:
+          shareWishlistWithFriends ?? this.shareWishlistWithFriends,
+      wishlistVisibility: wishlistVisibility ?? this.wishlistVisibility,
+    );
+  }
+
+  Map<String, dynamic> toUpdateJson() {
+    return <String, dynamic>{
+      'share_wishlist_with_friends': shareWishlistWithFriends,
+    };
+  }
+
+  factory SocialPrivacySettings.fromJson(dynamic raw) {
+    final json = _asMap(raw);
+    final shareWishlistWithFriends = _readBool(<dynamic>[
+          json['share_wishlist_with_friends'],
+          json['shareWishlistWithFriends'],
+        ]) ??
+        false;
+    final wishlistVisibility = _firstNonEmptyString(<dynamic>[
+          json['wishlist_visibility'],
+          json['wishlistVisibility'],
+          shareWishlistWithFriends ? 'friends' : 'private',
+        ]) ??
+        'private';
+    return SocialPrivacySettings(
+      shareWishlistWithFriends: shareWishlistWithFriends,
+      wishlistVisibility: wishlistVisibility,
     );
   }
 }
@@ -507,7 +555,8 @@ class FriendProfile {
 
   factory FriendProfile.fromJson(dynamic raw) {
     final json = _asMap(raw);
-    final statsRaw = json['stats'] ?? json['counts'] ?? const <String, dynamic>{};
+    final statsRaw =
+        json['stats'] ?? json['counts'] ?? const <String, dynamic>{};
     final visitedRaw = _asList(json['visited_countries']);
     return FriendProfile(
       id: _firstNonEmptyString(<dynamic>[json['id'], json['user_id']]) ?? '',
@@ -540,19 +589,124 @@ class FriendProfileResponse {
   const FriendProfileResponse({
     required this.friend,
     required this.trips,
+    this.wishlistItems = const <SharedWishlistItem>[],
+    this.wishlistVisibility,
   });
 
   final FriendProfile friend;
   final List<SocialTripSummary> trips;
+  final List<SharedWishlistItem> wishlistItems;
+  final String? wishlistVisibility;
+
+  bool get isWishlistPrivate => wishlistVisibility == 'private';
+  bool get isWishlistSharedWithFriends => wishlistVisibility == 'friends';
 
   factory FriendProfileResponse.fromJson(dynamic raw) {
     final json = _asMap(raw);
     final tripsRaw = _asList(json['trips']);
+    final wishlistRaw = _asList(
+      json['wishlist_items'] ??
+          json['wishlistItems'] ??
+          json['shared_wishlist_items'] ??
+          json['sharedWishlistItems'],
+    );
     return FriendProfileResponse(
       friend: FriendProfile.fromJson(json['friend'] ?? json),
       trips: <SocialTripSummary>[
         for (final entry in tripsRaw) SocialTripSummary.fromJson(entry),
       ],
+      wishlistItems: <SharedWishlistItem>[
+        for (final entry in wishlistRaw) SharedWishlistItem.fromJson(entry),
+      ],
+      wishlistVisibility: _firstNonEmptyString(<dynamic>[
+        json['wishlist_visibility'],
+        json['wishlistVisibility'],
+        _asMapOrNull(json['friend'])?['wishlist_visibility'],
+        _asMapOrNull(json['friend'])?['wishlistVisibility'],
+      ]),
+    );
+  }
+}
+
+class SharedWishlistItem {
+  const SharedWishlistItem({
+    required this.id,
+    required this.title,
+    this.countryCode,
+    required this.countryName,
+    required this.plannedCities,
+    this.plannedStartDate,
+    this.plannedEndDate,
+    this.imageUrl,
+    this.notes,
+    this.createdAt,
+  });
+
+  final String id;
+  final String title;
+  final String? countryCode;
+  final String countryName;
+  final String plannedCities;
+  final int? plannedStartDate;
+  final int? plannedEndDate;
+  final String? imageUrl;
+  final String? notes;
+  final DateTime? createdAt;
+
+  factory SharedWishlistItem.fromJson(dynamic raw) {
+    final json = _asMap(raw);
+    return SharedWishlistItem(
+      id: _firstNonEmptyString(<dynamic>[
+            json['id'],
+            json['wishlist_item_id'],
+            json['wishlistItemId'],
+          ]) ??
+          '',
+      title: _firstNonEmptyString(<dynamic>[
+            json['title'],
+            json['name'],
+            'Wishlist idea',
+          ]) ??
+          'Wishlist idea',
+      countryCode: _firstNonEmptyString(<dynamic>[
+        json['country_code'],
+        json['countryCode'],
+      ]),
+      countryName: _firstNonEmptyString(<dynamic>[
+            json['country_name'],
+            json['countryName'],
+          ]) ??
+          '',
+      plannedCities: _firstNonEmptyString(<dynamic>[
+            json['planned_cities'],
+            json['plannedCities'],
+            json['cities'],
+          ]) ??
+          '',
+      plannedStartDate: _readEpochMillis(<dynamic>[
+        json['planned_start_date'],
+        json['plannedStartDate'],
+      ]),
+      plannedEndDate: _readEpochMillis(<dynamic>[
+        json['planned_end_date'],
+        json['plannedEndDate'],
+      ]),
+      imageUrl: _firstNonEmptyString(<dynamic>[
+        json['image_url'],
+        json['imageUrl'],
+        json['cover_image_url'],
+        json['coverImageUrl'],
+      ]),
+      notes: _firstNonEmptyString(<dynamic>[
+        json['notes'],
+        json['summary'],
+      ]),
+      createdAt: _readDateTime(<dynamic>[
+        json['created_at'],
+        json['createdAt'],
+        json['updated_at'],
+        json['updatedAt'],
+      ]),
     );
   }
 }
@@ -584,8 +738,7 @@ SocialInviteLink? _selectPrimaryInvite(List<SocialInviteLink> invites) {
     return null;
   }
 
-  final sorted = <SocialInviteLink>[...invites]
-    ..sort((a, b) {
+  final sorted = <SocialInviteLink>[...invites]..sort((a, b) {
       final activeComparison =
           (b.isActive ? 1 : 0).compareTo(a.isActive ? 1 : 0);
       if (activeComparison != 0) {

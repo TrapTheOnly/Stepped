@@ -48,6 +48,7 @@ class WishlistEditorShell extends StatelessWidget {
     required this.onBack,
     this.topActions = const <Widget>[],
     this.bottomDock,
+    this.hideBottomDockWhenKeyboardVisible = false,
   });
 
   final String title;
@@ -55,10 +56,14 @@ class WishlistEditorShell extends StatelessWidget {
   final VoidCallback onBack;
   final List<Widget> topActions;
   final Widget? bottomDock;
+  final bool hideBottomDockWhenKeyboardVisible;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
+    final shouldShowBottomDock = bottomDock != null &&
+        !(hideBottomDockWhenKeyboardVisible && keyboardVisible);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -89,7 +94,7 @@ class WishlistEditorShell extends StatelessWidget {
                 ),
               ),
             ),
-            if (bottomDock != null)
+            if (shouldShowBottomDock)
               Positioned(
                 left: 16,
                 right: 16,

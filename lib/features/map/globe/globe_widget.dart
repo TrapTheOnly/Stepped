@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../../widgets/country_flag.dart';
 import 'globe_country_data.dart';
@@ -36,7 +37,7 @@ class GlobeWidget extends StatefulWidget {
 }
 
 class _GlobeWidgetState extends State<GlobeWidget>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static final Future<GlobeCountryDataset> _datasetFuture =
       GlobeCountryDatasetLoader.load();
 
@@ -48,8 +49,20 @@ class _GlobeWidgetState extends State<GlobeWidget>
   static const _doubleTapIntervalMs = 320;
   static const _doubleTapDistance = 40.0;
   static const _frontVisibilityDepthThreshold = -0.03;
+  static const _pitchMin = -1.2;
+  static const _pitchMax = 1.2;
+  static const _rotationVelocityThreshold = 0.04;
+  static const _pitchVelocityThreshold = 0.035;
+  static const _zoomVelocityThreshold = 0.07;
+  static const _rotationInertiaDecayPerSecond = 3.6;
+  static const _zoomInertiaDecayPerSecond = 5.4;
+  static const _zoomInertiaVelocityFactor = 0.78;
+  static const _maxRotationVelocity = 3.8;
+  static const _maxPitchVelocity = 2.6;
+  static const _maxZoomVelocity = 6.2;
 
   late final AnimationController _cameraController;
+  Ticker? _inertiaTicker;
 
   Tween<double>? _rotationTween;
   Tween<double>? _pitchTween;
@@ -70,6 +83,12 @@ class _GlobeWidgetState extends State<GlobeWidget>
   int? _lastHandledResetToken;
   final Set<int> _activePointers = <int>{};
   bool _isInteracting = false;
+  bool _wasMultiTouchGesture = false;
+  int? _lastGestureSampleMicros;
+  double _rotationVelocity = 0;
+  double _pitchVelocity = 0;
+  double _zoomVelocity = 0;
+  Duration? _lastInertiaElapsed;
 
   GlobeCountryShape? _selectedCountry;
   bool _isSubmitting = false;
@@ -100,6 +119,8 @@ class _GlobeWidgetState extends State<GlobeWidget>
   @override
   void dispose() {
     _notifyInteractionChanged(false);
+    _stopInertia();
+    _inertiaTicker?.dispose();
     _cameraController.dispose();
     super.dispose();
   }
@@ -140,6 +161,7 @@ class _GlobeWidgetState extends State<GlobeWidget>
                     behavior: HitTestBehavior.opaque,
                     onScaleStart: _handleScaleStart,
                     onScaleUpdate: _handleScaleUpdate,
+                    onScaleEnd: _handleScaleEnd,
                     onTapDown: (details) => _handleTapDown(
                       details: details,
                       size: size,
@@ -197,6 +219,7 @@ class _GlobeWidgetState extends State<GlobeWidget>
         return;
       }
       _stopCameraAnimation();
+      _stopInertia();
       final factor = resolved.scrollDelta.dy > 0 ? 0.9 : 1.1;
       setState(() {
         _setZoom(_zoom * factor);
@@ -207,27 +230,80 @@ class _GlobeWidgetState extends State<GlobeWidget>
   void _handleScaleStart(ScaleStartDetails details) {
     _notifyInteractionChanged(true);
     _stopCameraAnimation();
+    _stopInertia();
     _scaleStartZoom = _zoom;
     _lastTapAt = null;
     _lastTapPosition = null;
+    _wasMultiTouchGesture = false;
+    _lastGestureSampleMicros = DateTime.now().microsecondsSinceEpoch;
+    _rotationVelocity = 0;
+    _pitchVelocity = 0;
+    _zoomVelocity = 0;
   }
 
   void _handleScaleUpdate(ScaleUpdateDetails details) {
+    final nowMicros = DateTime.now().microsecondsSinceEpoch;
+    final dtSeconds = _gestureDeltaSeconds(nowMicros);
+
     if (details.pointerCount > 1) {
+      _wasMultiTouchGesture = true;
+      _rotationVelocity = 0;
+      _pitchVelocity = 0;
       setState(() {
-        _setZoom(_scaleStartZoom * details.scale);
+        final nextZoom = (_scaleStartZoom * details.scale)
+            .clamp(_minZoom, _maxZoom)
+            .toDouble();
+        if (dtSeconds > 0) {
+          _zoomVelocity =
+              (((nextZoom - _zoom) / dtSeconds) * _zoomInertiaVelocityFactor)
+                  .clamp(-_maxZoomVelocity, _maxZoomVelocity)
+                  .toDouble();
+        }
+        _setZoom(nextZoom);
       });
       return;
     }
 
+    if (_wasMultiTouchGesture) {
+      _rotationVelocity = 0;
+      _pitchVelocity = 0;
+      return;
+    }
+
     setState(() {
-      _rotation = GlobeProjection.normalizeAngle(
-        _rotation + (details.focalPointDelta.dx * widget.sensitivity / _zoom),
-      );
-      _pitch = (_pitch +
-              (details.focalPointDelta.dy * widget.sensitivity * 0.65 / _zoom))
-          .clamp(-1.2, 1.2);
+      final rotationDelta =
+          details.focalPointDelta.dx * widget.sensitivity / _zoom;
+      final pitchDelta =
+          details.focalPointDelta.dy * widget.sensitivity * 0.65 / _zoom;
+      _rotation = GlobeProjection.normalizeAngle(_rotation + rotationDelta);
+      _pitch = (_pitch + pitchDelta).clamp(_pitchMin, _pitchMax);
+      if (dtSeconds > 0) {
+        _rotationVelocity = (rotationDelta / dtSeconds)
+            .clamp(-_maxRotationVelocity, _maxRotationVelocity)
+            .toDouble();
+        _pitchVelocity = (pitchDelta / dtSeconds)
+            .clamp(-_maxPitchVelocity, _maxPitchVelocity)
+            .toDouble();
+      }
     });
+  }
+
+  void _handleScaleEnd(ScaleEndDetails details) {
+    _lastGestureSampleMicros = null;
+    if (_wasMultiTouchGesture) {
+      _rotationVelocity = 0;
+      _pitchVelocity = 0;
+    } else {
+      final pixelsPerSecond = details.velocity.pixelsPerSecond;
+      _rotationVelocity = (pixelsPerSecond.dx * widget.sensitivity / _zoom)
+          .clamp(-_maxRotationVelocity, _maxRotationVelocity)
+          .toDouble();
+      _pitchVelocity =
+          ((pixelsPerSecond.dy * widget.sensitivity * 0.65) / _zoom)
+              .clamp(-_maxPitchVelocity, _maxPitchVelocity)
+              .toDouble();
+    }
+    _startInertiaIfNeeded();
   }
 
   void _handleTapDown({
@@ -286,6 +362,7 @@ class _GlobeWidgetState extends State<GlobeWidget>
       return;
     }
     _stopCameraAnimation();
+    _stopInertia();
     _doubleTapEnabled = false;
 
     final country = _hitTestCountry(
@@ -679,6 +756,91 @@ class _GlobeWidgetState extends State<GlobeWidget>
     _doubleTapEnabled = true;
   }
 
+  double _gestureDeltaSeconds(int nowMicros) {
+    final lastMicros = _lastGestureSampleMicros;
+    _lastGestureSampleMicros = nowMicros;
+    if (lastMicros == null) {
+      return 0;
+    }
+
+    return ((nowMicros - lastMicros) / Duration.microsecondsPerSecond)
+        .clamp(0.0, 0.1);
+  }
+
+  void _startInertiaIfNeeded() {
+    final shouldRotate =
+        _rotationVelocity.abs() >= _rotationVelocityThreshold ||
+            _pitchVelocity.abs() >= _pitchVelocityThreshold;
+    final shouldZoom = _zoomVelocity.abs() >= _zoomVelocityThreshold;
+    if (!shouldRotate && !shouldZoom) {
+      _rotationVelocity = 0;
+      _pitchVelocity = 0;
+      _zoomVelocity = 0;
+      return;
+    }
+
+    _lastInertiaElapsed = null;
+    _inertiaTicker ??= createTicker(_handleInertiaTick);
+    _inertiaTicker!.start();
+  }
+
+  void _handleInertiaTick(Duration elapsed) {
+    final previousElapsed = _lastInertiaElapsed;
+    _lastInertiaElapsed = elapsed;
+    if (previousElapsed == null) {
+      return;
+    }
+
+    final dtSeconds = ((elapsed - previousElapsed).inMicroseconds /
+            Duration.microsecondsPerSecond)
+        .clamp(0.0, 1 / 20);
+    if (dtSeconds <= 0) {
+      return;
+    }
+
+    final rotationDecay = math.exp(-_rotationInertiaDecayPerSecond * dtSeconds);
+    final zoomDecay = math.exp(-_zoomInertiaDecayPerSecond * dtSeconds);
+    var nextRotationVelocity = _rotationVelocity * rotationDecay;
+    var nextPitchVelocity = _pitchVelocity * rotationDecay;
+    var nextZoomVelocity = _zoomVelocity * zoomDecay;
+
+    if (!mounted) {
+      _stopInertia();
+      return;
+    }
+
+    setState(() {
+      _rotation = GlobeProjection.normalizeAngle(
+        _rotation + (nextRotationVelocity * dtSeconds),
+      );
+
+      final unclampedPitch = _pitch + (nextPitchVelocity * dtSeconds);
+      final clampedPitch = unclampedPitch.clamp(_pitchMin, _pitchMax);
+      if (clampedPitch != unclampedPitch) {
+        nextPitchVelocity = 0;
+      }
+      _pitch = clampedPitch;
+
+      final unclampedZoom = _zoom + (nextZoomVelocity * dtSeconds);
+      final clampedZoom = unclampedZoom.clamp(_minZoom, _maxZoom).toDouble();
+      if (clampedZoom != unclampedZoom) {
+        nextZoomVelocity = 0;
+      }
+      _setZoom(clampedZoom);
+    });
+
+    _rotationVelocity = nextRotationVelocity;
+    _pitchVelocity = nextPitchVelocity;
+    _zoomVelocity = nextZoomVelocity;
+
+    final done = _rotationVelocity.abs() < _rotationVelocityThreshold &&
+        _pitchVelocity.abs() < _pitchVelocityThreshold &&
+        _zoomVelocity.abs() < _zoomVelocityThreshold;
+    if (done) {
+      _stopInertia();
+    }
+  }
+
   void _stopCameraAnimation() {
     _cameraAnimationGeneration++;
     if (_cameraController.isAnimating) {
@@ -689,6 +851,16 @@ class _GlobeWidgetState extends State<GlobeWidget>
     _pitchTween = null;
     _zoomTween = null;
     _doubleTapEnabled = true;
+  }
+
+  void _stopInertia() {
+    if (_inertiaTicker?.isActive ?? false) {
+      _inertiaTicker?.stop();
+    }
+    _lastInertiaElapsed = null;
+    _rotationVelocity = 0;
+    _pitchVelocity = 0;
+    _zoomVelocity = 0;
   }
 
   void _handlePointerDown(PointerDownEvent event) {
@@ -742,6 +914,7 @@ class _GlobeWidgetState extends State<GlobeWidget>
 
     _lastHandledResetToken = token;
     _stopCameraAnimation();
+    _stopInertia();
     _lastTapAt = null;
     _lastTapPosition = null;
     setState(() {
@@ -794,6 +967,7 @@ class _GlobeWidgetState extends State<GlobeWidget>
     }
 
     _stopCameraAnimation();
+    _stopInertia();
     setState(() {
       _selectedCountry = country;
       _lastTapAt = null;

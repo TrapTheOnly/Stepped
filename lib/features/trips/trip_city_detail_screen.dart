@@ -27,6 +27,7 @@ class TripCityDetailScreen extends StatefulWidget {
     this.inheritedDetail,
     this.mode = TripCityScreenMode.view,
     this.allowEditing = true,
+    this.ownerDisplayName,
   });
 
   final TripCityEntry city;
@@ -35,6 +36,7 @@ class TripCityDetailScreen extends StatefulWidget {
   final GeminiCityDetail? inheritedDetail;
   final TripCityScreenMode mode;
   final bool allowEditing;
+  final String? ownerDisplayName;
 
   @override
   State<TripCityDetailScreen> createState() => _TripCityDetailScreenState();
@@ -109,6 +111,8 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
   }
 
   Widget _buildViewShell(BuildContext context) {
+    final isReadOnly = !widget.allowEditing;
+
     return _TripCityShell(
       title: widget.city.name,
       onBack: _closeViewMode,
@@ -131,7 +135,6 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
           WishlistHorizontalPadding(
             child: _TripCitySection(
               title: 'City focus',
-              subtitle: 'The essence of why this stop belongs in the route.',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
@@ -167,23 +170,25 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
                           ),
                     ),
                   ],
-                  const SizedBox(height: 16),
-                  Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _pickCityImageFromDevice,
-                          icon: const Icon(Icons.upload_file_rounded),
-                          label: const Text('Upload image'),
+                  if (!isReadOnly) ...<Widget>[
+                    const SizedBox(height: 16),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _pickCityImageFromDevice,
+                            icon: const Icon(Icons.upload_file_rounded),
+                            label: const Text('Upload image'),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      TextButton(
-                        onPressed: _imageUri == null ? null : _clearCityImage,
-                        child: const Text('Clear'),
-                      ),
-                    ],
-                  ),
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: _imageUri == null ? null : _clearCityImage,
+                          child: const Text('Clear'),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -192,8 +197,6 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
           WishlistHorizontalPadding(
             child: _TripCitySection(
               title: 'Day flow',
-              subtitle:
-                  'A clearer beat-by-beat rhythm for how this city can unfold.',
               child: _itineraryStops.isEmpty
                   ? Text(
                       'No timeline stops are saved for this city yet.',
@@ -217,8 +220,6 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
           WishlistHorizontalPadding(
             child: _TripCitySection(
               title: 'Things to do',
-              subtitle:
-                  'Check these off as you shape the city into a real trip.',
               child: _suggestedPlaces.isEmpty
                   ? Text(
                       'No city activities are saved yet.',
@@ -244,8 +245,11 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
                             checked: _completedSuggestedPlaceKeys.contains(
                               normalizeTripSuggestedPlaceKey(_suggestedPlaces[i]),
                             ),
-                            onTap: () =>
-                                _toggleSuggestedPlaceCompletion(_suggestedPlaces[i]),
+                            onTap: isReadOnly
+                                ? null
+                                : () => _toggleSuggestedPlaceCompletion(
+                                      _suggestedPlaces[i],
+                                    ),
                           ),
                           if (i != _suggestedPlaces.length - 1)
                             const SizedBox(height: 10),
@@ -257,33 +261,37 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
           const SizedBox(height: 16),
           WishlistHorizontalPadding(
             child: _TripCitySection(
-              title: 'Your take',
-              subtitle:
-                  'Shape the memory of this stop with a rating and a quick reflection.',
+              title: isReadOnly ? _readOnlyTakeTitle : 'Your take',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   const Text('Rating'),
                   const SizedBox(height: 10),
-                  _TripCityRatingRow(
-                    rating: _rating,
-                    onChanged: (rating) {
-                      setState(() {
-                        _rating = rating;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _notesController,
-                    minLines: 4,
-                    maxLines: 6,
-                    decoration: const InputDecoration(
-                      labelText: 'City notes',
-                      hintText:
-                          'A favorite street, the best coffee, the moment you would repeat...',
+                  if (isReadOnly)
+                    _TripCityReadOnlyRatingRow(rating: _rating)
+                  else
+                    _TripCityRatingRow(
+                      rating: _rating,
+                      onChanged: (rating) {
+                        setState(() {
+                          _rating = rating;
+                        });
+                      },
                     ),
-                  ),
+                  const SizedBox(height: 16),
+                  if (isReadOnly)
+                    _TripCityReadOnlyNotes(notes: _notesController.text.trim())
+                  else
+                    TextFormField(
+                      controller: _notesController,
+                      minLines: 4,
+                      maxLines: 6,
+                      decoration: const InputDecoration(
+                        labelText: 'City notes',
+                        hintText:
+                            'A favorite street, the best coffee, the moment you would repeat...',
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -292,32 +300,32 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
           WishlistHorizontalPadding(
             child: _TripCitySection(
               title: 'Visited places',
-              subtitle:
-                  'Keep a crisp list of the places you actually reached while you were there.',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: TextFormField(
-                          controller: _visitedPlaceController,
-                          textInputAction: TextInputAction.done,
-                          decoration: const InputDecoration(
-                            labelText: 'Add visited place',
-                            hintText: 'Blue Mosque, Karakoy Pier',
+                  if (!isReadOnly) ...<Widget>[
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: TextFormField(
+                            controller: _visitedPlaceController,
+                            textInputAction: TextInputAction.done,
+                            decoration: const InputDecoration(
+                              labelText: 'Add visited place',
+                              hintText: 'Blue Mosque, Karakoy Pier',
+                            ),
+                            onFieldSubmitted: (_) => _addVisitedPlaces(),
                           ),
-                          onFieldSubmitted: (_) => _addVisitedPlaces(),
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      FilledButton(
-                        onPressed: _addVisitedPlaces,
-                        child: const Text('Add'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
+                        const SizedBox(width: 10),
+                        FilledButton(
+                          onPressed: _addVisitedPlaces,
+                          child: const Text('Add'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                  ],
                   if (_visitedPlaces.isEmpty)
                     Text(
                       'Nothing saved yet for this city.',
@@ -332,14 +340,16 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
                       runSpacing: 10,
                       children: _visitedPlaces
                           .map(
-                            (place) => _TripVisitedPlaceChip(
-                              label: place,
-                              onRemoved: () => setState(() {
-                                _visitedPlaces = List<String>.from(
-                                  _visitedPlaces,
-                                )..remove(place);
-                              }),
-                            ),
+                            (place) => isReadOnly
+                                ? _TripReadOnlyPlaceChip(label: place)
+                                : _TripVisitedPlaceChip(
+                                    label: place,
+                                    onRemoved: () => setState(() {
+                                      _visitedPlaces = List<String>.from(
+                                        _visitedPlaces,
+                                      )..remove(place);
+                                    }),
+                                  ),
                           )
                           .toList(growable: false),
                     ),
@@ -374,8 +384,6 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
           WishlistHorizontalPadding(
             child: _TripCitySection(
               title: 'City focus',
-              subtitle:
-                  'Shape the guide for this stop with a city image and a concise editorial overview.',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
@@ -439,8 +447,6 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
           WishlistHorizontalPadding(
             child: _TripCitySection(
               title: 'Day flow',
-              subtitle:
-                  'A clearer beat-by-beat rhythm for how this city can unfold.',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
@@ -517,8 +523,6 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
           WishlistHorizontalPadding(
             child: _TripCitySection(
               title: 'Things to do',
-              subtitle:
-                  'Use the editable list here when you need to change, add, or remove activities.',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
@@ -589,8 +593,6 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
           WishlistHorizontalPadding(
             child: _TripCitySection(
               title: 'Your take',
-              subtitle:
-                  'Shape the memory of this stop with a rating and a quick reflection.',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
@@ -623,8 +625,6 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
           WishlistHorizontalPadding(
             child: _TripCitySection(
               title: 'Visited places',
-              subtitle:
-                  'Keep a crisp list of the places you actually reached while you were there.',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
@@ -693,6 +693,15 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
   }
 
   String get _overviewText => _overviewController.text.trim();
+
+  String get _readOnlyTakeTitle {
+    final name = widget.ownerDisplayName?.trim();
+    if (name == null || name.isEmpty) {
+      return 'Notes & rating';
+    }
+    final normalized = RegExp(r'[sS]$').hasMatch(name) ? "$name'" : "$name's";
+    return '$normalized take';
+  }
 
   int? get _plannedDays {
     final inheritedDays = widget.inheritedPlan?.days;
@@ -1007,7 +1016,7 @@ class _TripCityTopBar extends StatelessWidget {
       shadowColor: scheme.primary.withValues(alpha: 0.06),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: SizedBox(
-        height: 34,
+        height: 42,
         child: Row(
           children: <Widget>[
             SizedBox(
@@ -1033,8 +1042,8 @@ class _TripCityTopBar extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                      fontSize: 34,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontSize: 24,
                       fontWeight: FontWeight.w700,
                       height: 1,
                     ),
@@ -1044,19 +1053,22 @@ class _TripCityTopBar extends StatelessWidget {
               width: 84,
               child: Align(
                 alignment: Alignment.centerRight,
-                child: IconButton(
-                  onPressed: onEdit,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-                  visualDensity: VisualDensity.compact,
-                  icon: Icon(
-                    Icons.edit_outlined,
-                    size: 20,
-                    color: onEdit == null
-                        ? scheme.onSurface.withValues(alpha: 0.34)
-                        : scheme.onSurface,
-                  ),
-                ),
+                child: onEdit == null
+                    ? const SizedBox(width: 30, height: 30)
+                    : IconButton(
+                        onPressed: onEdit,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 30,
+                          minHeight: 30,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                        icon: Icon(
+                          Icons.edit_outlined,
+                          size: 20,
+                          color: scheme.onSurface,
+                        ),
+                      ),
               ),
             ),
           ],
@@ -1259,12 +1271,10 @@ class _TripCityHeroFallback extends StatelessWidget {
 class _TripCitySection extends StatelessWidget {
   const _TripCitySection({
     required this.title,
-    required this.subtitle,
     required this.child,
   });
 
   final String title;
-  final String subtitle;
   final Widget child;
 
   @override
@@ -1287,14 +1297,7 @@ class _TripCitySection extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
-          ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           child,
         ],
       ),
@@ -1405,12 +1408,12 @@ class _TripThingChecklistTile extends StatelessWidget {
   const _TripThingChecklistTile({
     required this.label,
     required this.checked,
-    required this.onTap,
+    this.onTap,
   });
 
   final String label;
   final bool checked;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1576,6 +1579,74 @@ class _TripCityRatingRow extends StatelessWidget {
   }
 }
 
+class _TripCityReadOnlyRatingRow extends StatelessWidget {
+  const _TripCityReadOnlyRatingRow({required this.rating});
+
+  final int? rating;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final label = rating == null ? 'No rating saved yet.' : '$rating/5';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Wrap(
+          spacing: 4,
+          runSpacing: 4,
+          children: List<Widget>.generate(5, (index) {
+            final selected = (rating ?? 0) >= index + 1;
+            return Icon(
+              selected ? Icons.star_rounded : Icons.star_border_rounded,
+              size: 28,
+              color: selected ? scheme.tertiary : scheme.outlineVariant,
+            );
+          }),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TripCityReadOnlyNotes extends StatelessWidget {
+  const _TripCityReadOnlyNotes({required this.notes});
+
+  final String notes;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final hasNotes = notes.isNotEmpty;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: 0.16),
+        ),
+      ),
+      child: Text(
+        hasNotes ? notes : 'No city notes saved yet.',
+        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+              color: hasNotes ? scheme.onSurface : scheme.onSurfaceVariant,
+              height: 1.45,
+            ),
+      ),
+    );
+  }
+}
+
 class _TripVisitedPlaceChip extends StatelessWidget {
   const _TripVisitedPlaceChip({
     required this.label,
@@ -1624,6 +1695,33 @@ class _TripVisitedPlaceChip extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _TripReadOnlyPlaceChip extends StatelessWidget {
+  const _TripReadOnlyPlaceChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: ShapeDecoration(
+        color: scheme.surfaceContainerLowest.withValues(alpha: 0.88),
+        shape: StadiumBorder(
+          side: BorderSide(
+            color: scheme.outlineVariant.withValues(alpha: 0.18),
+          ),
+        ),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.bodyMedium,
       ),
     );
   }

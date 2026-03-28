@@ -70,6 +70,32 @@ class SocialApiClient {
     return SocialMeData.fromJson(payload);
   }
 
+  Future<SocialPrivacySettings> getMyPrivacy({
+    required String accessToken,
+  }) async {
+    final payload = await _requestJson(
+      method: 'GET',
+      path: '/v1/social/me/privacy',
+      accessToken: accessToken,
+    );
+    return SocialPrivacySettings.fromJson(payload);
+  }
+
+  Future<SocialPrivacySettings> updateMyPrivacy({
+    required String accessToken,
+    required bool shareWishlistWithFriends,
+  }) async {
+    final payload = await _requestJson(
+      method: 'PUT',
+      path: '/v1/social/me/privacy',
+      accessToken: accessToken,
+      body: <String, dynamic>{
+        'share_wishlist_with_friends': shareWishlistWithFriends,
+      },
+    );
+    return SocialPrivacySettings.fromJson(payload);
+  }
+
   Future<SocialInviteLink> createFriendLink({
     required String accessToken,
   }) async {

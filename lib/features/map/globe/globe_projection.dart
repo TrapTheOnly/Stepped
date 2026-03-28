@@ -19,6 +19,22 @@ class GlobeProjectedPoint {
 class GlobeProjection {
   const GlobeProjection._();
 
+  static GlobeProjector projector({
+    required double rotation,
+    required double pitch,
+    required Offset center,
+    required double radius,
+  }) {
+    return GlobeProjector(
+      center: center,
+      radius: radius,
+      sinRotation: math.sin(rotation),
+      cosRotation: math.cos(rotation),
+      sinPitch: math.sin(pitch),
+      cosPitch: math.cos(pitch),
+    );
+  }
+
   static GlobeProjectedPoint project({
     required GlobeGeoPoint point,
     required double rotation,
@@ -26,24 +42,12 @@ class GlobeProjection {
     required Offset center,
     required double radius,
   }) {
-    final lon = point.lonRad + rotation;
-    final x = point.cosLat * math.sin(lon);
-    final yBase = point.sinLat;
-    final zBase = point.cosLat * math.cos(lon);
-
-    final sinPitch = math.sin(pitch);
-    final cosPitch = math.cos(pitch);
-
-    final y = (yBase * cosPitch) - (zBase * sinPitch);
-    final z = (yBase * sinPitch) + (zBase * cosPitch);
-
-    return GlobeProjectedPoint(
-      offset: Offset(
-        center.dx + (x * radius),
-        center.dy - (y * radius),
-      ),
-      depth: z,
-    );
+    return projector(
+      rotation: rotation,
+      pitch: pitch,
+      center: center,
+      radius: radius,
+    ).project(point);
   }
 
   static double normalizeAngle(double angle) {
@@ -63,5 +67,42 @@ class GlobeProjection {
   }) {
     final delta = normalizeAngle(target - current);
     return current + delta;
+  }
+}
+
+class GlobeProjector {
+  const GlobeProjector({
+    required this.center,
+    required this.radius,
+    required this.sinRotation,
+    required this.cosRotation,
+    required this.sinPitch,
+    required this.cosPitch,
+  });
+
+  final Offset center;
+  final double radius;
+  final double sinRotation;
+  final double cosRotation;
+  final double sinPitch;
+  final double cosPitch;
+
+  GlobeProjectedPoint project(GlobeGeoPoint point) {
+    final sinLon = (point.sinLon * cosRotation) + (point.cosLon * sinRotation);
+    final cosLon = (point.cosLon * cosRotation) - (point.sinLon * sinRotation);
+    final x = point.cosLat * sinLon;
+    final yBase = point.sinLat;
+    final zBase = point.cosLat * cosLon;
+
+    final y = (yBase * cosPitch) - (zBase * sinPitch);
+    final z = (yBase * sinPitch) + (zBase * cosPitch);
+
+    return GlobeProjectedPoint(
+      offset: Offset(
+        center.dx + (x * radius),
+        center.dy - (y * radius),
+      ),
+      depth: z,
+    );
   }
 }

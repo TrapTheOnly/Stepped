@@ -289,8 +289,7 @@ class _AddTripScreenState extends ConsumerState<AddTripScreen> {
             onTyped: (value) {
               final selected = _selectedCountryName;
               if (selected != null &&
-                  value.trim().toLowerCase() !=
-                      selected.trim().toLowerCase()) {
+                  value.trim().toLowerCase() != selected.trim().toLowerCase()) {
                 setState(() {
                   _selectedCountryCode = null;
                   _selectedCountryName = null;
@@ -670,11 +669,11 @@ class _EditorTopBar extends StatelessWidget {
       shadowColor: scheme.primary.withValues(alpha: 0.06),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: SizedBox(
-        height: 42,
+        height: 34,
         child: Row(
           children: <Widget>[
             SizedBox(
-              width: 84,
+              width: 44,
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: IconButton(
@@ -697,14 +696,14 @@ class _EditorTopBar extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                      fontSize: 34,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontSize: 24,
                       height: 1,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                     ),
               ),
             ),
-            const SizedBox(width: 84),
+            const SizedBox(width: 44),
           ],
         ),
       ),

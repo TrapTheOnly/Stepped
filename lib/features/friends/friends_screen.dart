@@ -26,20 +26,12 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
   SocialInviteLink? _latestInvite;
   bool _isGeneratingInvite = false;
   String? _deletingInviteToken;
-  bool _hasQueuedInitialRefresh = false;
-  bool _hasQueuedInviteRecoveryRefresh = false;
+  DateTime? _lastRefreshAt;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _hasQueuedInitialRefresh) {
-        return;
-      }
-      _hasQueuedInitialRefresh = true;
-      _refreshSocialState();
-    });
   }
 
   @override
@@ -72,6 +64,8 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
           ),
           Positioned.fill(
             child: hubAsync.when(
+              skipLoadingOnRefresh: true,
+              skipLoadingOnReload: true,
               loading: () => const _FriendsScrollView(
                 children: <Widget>[
                   SizedBox(height: _friendsTopOverlayClearance),
@@ -102,17 +96,6 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
               ),
               data: (hub) {
                 final invites = _mergedInvites(hub.me.invites);
-                if (invites.isEmpty && !_hasQueuedInviteRecoveryRefresh) {
-                  _hasQueuedInviteRecoveryRefresh = true;
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (!mounted) {
-                      return;
-                    }
-                    _refreshSocialState();
-                  });
-                } else if (invites.isNotEmpty) {
-                  _hasQueuedInviteRecoveryRefresh = false;
-                }
                 SocialInviteLink? activeInvite;
                 for (final invite in invites) {
                   if (invite.isActive) {
@@ -260,8 +243,7 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
       setState(() {
         _latestInvite = invite;
       });
-      ref.invalidate(socialMeProvider);
-      ref.invalidate(friendsHubProvider);
+      _refreshSocialState(force: true);
       await _copyInvite(invite.shareUrl);
     } on SocialApiException catch (error) {
       if (!mounted) {
@@ -300,8 +282,7 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
       if (_latestInvite?.token == invite.token) {
         _latestInvite = null;
       }
-      ref.invalidate(socialMeProvider);
-      ref.invalidate(friendsHubProvider);
+      _refreshSocialState(force: true);
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         const SnackBar(content: Text('Friend link deleted')),
       );
@@ -328,7 +309,15 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
     return 'We could not load your social state right now.';
   }
 
-  void _refreshSocialState() {
+  void _refreshSocialState({bool force = false}) {
+    final now = DateTime.now();
+    if (!force && _lastRefreshAt != null) {
+      final elapsed = now.difference(_lastRefreshAt!);
+      if (elapsed < const Duration(seconds: 20)) {
+        return;
+      }
+    }
+    _lastRefreshAt = now;
     ref.invalidate(socialMeProvider);
     ref.invalidate(friendsHubProvider);
   }

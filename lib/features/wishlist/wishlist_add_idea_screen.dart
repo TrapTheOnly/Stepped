@@ -37,6 +37,7 @@ class _WishlistAddIdeaScreenState extends ConsumerState<WishlistAddIdeaScreen> {
       child: WishlistEditorShell(
         title: 'Add Idea',
         onBack: () => context.pop(),
+        hideBottomDockWhenKeyboardVisible: true,
         bottomDock: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,

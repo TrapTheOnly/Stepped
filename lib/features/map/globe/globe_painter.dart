@@ -5,9 +5,7 @@ import 'package:flutter/material.dart';
 import 'globe_country_data.dart';
 import 'globe_projection.dart';
 
-
 class GlobePainter extends CustomPainter {
-
   GlobePainter({
     required this.colorScheme,
     required this.rotation,
@@ -40,6 +38,12 @@ class GlobePainter extends CustomPainter {
     final center = size.center(Offset.zero);
     final baseRadius = math.min(size.width, size.height) * 0.42;
     final globeRadius = baseRadius * zoom;
+    final projector = GlobeProjection.projector(
+      rotation: rotation,
+      pitch: pitch,
+      center: center,
+      radius: globeRadius,
+    );
 
     _paintShadow(canvas, center, baseRadius);
     _paintGlobeBase(canvas, center, globeRadius);
@@ -52,12 +56,13 @@ class GlobePainter extends CustomPainter {
       size: size,
       center: center,
       globeRadius: globeRadius,
+      projector: projector,
     );
 
     _paintCountries(
       canvas,
-      center: center,
       globeRadius: globeRadius,
+      projector: projector,
       countriesToPaint: visibleCountries,
     );
 
@@ -91,9 +96,7 @@ class GlobePainter extends CustomPainter {
         !_sameVisitedCodes(
             oldDelegate.visitedCountryCodes, visitedCountryCodes);
   }
-
 }
-
 
 class _CountryPaintCandidate {
   const _CountryPaintCandidate({
@@ -173,19 +176,14 @@ extension _GlobePainterShapeMethods on GlobePainter {
     required Size size,
     required Offset center,
     required double globeRadius,
+    required GlobeProjector projector,
   }) {
     final visible = <_CountryPaintCandidate>[];
     final fadeStart = math.min(size.width, size.height) * 0.35;
     final fadeEnd = math.max(size.width, size.height) * 0.74;
 
     for (final country in countries) {
-      final projected = GlobeProjection.project(
-        point: country.centroid,
-        rotation: rotation,
-        pitch: pitch,
-        center: center,
-        radius: globeRadius,
-      );
+      final projected = projector.project(country.centroid);
 
       if (projected.depth < -0.45) {
         continue;
@@ -233,8 +231,8 @@ extension _GlobePainterShapeMethods on GlobePainter {
 
   void _paintCountries(
     Canvas canvas, {
-    required Offset center,
     required double globeRadius,
+    required GlobeProjector projector,
     required List<_CountryPaintCandidate> countriesToPaint,
   }) {
     final landFillColor =
@@ -296,14 +294,7 @@ extension _GlobePainterShapeMethods on GlobePainter {
 
       for (final ring in rings) {
         final projected = <GlobeProjectedPoint>[
-          for (final point in ring)
-            GlobeProjection.project(
-              point: point,
-              rotation: rotation,
-              pitch: pitch,
-              center: center,
-              radius: globeRadius,
-            ),
+          for (final point in ring) projector.project(point),
         ];
 
         final fillPaths = _buildVisibleFillPaths(projected, ring);
@@ -323,7 +314,6 @@ extension _GlobePainterShapeMethods on GlobePainter {
       }
     }
   }
-
 }
 
 extension _GlobePainterProjectionMethods on GlobePainter {
@@ -468,9 +458,7 @@ extension _GlobePainterProjectionMethods on GlobePainter {
         ..insert(0, merged);
     }
 
-    return runs
-        .where((run) => run.length >= 3)
-        .toList(growable: false);
+    return runs.where((run) => run.length >= 3).toList(growable: false);
   }
 
   bool _isFront(GlobeProjectedPoint point) => point.depth > -0.03;
@@ -521,5 +509,4 @@ extension _GlobePainterProjectionMethods on GlobePainter {
   Color _applyOpacity(Color color, double opacity) {
     return color.withValues(alpha: (color.a * opacity).clamp(0.0, 1.0));
   }
-
 }

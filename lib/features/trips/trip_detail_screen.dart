@@ -126,8 +126,6 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
               WishlistHorizontalPadding(
                 child: _TripDetailSection(
                   title: 'Destination',
-                  subtitle:
-                      'The country and timing of this trip, kept in a calm read-only layout.',
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
@@ -167,8 +165,6 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
               WishlistHorizontalPadding(
                 child: _TripDetailSection(
                   title: 'Route details',
-                  subtitle:
-                      'Open each city guide in view mode first, then step into editing only when you choose to.',
                   child: _tripCities.isEmpty
                       ? Text(
                           'No city details are saved yet.',
@@ -207,8 +203,6 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
               WishlistHorizontalPadding(
                 child: _TripDetailSection(
                   title: 'Media & notes',
-                  subtitle:
-                      'Only the trip cover image stays editable from the viewing mode.',
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
@@ -480,8 +474,8 @@ class _TripDetailTopBar extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                      fontSize: 34,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontSize: 24,
                       height: 1,
                       fontWeight: FontWeight.w700,
                     ),
@@ -517,12 +511,10 @@ class _TripDetailTopBar extends StatelessWidget {
 class _TripDetailSection extends StatelessWidget {
   const _TripDetailSection({
     required this.title,
-    required this.subtitle,
     required this.child,
   });
 
   final String title;
-  final String subtitle;
   final Widget child;
 
   @override
@@ -545,14 +537,7 @@ class _TripDetailSection extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
-          ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           child,
         ],
       ),

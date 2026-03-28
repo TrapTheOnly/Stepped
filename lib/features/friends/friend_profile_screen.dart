@@ -115,9 +115,26 @@ class FriendProfileScreen extends ConsumerWidget {
                         eyebrow: 'Wishlist',
                         title: 'Shared spots',
                         subtitle:
-                            'Wishlist sharing can appear here as soon as the social API starts returning saved wishlist items.',
+                            'Saved wishlist ideas they have chosen to share with friends.',
                       ),
                     ),
+                    const SizedBox(height: 18),
+                    if (profile.wishlistItems.isEmpty)
+                      _FriendHorizontalPadding(
+                        child: _FriendProfileStatusCard(
+                          title: profile.isWishlistPrivate
+                              ? 'Wishlist is private'
+                              : 'No shared wishlist items',
+                          message: _wishlistEmptyMessage(profile),
+                        ),
+                      )
+                    else
+                      for (final item in profile.wishlistItems) ...<Widget>[
+                        _FriendHorizontalPadding(
+                          child: _SharedWishlistCard(item: item),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
                     const SizedBox(height: 18),
                     _FriendHorizontalPadding(
                       child: _RemoveFriendButton(friendUserId: friendUserId),
@@ -169,6 +186,16 @@ String _tripRouteId(SocialTripSummary trip) {
     return normalizedId;
   }
   return '${trip.countryCode}-${trip.startDate}-${trip.endDate}';
+}
+
+String _wishlistEmptyMessage(FriendProfileResponse profile) {
+  if (profile.isWishlistPrivate) {
+    return 'This user keeps wishlist private.';
+  }
+  if (profile.isWishlistSharedWithFriends) {
+    return 'No shared wishlist items yet.';
+  }
+  return 'This friend is either keeping wishlist plans private or has not shared any saved spots yet.';
 }
 
 class _FriendProfileAtmosphere extends StatelessWidget {
@@ -330,9 +357,10 @@ class _FriendHeroCard extends StatelessWidget {
                   children: <Widget>[
                     Text(
                       friend.displayName,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
+                      style:
+                          Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -615,7 +643,10 @@ class _FriendTripCard extends StatelessWidget {
                       children: <Widget>[
                         Text(
                           trip.countryName,
-                          style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                          style: Theme.of(context)
+                              .textTheme
+                              .displaySmall
+                              ?.copyWith(
                                 color: Colors.white,
                                 fontSize: 34,
                                 height: 0.98,
@@ -625,16 +656,20 @@ class _FriendTripCard extends StatelessWidget {
                         const SizedBox(height: 6),
                         Text(
                           dateLabel,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Colors.white.withValues(alpha: 0.86),
-                                fontWeight: FontWeight.w600,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: Colors.white.withValues(alpha: 0.86),
+                                    fontWeight: FontWeight.w600,
+                                  ),
                         ),
                         if (trip.cities.trim().isNotEmpty) ...<Widget>[
                           const SizedBox(height: 4),
                           Text(
                             trip.cities,
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
                                   color: Colors.white.withValues(alpha: 0.82),
                                 ),
                           ),
@@ -645,7 +680,10 @@ class _FriendTripCard extends StatelessWidget {
                             trip.notes!.trim(),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(
                                   color: Colors.white.withValues(alpha: 0.78),
                                   height: 1.3,
                                 ),
@@ -680,7 +718,8 @@ class _TripArtwork extends StatelessWidget {
       return Image.network(
         normalizedUrl,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _TripPlaceholder(countryName: countryName),
+        errorBuilder: (_, __, ___) =>
+            _TripPlaceholder(countryName: countryName),
       );
     }
     return _TripPlaceholder(countryName: countryName);
@@ -731,13 +770,207 @@ class _TripPlaceholder extends StatelessWidget {
   }
 }
 
+class _SharedWishlistCard extends StatelessWidget {
+  const _SharedWishlistCard({required this.item});
+
+  final SharedWishlistItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final createdAt = item.createdAt;
+    final createdLabel =
+        createdAt == null ? null : DateFormat.yMMMd().format(createdAt);
+    final hasDates =
+        item.plannedStartDate != null || item.plannedEndDate != null;
+    final dateLabel = hasDates
+        ? _sharedWishlistDateLabel(
+            startDate: item.plannedStartDate,
+            endDate: item.plannedEndDate,
+          )
+        : null;
+    final plannedCities = item.plannedCities.trim();
+    final countryName = item.countryName.trim();
+    final notes = item.notes?.trim() ?? '';
+    final imageUrl = item.imageUrl?.trim() ?? '';
+
+    return FrostedSquircle(
+      radius: 30,
+      blurSigma: 18,
+      color: colorScheme.surface.withValues(alpha: 0.72),
+      borderColor: colorScheme.primaryContainer.withValues(alpha: 0.16),
+      shadowColor: colorScheme.primary.withValues(alpha: 0.08),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          if (imageUrl.isNotEmpty) ...<Widget>[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Image.network(
+                  imageUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => _SharedWishlistImageFallback(
+                    title: item.title,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+          Text(
+            item.title,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              if (countryName.isNotEmpty)
+                _SharedWishlistMetaChip(
+                  icon: Icons.public_rounded,
+                  label: countryName,
+                ),
+              if (plannedCities.isNotEmpty)
+                _SharedWishlistMetaChip(
+                  icon: Icons.location_city_rounded,
+                  label: plannedCities,
+                ),
+              if (dateLabel != null)
+                _SharedWishlistMetaChip(
+                  icon: Icons.schedule_rounded,
+                  label: dateLabel,
+                ),
+              if (createdLabel != null)
+                _SharedWishlistMetaChip(
+                  icon: Icons.bookmark_added_rounded,
+                  label: 'Saved $createdLabel',
+                ),
+            ],
+          ),
+          if (notes.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 14),
+            Text(
+              notes,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    height: 1.35,
+                  ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+String _sharedWishlistDateLabel({
+  required int? startDate,
+  required int? endDate,
+}) {
+  final formatter = DateFormat('MMM d, y');
+  final start =
+      startDate == null ? null : DateTime.fromMillisecondsSinceEpoch(startDate);
+  final end =
+      endDate == null ? null : DateTime.fromMillisecondsSinceEpoch(endDate);
+  if (start != null && end != null) {
+    return '${formatter.format(start)} - ${formatter.format(end)}';
+  }
+  if (start != null) {
+    return 'Starts ${formatter.format(start)}';
+  }
+  if (end != null) {
+    return 'Until ${formatter.format(end)}';
+  }
+  return '';
+}
+
+class _SharedWishlistMetaChip extends StatelessWidget {
+  const _SharedWishlistMetaChip({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      decoration: ShapeDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.44),
+        shape: const StadiumBorder(),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(icon, size: 16, color: colorScheme.primary),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SharedWishlistImageFallback extends StatelessWidget {
+  const _SharedWishlistImageFallback({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            colorScheme.primaryContainer.withValues(alpha: 0.6),
+            colorScheme.surfaceContainerHighest.withValues(alpha: 0.72),
+          ],
+        ),
+      ),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Text(
+            title,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _RemoveFriendButton extends ConsumerStatefulWidget {
   const _RemoveFriendButton({required this.friendUserId});
 
   final String friendUserId;
 
   @override
-  ConsumerState<_RemoveFriendButton> createState() => _RemoveFriendButtonState();
+  ConsumerState<_RemoveFriendButton> createState() =>
+      _RemoveFriendButtonState();
 }
 
 class _RemoveFriendButtonState extends ConsumerState<_RemoveFriendButton> {

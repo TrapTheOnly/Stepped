@@ -35,7 +35,6 @@ class AddTripDestinationSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return _EditorSectionShell(
       title: 'Destination',
-      subtitle: 'Choose the country this journal entry belongs to.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -103,8 +102,6 @@ class AddTripTravelDetailsSection extends StatelessWidget {
 
     return _EditorSectionShell(
       title: 'Travel Details',
-      subtitle:
-          'Set the dates, then build a city list you can open stop-by-stop.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -231,13 +228,6 @@ class AddTripTravelDetailsSection extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
           ),
-          const SizedBox(height: 6),
-          Text(
-            'Open each city as its own guide and shape the stop the same way you do in Wishlist.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-          ),
           const SizedBox(height: 16),
           if (cities.isEmpty)
             Text(
@@ -287,21 +277,12 @@ class AddTripMediaNotesSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return _EditorSectionShell(
       title: 'Media & Notes',
-      subtitle:
-          'Pair the trip with an uploaded cover image and a few editorial notes.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
             'Cover image',
             style: Theme.of(context).textTheme.titleSmall,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Upload a photo from your device for this trip journal cover.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
           ),
           const SizedBox(height: 10),
           Row(
@@ -346,12 +327,10 @@ class AddTripMediaNotesSection extends StatelessWidget {
 class _EditorSectionShell extends StatelessWidget {
   const _EditorSectionShell({
     required this.title,
-    required this.subtitle,
     required this.child,
   });
 
   final String title;
-  final String subtitle;
   final Widget child;
 
   @override
@@ -372,14 +351,7 @@ class _EditorSectionShell extends StatelessWidget {
             title,
             style: Theme.of(context).textTheme.titleMedium,
           ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-          ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           child,
         ],
       ),
@@ -435,6 +407,8 @@ class TripCityRouteCard extends StatelessWidget {
     required this.onOpen,
     this.onRemove,
     this.showRemoveAction = true,
+    this.showOpenGuideChip = false,
+    this.fallbackRouteReason,
   });
 
   final TripCityEntry city;
@@ -443,6 +417,8 @@ class TripCityRouteCard extends StatelessWidget {
   final VoidCallback onOpen;
   final VoidCallback? onRemove;
   final bool showRemoveAction;
+  final bool showOpenGuideChip;
+  final String? fallbackRouteReason;
 
   @override
   Widget build(BuildContext context) {
@@ -457,7 +433,7 @@ class TripCityRouteCard extends StatelessWidget {
     final routeReason =
         (inheritedPlan?.reason ?? overview).trim().isNotEmpty
             ? (inheritedPlan?.reason ?? overview).trim()
-            : 'Open city guide to shape this stop.';
+            : (fallbackRouteReason?.trim() ?? '');
     final stopCount = city.itineraryStops.isNotEmpty
         ? city.itineraryStops.length
         : (inheritedDetail?.timeline.length ?? 0);
@@ -593,20 +569,22 @@ class TripCityRouteCard extends StatelessWidget {
                                           fontWeight: FontWeight.w700,
                                         ),
                                   ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    routeReason,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodyMedium
-                                        ?.copyWith(
-                                          color: Colors.white
-                                              .withValues(alpha: 0.86),
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                  ),
+                                  if (routeReason.isNotEmpty) ...<Widget>[
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      routeReason,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.copyWith(
+                                            color: Colors.white
+                                                .withValues(alpha: 0.86),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),
@@ -662,10 +640,11 @@ class TripCityRouteCard extends StatelessWidget {
                               label: '$ideaCount idea${ideaCount == 1 ? '' : 's'}',
                               icon: Icons.checklist_rounded,
                             ),
-                          const _TripRouteMetaChip(
-                            label: 'Open city guide',
-                            icon: Icons.open_in_new_rounded,
-                          ),
+                          if (showOpenGuideChip)
+                            const _TripRouteMetaChip(
+                              label: 'Open city guide',
+                              icon: Icons.open_in_new_rounded,
+                            ),
                         ],
                       ),
                     ],

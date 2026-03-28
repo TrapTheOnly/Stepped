@@ -43,8 +43,8 @@ final socialSessionProvider = Provider<SocialSession?>((ref) {
 
 final socialProfileSnapshotProvider = Provider<SocialProfileSnapshot>((ref) {
   final authController = ref.watch(authControllerProvider);
-  final preferences = ref.watch(appPreferencesProvider).valueOrNull ??
-      AppPreferences.defaults;
+  final preferences =
+      ref.watch(appPreferencesProvider).valueOrNull ?? AppPreferences.defaults;
   final preferredDisplayName = preferences.displayName.trim();
   final fallbackDisplayName = authController.currentUser?.displayName.trim();
   final displayName = preferredDisplayName.isNotEmpty
@@ -150,6 +150,23 @@ final socialMeProvider = FutureProvider<SocialMeData>((ref) async {
       );
 });
 
+final socialPrivacyProvider =
+    FutureProvider<SocialPrivacySettings>((ref) async {
+  final session = ref.watch(socialSessionProvider);
+  if (session == null) {
+    throw const SocialApiException(
+      'You need to sign in to manage wishlist privacy.',
+      statusCode: 401,
+    );
+  }
+
+  final refreshedToken =
+      await ref.read(authControllerProvider).getFreshAccessToken();
+  return ref.watch(socialApiClientProvider).getMyPrivacy(
+        accessToken: refreshedToken ?? session.accessToken,
+      );
+});
+
 final socialFriendsProvider = FutureProvider<List<FriendSummary>>((ref) async {
   final session = ref.watch(socialSessionProvider);
   if (session == null) {
@@ -174,8 +191,12 @@ final friendsHubProvider = FutureProvider<FriendsHubData>((ref) async {
   }
 
   final client = ref.watch(socialApiClientProvider);
-  final me = await client.getCurrentSocialState(accessToken: session.accessToken);
-  final friends = await client.getFriends(accessToken: session.accessToken);
+  final results = await Future.wait<Object>(<Future<Object>>[
+    client.getCurrentSocialState(accessToken: session.accessToken),
+    client.getFriends(accessToken: session.accessToken),
+  ]);
+  final me = results[0] as SocialMeData;
+  final friends = results[1] as List<FriendSummary>;
   return FriendsHubData(me: me, friends: friends);
 });
 
@@ -196,7 +217,8 @@ final friendInvitePreviewProvider =
 });
 
 final friendProfileProvider =
-    FutureProvider.family<FriendProfileResponse, String>((ref, friendUserId) async {
+    FutureProvider.family<FriendProfileResponse, String>(
+        (ref, friendUserId) async {
   final session = ref.watch(socialSessionProvider);
   if (session == null) {
     throw const SocialApiException(
@@ -226,7 +248,8 @@ final socialSyncBootstrapProvider = Provider<void>((ref) {
   ref.listen<AsyncValue<List<TripRecord>>>(tripsStreamProvider, (_, __) {
     coordinator.scheduleTravelSync();
   });
-  ref.listen<AsyncValue<List<CountryVisitRecord>>>(visitedCountriesProvider, (_, __) {
+  ref.listen<AsyncValue<List<CountryVisitRecord>>>(visitedCountriesProvider,
+      (_, __) {
     coordinator.scheduleTravelSync();
   });
 

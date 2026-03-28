@@ -313,7 +313,7 @@ class _TopBar extends StatelessWidget {
             ),
             Expanded(
               child: Text(
-                'Plan Review',
+                'Plan',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       fontSize: 24,

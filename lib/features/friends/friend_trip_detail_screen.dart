@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../../widgets/frosted_squircle.dart';
 import '../social/social_api_client.dart';
@@ -9,7 +10,6 @@ import '../social/social_state.dart';
 import '../trips/trip_city_detail_screen.dart';
 import '../trips/trip_city_models.dart';
 import '../trips/widgets/add_trip_cover_image_preview.dart';
-import '../trips/widgets/add_trip_date_field.dart';
 import '../trips/widgets/add_trip_destination_preview.dart';
 import '../trips/widgets/add_trip_form_sections.dart';
 
@@ -90,6 +90,7 @@ class FriendTripDetailScreen extends ConsumerWidget {
                             context,
                             city: city,
                             countryName: trip.countryName,
+                            ownerDisplayName: profile.friend.displayName,
                           ),
                         ),
                       ),
@@ -143,6 +144,7 @@ class FriendTripDetailScreen extends ConsumerWidget {
     BuildContext context, {
     required TripCityEntry city,
     required String countryName,
+    required String ownerDisplayName,
   }) {
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
@@ -151,6 +153,7 @@ class FriendTripDetailScreen extends ConsumerWidget {
           countryName: countryName,
           mode: TripCityScreenMode.view,
           allowEditing: false,
+          ownerDisplayName: ownerDisplayName,
         ),
       ),
     );
@@ -297,7 +300,6 @@ class _ReadOnlyDestinationSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return _TripSectionShell(
       title: 'Destination',
-      subtitle: 'The country this journal entry belongs to.',
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
@@ -371,45 +373,12 @@ class _ReadOnlyTravelDetailsSection extends StatelessWidget {
 
     return _TripSectionShell(
       title: 'Travel Details',
-      subtitle:
-          'Set the dates, then build a city list you can open stop-by-stop.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          IgnorePointer(
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: AddTripDateField(
-                    label: 'Start date',
-                    value: DateTime.fromMillisecondsSinceEpoch(trip.startDate),
-                    onTap: () {},
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: AddTripDateField(
-                    label: 'End date',
-                    value: DateTime.fromMillisecondsSinceEpoch(trip.endDate),
-                    onTap: () {},
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          Text(
-            'Route details',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Open each city as its own guide and shape the stop the same way you do in Trips.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+          _ReadOnlyTripDates(
+            startDate: DateTime.fromMillisecondsSinceEpoch(trip.startDate),
+            endDate: DateTime.fromMillisecondsSinceEpoch(trip.endDate),
           ),
           const SizedBox(height: 16),
           if (cities.isEmpty)
@@ -431,6 +400,8 @@ class _ReadOnlyTravelDetailsSection extends StatelessWidget {
                         inheritedDetail: null,
                         onOpen: () => onOpenCity(city),
                         showRemoveAction: false,
+                        showOpenGuideChip: false,
+                        fallbackRouteReason: null,
                       ),
                     ),
                   )
@@ -454,21 +425,12 @@ class _ReadOnlyMediaNotesSection extends StatelessWidget {
 
     return _TripSectionShell(
       title: 'Media & Notes',
-      subtitle:
-          'Pair the trip with an uploaded cover image and a few editorial notes.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
             'Cover image',
             style: Theme.of(context).textTheme.titleSmall,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'A photo saved for this trip journal cover.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
           ),
           const SizedBox(height: 12),
           if (normalizedCover.isNotEmpty)
@@ -503,15 +465,119 @@ class _ReadOnlyMediaNotesSection extends StatelessWidget {
   }
 }
 
+class _ReadOnlyTripDates extends StatelessWidget {
+  const _ReadOnlyTripDates({
+    required this.startDate,
+    required this.endDate,
+  });
+
+  final DateTime startDate;
+  final DateTime endDate;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: _ReadOnlyTripDateCard(
+            label: 'Start date',
+            value: startDate,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _ReadOnlyTripDateCard(
+            label: 'End date',
+            value: endDate,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ReadOnlyTripDateCard extends StatelessWidget {
+  const _ReadOnlyTripDateCard({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final DateTime value;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final monthDay = DateFormat('MMM d').format(value);
+    final year = DateFormat('y').format(value);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.44),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        child: Row(
+          children: <Widget>[
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer.withValues(alpha: 0.24),
+                shape: BoxShape.circle,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(7),
+                child: Icon(
+                  Icons.calendar_month_rounded,
+                  size: 16,
+                  color: colorScheme.primary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(
+                    label,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    monthDay,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                  Text(
+                    year,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _TripSectionShell extends StatelessWidget {
   const _TripSectionShell({
     required this.title,
-    required this.subtitle,
     required this.child,
   });
 
   final String title;
-  final String subtitle;
   final Widget child;
 
   @override
@@ -529,14 +595,7 @@ class _TripSectionShell extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(title, style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-          ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           child,
         ],
       ),

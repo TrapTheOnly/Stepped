@@ -48,6 +48,27 @@ class AuthController extends ChangeNotifier {
   bool get isInitialized => _initialized;
   bool get isBusy => _isBusy;
 
+  Future<String?> getFreshAccessToken({bool forceRefresh = false}) async {
+    await _ensureInitialized();
+    final firebaseUser = _firebaseAuth.currentUser;
+    if (firebaseUser == null) {
+      return _accessToken;
+    }
+
+    final refreshed = await firebaseUser.getIdToken(forceRefresh);
+    final normalized = refreshed?.trim();
+    if (normalized == null || normalized.isEmpty) {
+      return _accessToken;
+    }
+    if (normalized != _accessToken) {
+      await _setSession(
+        accessToken: normalized,
+        user: _currentUser ?? _mapFirebaseUser(firebaseUser),
+      );
+    }
+    return normalized;
+  }
+
   Future<void> initialize() async {
     if (_initialized) {
       return;
@@ -74,16 +95,16 @@ class AuthController extends ChangeNotifier {
     final normalizedEmail = _normalizeEmail(email);
     final normalizedName = displayName.trim();
 
-    if (normalizedName.length < 2) {
+    if (normalizedName.length < 4) {
       throw const AuthException(
-        'Use at least 2 characters for your display name.',
+        'Use at least 4 characters for your display name.',
       );
     }
     if (!_isValidEmail(normalizedEmail)) {
       throw const AuthException('Enter a valid email address.');
     }
-    if (password.length < 8) {
-      throw const AuthException('Password should be at least 8 characters.');
+    if (password.length < 10) {
+      throw const AuthException('Password should be at least 10 characters.');
     }
 
     await _runBusy(() async {
@@ -93,7 +114,8 @@ class AuthController extends ChangeNotifier {
       );
       final user = credentials.user;
       if (user == null) {
-        throw const AuthException('Account was created, but no user session was returned.');
+        throw const AuthException(
+            'Account was created, but no user session was returned.');
       }
 
       if ((user.displayName ?? '').trim() != normalizedName) {
@@ -128,7 +150,8 @@ class AuthController extends ChangeNotifier {
       );
       final user = credentials.user;
       if (user == null) {
-        throw const AuthException('Sign-in succeeded, but no user session was returned.');
+        throw const AuthException(
+            'Sign-in succeeded, but no user session was returned.');
       }
 
       await _syncSessionFromFirebaseUser(
@@ -155,10 +178,12 @@ class AuthController extends ChangeNotifier {
           idToken: idToken,
         );
 
-        final userCredential = await _firebaseAuth.signInWithCredential(credential);
+        final userCredential =
+            await _firebaseAuth.signInWithCredential(credential);
         final user = userCredential.user;
         if (user == null) {
-          throw const AuthException('Google sign-in succeeded, but no Firebase user was returned.');
+          throw const AuthException(
+              'Google sign-in succeeded, but no Firebase user was returned.');
         }
 
         await _syncSessionFromFirebaseUser(
@@ -443,7 +468,7 @@ class AuthController extends ChangeNotifier {
       'invalid-email' => 'Enter a valid email address.',
       'wrong-password' => 'Incorrect email or password.',
       'user-not-found' => 'Incorrect email or password.',
-      'weak-password' => 'Password should be at least 8 characters.',
+      'weak-password' => 'Password should be at least 10 characters.',
       _ => error.message?.trim().isNotEmpty == true
           ? error.message!.trim()
           : 'Authentication failed.',
