@@ -31,6 +31,7 @@ class CountryVisitRecord {
 class TripRecord {
   const TripRecord({
     this.id,
+    this.remoteId,
     required this.countryCode,
     required this.countryName,
     required this.startDate,
@@ -43,6 +44,7 @@ class TripRecord {
   });
 
   final int? id;
+  final String? remoteId;
   final String countryCode;
   final String countryName;
   final int startDate;
@@ -56,6 +58,7 @@ class TripRecord {
   factory TripRecord.fromMap(Map<String, Object?> map) {
     return TripRecord(
       id: map['id'] as int,
+      remoteId: map['remoteId'] as String?,
       countryCode: map['countryCode'] as String,
       countryName: map['countryName'] as String,
       startDate: map['startDate'] as int,
@@ -70,6 +73,7 @@ class TripRecord {
 
   TripRecord copyWith({
     int? id,
+    Object? remoteId = _noWishlistValue,
     String? countryCode,
     String? countryName,
     int? startDate,
@@ -82,6 +86,9 @@ class TripRecord {
   }) {
     return TripRecord(
       id: id ?? this.id,
+      remoteId: identical(remoteId, _noWishlistValue)
+          ? this.remoteId
+          : remoteId as String?,
       countryCode: countryCode ?? this.countryCode,
       countryName: countryName ?? this.countryName,
       startDate: startDate ?? this.startDate,
@@ -100,6 +107,7 @@ class TripRecord {
 
   Map<String, Object?> toMap({bool includeId = false}) {
     final data = <String, Object?>{
+      'remoteId': remoteId,
       'countryCode': countryCode,
       'countryName': countryName,
       'startDate': startDate,
@@ -122,6 +130,7 @@ class TripRecord {
 class WishlistItemRecord {
   const WishlistItemRecord({
     this.id,
+    this.remoteId,
     required this.title,
     this.countryName,
     this.countryCode,
@@ -134,6 +143,7 @@ class WishlistItemRecord {
   });
 
   final int? id;
+  final String? remoteId;
   final String title;
   final String? countryName;
   final String? countryCode;
@@ -147,6 +157,7 @@ class WishlistItemRecord {
   factory WishlistItemRecord.fromMap(Map<String, Object?> map) {
     return WishlistItemRecord(
       id: map['id'] as int,
+      remoteId: map['remoteId'] as String?,
       title: map['title'] as String,
       countryName: map['countryName'] as String?,
       countryCode: map['countryCode'] as String?,
@@ -161,6 +172,7 @@ class WishlistItemRecord {
 
   WishlistItemRecord copyWith({
     int? id,
+    Object? remoteId = _noWishlistValue,
     String? title,
     Object? countryName = _noWishlistValue,
     Object? countryCode = _noWishlistValue,
@@ -173,6 +185,9 @@ class WishlistItemRecord {
   }) {
     return WishlistItemRecord(
       id: id ?? this.id,
+      remoteId: identical(remoteId, _noWishlistValue)
+          ? this.remoteId
+          : remoteId as String?,
       title: title ?? this.title,
       countryName: identical(countryName, _noWishlistValue)
           ? this.countryName
@@ -200,6 +215,7 @@ class WishlistItemRecord {
 
   Map<String, Object?> toMap({bool includeId = false}) {
     final data = <String, Object?>{
+      'remoteId': remoteId,
       'title': title,
       'countryName': countryName,
       'countryCode': countryCode,

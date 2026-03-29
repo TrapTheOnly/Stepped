@@ -1,18 +1,23 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/db/app_db.dart';
 import '../../data/repositories/trips_repository.dart';
 import '../../data/repositories/visits_repository.dart';
+import '../../data/repositories/wishlist_repository.dart';
 import '../auth/auth_controller.dart';
 import '../auth/auth_user.dart';
 import '../settings/app_preferences.dart';
 import '../trips/trip_city_models.dart';
+import '../wishlist/widgets/wishlist_editorial_widgets.dart';
 import 'social_api_client.dart';
+import 'social_asset_urls.dart';
 import 'social_models.dart';
 
 final socialApiClientProvider = Provider<SocialApiClient>((ref) {
@@ -75,7 +80,7 @@ final socialTravelSnapshotProvider = Provider<SocialTravelSnapshot?>((ref) {
     trips: <SocialTripSummary>[
       for (final trip in trips)
         SocialTripSummary(
-          id: trip.id?.toString() ?? _fallbackTripId(trip),
+          id: trip.remoteId ?? trip.id?.toString() ?? _fallbackTripId(trip),
           countryCode: trip.countryCode.toUpperCase(),
           countryName: trip.countryName,
           startDate: trip.startDate,
@@ -100,8 +105,49 @@ final socialTravelSnapshotProvider = Provider<SocialTravelSnapshot?>((ref) {
   );
 });
 
+final socialWishlistSnapshotProvider = Provider<SocialWishlistSnapshot?>((ref) {
+  final items = ref.watch(wishlistStreamProvider).valueOrNull;
+  if (items == null) {
+    return null;
+  }
+
+  return SocialWishlistSnapshot(
+    items: <SocialWishlistItem>[
+      for (final item in items)
+        SocialWishlistItem(
+          id: item.remoteId ??
+              item.id?.toString() ??
+              _fallbackWishlistItemId(item),
+          title: item.title,
+          countryCode: _nonEmptyOrNull(item.countryCode),
+          countryName: item.countryName ?? '',
+          plannedCities: item.plannedCities ?? '',
+          plannedStartDate: item.plannedStartDate,
+          plannedEndDate: item.plannedEndDate,
+          imageUrl: _remoteWishlistImageOrNull(item),
+          notes: null,
+          aiPlan: _nonEmptyOrNull(item.aiPlan),
+          isPinned: item.isPinned,
+          createdAt: item.createdAt,
+        ),
+    ],
+  );
+});
+
 String _fallbackTripId(TripRecord trip) {
   return '${trip.countryCode}-${trip.startDate}-${trip.endDate}';
+}
+
+String _fallbackWishlistItemId(WishlistItemRecord item) {
+  final normalizedTitle = item.title
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+      .replaceAll(RegExp(r'^-+|-+$'), '');
+  if (normalizedTitle.isNotEmpty) {
+    return 'wish_$normalizedTitle';
+  }
+  return 'wish_${item.createdAt}';
 }
 
 String? _nonEmptyOrNull(String? value) {
@@ -125,6 +171,165 @@ String? _remoteImageOrNull(String? value) {
     return null;
   }
   return normalized;
+}
+
+String? _remoteWishlistImageOrNull(WishlistItemRecord item) {
+  final fromPlan = wishlistPrimaryImageUrl(item);
+  return _remoteImageOrNull(fromPlan);
+}
+
+bool _isBackendManagedSocialImage(String? value) {
+  final normalized = normalizeSocialAssetUrl(value);
+  if (normalized == null) {
+    return false;
+  }
+  final uri = Uri.tryParse(normalized);
+  if (uri == null) {
+    return false;
+  }
+  final scheme = uri.scheme.toLowerCase();
+  if (scheme != 'http' && scheme != 'https') {
+    return false;
+  }
+  final host = uri.host.toLowerCase();
+  return host == 'firebasestorage.googleapis.com' ||
+      host == 'storage.googleapis.com';
+}
+
+String _tripRemoteKey(TripRecord trip) {
+  return trip.remoteId ?? trip.id?.toString() ?? _fallbackTripId(trip);
+}
+
+String _wishlistRemoteKey(WishlistItemRecord item) {
+  return item.remoteId ?? item.id?.toString() ?? _fallbackWishlistItemId(item);
+}
+
+String _slugifyCityKey(String value) {
+  final normalized = value
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+      .replaceAll(RegExp(r'^-+|-+$'), '');
+  return normalized.isEmpty ? 'city' : normalized;
+}
+
+class _PreparedSocialUploadFile {
+  const _PreparedSocialUploadFile({
+    required this.filePath,
+    required this.deleteAfterUpload,
+  });
+
+  final String filePath;
+  final bool deleteAfterUpload;
+
+  Future<void> dispose() async {
+    if (!deleteAfterUpload) {
+      return;
+    }
+    try {
+      final file = File(filePath);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {}
+  }
+}
+
+Future<_PreparedSocialUploadFile?> _prepareSocialUploadFile(
+  String raw, {
+  required String tempPrefix,
+}) async {
+  final normalized = normalizeSocialAssetUrl(raw);
+  if (normalized == null || normalized.isEmpty) {
+    return null;
+  }
+
+  final uri = Uri.tryParse(normalized);
+  if (uri != null) {
+    final scheme = uri.scheme.toLowerCase();
+    if (scheme == 'file') {
+      final filePath = uri.toFilePath(windows: Platform.isWindows);
+      return _PreparedSocialUploadFile(
+        filePath: filePath,
+        deleteAfterUpload: false,
+      );
+    }
+    if (scheme == 'http' || scheme == 'https') {
+      final client = HttpClient()
+        ..connectionTimeout = const Duration(seconds: 15);
+      try {
+        final request = await client.getUrl(uri);
+        final response = await request.close();
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          return null;
+        }
+        final bytes = await consolidateHttpClientResponseBytes(response);
+        final extension = _preferredUploadExtension(uri.path);
+        final fileName =
+            '$tempPrefix-${DateTime.now().microsecondsSinceEpoch}$extension';
+        final filePath = path.join(Directory.systemTemp.path, fileName);
+        final file = File(filePath);
+        await file.writeAsBytes(bytes, flush: true);
+        return _PreparedSocialUploadFile(
+          filePath: file.path,
+          deleteAfterUpload: true,
+        );
+      } finally {
+        client.close(force: true);
+      }
+    }
+  }
+
+  return _PreparedSocialUploadFile(
+    filePath: normalized,
+    deleteAfterUpload: false,
+  );
+}
+
+String _preferredUploadExtension(String rawPath) {
+  final extension = path.extension(rawPath).toLowerCase();
+  switch (extension) {
+    case '.jpg':
+    case '.jpeg':
+    case '.png':
+    case '.webp':
+    case '.gif':
+    case '.heic':
+    case '.heif':
+      return extension;
+    default:
+      return '.jpg';
+  }
+}
+
+String? _replaceWishlistCoverImageUrl({
+  required String? rawPlan,
+  required String imageUrl,
+}) {
+  final raw = rawPlan?.trim();
+  if (raw == null || raw.isEmpty) {
+    return null;
+  }
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map) {
+      return rawPlan;
+    }
+    final payload = <String, dynamic>{
+      for (final entry in decoded.entries) '${entry.key}': entry.value,
+    };
+    final currentCover = payload['cover_image'];
+    final coverImage = currentCover is Map
+        ? <String, dynamic>{
+            for (final entry in currentCover.entries) '${entry.key}': entry.value,
+          }
+        : <String, dynamic>{};
+    coverImage['image_url'] = imageUrl;
+    payload['cover_image'] = coverImage;
+    return jsonEncode(payload);
+  } catch (_) {
+    return rawPlan;
+  }
 }
 
 class FriendsHubData {
@@ -223,7 +428,8 @@ class FriendsHubController extends AsyncNotifier<FriendsHubData> {
       return;
     }
 
-    final cached = state.valueOrNull ?? await _FriendsHubCacheStore.read(session.user.id);
+    final cached =
+        state.valueOrNull ?? await _FriendsHubCacheStore.read(session.user.id);
     if (cached != null && state.valueOrNull == null) {
       state = AsyncData(cached);
     }
@@ -276,9 +482,8 @@ final friendInvitePreviewProvider =
       );
 });
 
-final friendProfileProvider =
-    FutureProvider.family<FriendProfileResponse, String>(
-        (ref, friendUserId) async {
+final friendProfileProvider = FutureProvider.autoDispose
+    .family<FriendProfileResponse, String>((ref, friendUserId) async {
   final session = ref.watch(socialSessionProvider);
   if (session == null) {
     throw const SocialApiException(
@@ -312,9 +517,14 @@ final socialSyncBootstrapProvider = Provider<void>((ref) {
       (_, __) {
     coordinator.scheduleTravelSync();
   });
+  ref.listen<AsyncValue<List<WishlistItemRecord>>>(wishlistStreamProvider,
+      (_, __) {
+    coordinator.scheduleWishlistSync();
+  });
 
   coordinator.scheduleProfileSync();
   coordinator.scheduleTravelSync();
+  coordinator.scheduleWishlistSync();
 });
 
 class _SocialSyncCoordinator {
@@ -323,10 +533,12 @@ class _SocialSyncCoordinator {
   final Ref ref;
   Timer? _profileTimer;
   Timer? _travelTimer;
+  Timer? _wishlistTimer;
   String? _lastProfileSignature;
   String? _lastTravelSignature;
+  String? _lastWishlistSignature;
   String? _hydratedUserId;
-  bool _didHydrateRemoteProfile = false;
+  bool _didHydrateRemoteState = false;
 
   void scheduleProfileSync() {
     _profileTimer?.cancel();
@@ -344,22 +556,34 @@ class _SocialSyncCoordinator {
     );
   }
 
+  void scheduleWishlistSync() {
+    _wishlistTimer?.cancel();
+    _wishlistTimer = Timer(
+      const Duration(milliseconds: 1150),
+      () => unawaited(_syncWishlist()),
+    );
+  }
+
   Future<void> _syncProfile() async {
     final session = ref.read(socialSessionProvider);
     if (session == null) {
       _hydratedUserId = null;
-      _didHydrateRemoteProfile = false;
+      _didHydrateRemoteState = false;
       _lastProfileSignature = null;
+      _lastTravelSignature = null;
+      _lastWishlistSignature = null;
       return;
     }
 
     if (_hydratedUserId != session.user.id) {
       _hydratedUserId = session.user.id;
-      _didHydrateRemoteProfile = false;
+      _didHydrateRemoteState = false;
       _lastProfileSignature = null;
+      _lastTravelSignature = null;
+      _lastWishlistSignature = null;
     }
 
-    await _hydrateRemoteProfileIfNeeded(session);
+    await _hydrateRemoteStateIfNeeded(session);
 
     final snapshot = ref.read(socialProfileSnapshotProvider);
     final signature = jsonEncode(snapshot.toJson());
@@ -368,11 +592,21 @@ class _SocialSyncCoordinator {
     }
 
     try {
-      await ref.read(socialApiClientProvider).syncProfile(
+      final syncedProfile = await ref.read(socialApiClientProvider).syncProfile(
             accessToken: session.accessToken,
             profile: snapshot,
           );
-      _lastProfileSignature = signature;
+      await ref.read(appPreferencesProvider.notifier).hydrateProfileCache(
+            displayName: syncedProfile.displayName,
+            homeBase: syncedProfile.homeBase,
+            bio: syncedProfile.bio,
+          );
+      await ref.read(authControllerProvider).replaceLocalProfile(
+            displayName: syncedProfile.displayName,
+            photoUrl: syncedProfile.photoUrl,
+            overwritePhotoUrl: true,
+          );
+      _lastProfileSignature = jsonEncode(syncedProfile.toJson());
       ref.invalidate(socialMeProvider);
       ref.invalidate(friendsHubProvider);
     } catch (error, stackTrace) {
@@ -381,13 +615,15 @@ class _SocialSyncCoordinator {
     }
   }
 
-  Future<void> _hydrateRemoteProfileIfNeeded(SocialSession session) async {
-    if (_didHydrateRemoteProfile) {
+  Future<void> _hydrateRemoteStateIfNeeded(SocialSession session) async {
+    if (_didHydrateRemoteState) {
       return;
     }
 
-    _didHydrateRemoteProfile = true;
+    _didHydrateRemoteState = true;
     try {
+      final localWishlistItems =
+          await ref.read(wishlistRepositoryProvider).getWishlistItems();
       final refreshedToken =
           await ref.read(authControllerProvider).getFreshAccessToken();
       final me = await ref.read(socialApiClientProvider).getCurrentSocialState(
@@ -417,31 +653,117 @@ class _SocialSyncCoordinator {
         await authController.replaceLocalProfile(
           displayName: nextDisplayName,
           photoUrl: remotePhotoUrl,
+          overwritePhotoUrl: true,
         );
-      } else if (nextDisplayName != (authController.currentUser?.displayName ?? '')) {
-        await authController.replaceLocalProfile(displayName: nextDisplayName);
+      } else if (nextDisplayName !=
+          (authController.currentUser?.displayName ?? '')) {
+        await authController.replaceLocalProfile(
+          displayName: nextDisplayName,
+          photoUrl: '',
+          overwritePhotoUrl: true,
+        );
       }
 
-      _lastProfileSignature = jsonEncode(
-        SocialProfileSnapshot(
-          displayName: nextDisplayName,
-          photoUrl: remotePhotoUrl ?? authController.currentUser?.photoUrl,
-          homeBase: remoteProfile.homeBase,
-          bio: remoteProfile.bio,
-        ).toJson(),
+      final syncedProfileSnapshot = SocialProfileSnapshot(
+        displayName: nextDisplayName,
+        photoUrl: remotePhotoUrl ?? authController.currentUser?.photoUrl,
+        homeBase: remoteProfile.homeBase,
+        bio: remoteProfile.bio,
       );
+      _lastProfileSignature = jsonEncode(syncedProfileSnapshot.toJson());
+
+      if (me.hasTripsPayload) {
+        await ref.read(tripsRepositoryProvider).replaceTrips(
+          <TripRecord>[
+            for (final trip in me.trips)
+              TripRecord(
+                remoteId: trip.id,
+                countryCode: trip.countryCode.toUpperCase(),
+                countryName: trip.countryName,
+                startDate: trip.startDate,
+                endDate: trip.endDate,
+                cities: trip.cities,
+                cityDataJson: trip.cityEntries.isNotEmpty
+                    ? jsonEncode(
+                        trip.cityEntries
+                            .map((entry) => entry.toJson())
+                            .toList(growable: false),
+                      )
+                    : null,
+                coverImageUri: trip.coverImageUrl,
+                notes: trip.notes,
+              ),
+          ],
+        );
+      }
+
+      if (me.hasVisitedCountriesPayload) {
+        await ref.read(visitsRepositoryProvider).replaceVisits(
+          <CountryVisitRecord>[
+            for (final visit in me.visitedCountries)
+              CountryVisitRecord(
+                countryCode: visit.countryCode.toUpperCase(),
+                countryName: visit.countryName,
+                visitedAt: visit.visitedAt,
+              ),
+          ],
+        );
+      }
+
+      final shouldHydrateWishlist =
+          localWishlistItems.isEmpty || me.wishlistItems.isNotEmpty;
+      if (me.hasWishlistItemsPayload && shouldHydrateWishlist) {
+        final localWishlistByKey = <String, WishlistItemRecord>{
+          for (final item in localWishlistItems)
+            _wishlistHydrationKey(item.remoteId, item.title): item,
+        };
+        await ref.read(wishlistRepositoryProvider).replaceWishlistItems(
+          <WishlistItemRecord>[
+            for (final item in me.wishlistItems)
+              _wishlistRecordFromRemote(
+                remote: item,
+                local: localWishlistByKey[
+                    _wishlistHydrationKey(item.id, item.title)],
+              ),
+          ],
+        );
+      }
+
+      if (me.hasTripsPayload || me.hasVisitedCountriesPayload) {
+        _lastTravelSignature = jsonEncode(
+          SocialTravelSnapshot(
+            profile: syncedProfileSnapshot,
+            trips: me.trips,
+            visitedCountries: me.visitedCountries,
+          ).toJson(),
+        );
+      }
+
+      if (me.hasWishlistItemsPayload && shouldHydrateWishlist) {
+        _lastWishlistSignature = jsonEncode(
+          SocialWishlistSnapshot(items: me.wishlistItems).toJson(),
+        );
+      }
+
       ref.invalidate(socialMeProvider);
       ref.invalidate(friendsHubProvider);
     } catch (error, stackTrace) {
-      debugPrint('Remote profile hydration failed: $error');
+      debugPrint('Remote social state hydration failed: $error');
       debugPrintStack(stackTrace: stackTrace);
     }
   }
 
   Future<void> _syncTravel() async {
     final session = ref.read(socialSessionProvider);
+    if (session == null) {
+      return;
+    }
+
+    await _hydrateRemoteStateIfNeeded(session);
+    await _promoteTripMedia(session);
+
     final snapshot = ref.read(socialTravelSnapshotProvider);
-    if (session == null || snapshot == null) {
+    if (snapshot == null) {
       return;
     }
 
@@ -464,9 +786,268 @@ class _SocialSyncCoordinator {
     }
   }
 
+  Future<void> _syncWishlist() async {
+    final session = ref.read(socialSessionProvider);
+    if (session == null) {
+      return;
+    }
+
+    await _hydrateRemoteStateIfNeeded(session);
+    await _promoteWishlistMedia(session);
+
+    final snapshot = ref.read(socialWishlistSnapshotProvider);
+    if (snapshot == null) {
+      return;
+    }
+
+    final signature = jsonEncode(snapshot.toJson());
+    if (signature == _lastWishlistSignature) {
+      return;
+    }
+
+    try {
+      await ref.read(socialApiClientProvider).syncWishlist(
+            accessToken: session.accessToken,
+            wishlist: snapshot,
+          );
+      _lastWishlistSignature = signature;
+      ref.invalidate(socialMeProvider);
+      ref.invalidate(friendsHubProvider);
+    } catch (error, stackTrace) {
+      debugPrint('Social wishlist sync failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  Future<void> _promoteTripMedia(SocialSession session) async {
+    final api = ref.read(socialApiClientProvider);
+    final repository = ref.read(tripsRepositoryProvider);
+    final trips = await repository.getRecentTrips(limit: 5000);
+
+    for (final trip in trips) {
+      var nextTrip = trip;
+      var didChange = false;
+
+      final coverImage = normalizeSocialAssetUrl(trip.coverImageUri);
+      if (coverImage != null &&
+          coverImage.isNotEmpty &&
+          !_isBackendManagedSocialImage(coverImage)) {
+        final prepared = await _prepareSocialUploadFile(
+          coverImage,
+          tempPrefix: 'trip-cover',
+        );
+        if (prepared != null) {
+          try {
+            final uploadedUrl = await api.uploadTripCoverPhoto(
+              accessToken: session.accessToken,
+              tripId: _tripRemoteKey(trip),
+              filePath: prepared.filePath,
+            );
+            if (uploadedUrl.isNotEmpty && uploadedUrl != trip.coverImageUri) {
+              nextTrip = nextTrip.copyWith(coverImageUri: uploadedUrl);
+              didChange = true;
+            }
+          } catch (error, stackTrace) {
+            debugPrint('Trip cover upload failed: $error');
+            debugPrintStack(stackTrace: stackTrace);
+          } finally {
+            await prepared.dispose();
+          }
+        }
+      }
+
+      final cityEntries = decodeTripCityEntries(
+        cityDataJson: nextTrip.cityDataJson,
+        legacyCities: nextTrip.cities,
+      );
+      var didChangeCities = false;
+      final nextEntries = <TripCityEntry>[];
+      for (final city in cityEntries) {
+        final cityImage = normalizeSocialAssetUrl(city.imageUri);
+        if (cityImage == null ||
+            cityImage.isEmpty ||
+            _isBackendManagedSocialImage(cityImage)) {
+          nextEntries.add(city);
+          continue;
+        }
+
+        final prepared = await _prepareSocialUploadFile(
+          cityImage,
+          tempPrefix: 'trip-city',
+        );
+        if (prepared == null) {
+          nextEntries.add(city);
+          continue;
+        }
+
+        try {
+          final uploadedUrl = await api.uploadTripCityPhoto(
+            accessToken: session.accessToken,
+            tripId: _tripRemoteKey(trip),
+            cityKey: _slugifyCityKey(city.name),
+            filePath: prepared.filePath,
+          );
+          if (uploadedUrl.isNotEmpty && uploadedUrl != city.imageUri) {
+            nextEntries.add(city.copyWith(imageUri: uploadedUrl));
+            didChangeCities = true;
+          } else {
+            nextEntries.add(city);
+          }
+        } catch (error, stackTrace) {
+          debugPrint('Trip city image upload failed: $error');
+          debugPrintStack(stackTrace: stackTrace);
+          nextEntries.add(city);
+        } finally {
+          await prepared.dispose();
+        }
+      }
+
+      if (didChangeCities) {
+        nextTrip = nextTrip.copyWith(
+          cityDataJson: encodeTripCityEntries(nextEntries),
+        );
+        didChange = true;
+      }
+
+      if (didChange) {
+        await repository.updateTrip(nextTrip);
+      }
+    }
+  }
+
+  Future<void> _promoteWishlistMedia(SocialSession session) async {
+    final api = ref.read(socialApiClientProvider);
+    final repository = ref.read(wishlistRepositoryProvider);
+    final items = await repository.getWishlistItems();
+
+    for (final item in items) {
+      final image = normalizeSocialAssetUrl(wishlistPrimaryImageUrl(item));
+      if (image == null ||
+          image.isEmpty ||
+          _isBackendManagedSocialImage(image)) {
+        continue;
+      }
+
+      final prepared = await _prepareSocialUploadFile(
+        image,
+        tempPrefix: 'wishlist-cover',
+      );
+      if (prepared == null) {
+        continue;
+      }
+
+      try {
+        final uploadedUrl = await api.uploadWishlistPhoto(
+          accessToken: session.accessToken,
+          wishlistItemId: _wishlistRemoteKey(item),
+          filePath: prepared.filePath,
+        );
+        if (uploadedUrl.isEmpty) {
+          continue;
+        }
+        final updatedPlan = _replaceWishlistCoverImageUrl(
+          rawPlan: item.aiPlan,
+          imageUrl: uploadedUrl,
+        );
+        if (updatedPlan != item.aiPlan) {
+          await repository.updateWishlistItem(
+            item.copyWith(aiPlan: updatedPlan),
+          );
+        }
+      } catch (error, stackTrace) {
+        debugPrint('Wishlist image upload failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      } finally {
+        await prepared.dispose();
+      }
+    }
+  }
+
   void dispose() {
     _profileTimer?.cancel();
     _travelTimer?.cancel();
+    _wishlistTimer?.cancel();
+  }
+}
+
+WishlistItemRecord _wishlistRecordFromRemote({
+  required SocialWishlistItem remote,
+  required WishlistItemRecord? local,
+}) {
+  final mergedAiPlan = _mergeWishlistAiPlan(
+    localAiPlan: local?.aiPlan,
+    remoteAiPlan: _nonEmptyOrNull(remote.aiPlan),
+    remoteImageUrl: remote.imageUrl,
+  );
+  return WishlistItemRecord(
+    remoteId: remote.id,
+    title: remote.title,
+    countryName: _nonEmptyOrNull(remote.countryName) ?? local?.countryName,
+    countryCode: _nonEmptyOrNull(remote.countryCode) ?? local?.countryCode,
+    createdAt: remote.createdAt > 0 ? remote.createdAt : (local?.createdAt ?? 0),
+    plannedStartDate: remote.plannedStartDate ?? local?.plannedStartDate,
+    plannedEndDate: remote.plannedEndDate ?? local?.plannedEndDate,
+    plannedCities:
+        _nonEmptyOrNull(remote.plannedCities) ?? local?.plannedCities,
+    aiPlan: mergedAiPlan,
+    isPinned: remote.isPinned,
+  );
+}
+
+String _wishlistHydrationKey(String? remoteId, String title) {
+  final normalizedRemoteId = remoteId?.trim();
+  if (normalizedRemoteId != null && normalizedRemoteId.isNotEmpty) {
+    return 'remote:$normalizedRemoteId';
+  }
+  final normalizedTitle = title
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+      .replaceAll(RegExp(r'^-+|-+$'), '');
+  return 'title:$normalizedTitle';
+}
+
+String? _mergeWishlistAiPlan({
+  required String? localAiPlan,
+  required String? remoteAiPlan,
+  required String? remoteImageUrl,
+}) {
+  final normalizedRemoteImage = normalizeSocialAssetUrl(remoteImageUrl);
+  String? basePlan = _nonEmptyOrNull(remoteAiPlan) ?? _nonEmptyOrNull(localAiPlan);
+  if (basePlan == null && normalizedRemoteImage == null) {
+    return null;
+  }
+
+  if (basePlan == null && normalizedRemoteImage != null) {
+    return jsonEncode(<String, dynamic>{
+      'cover_image': <String, dynamic>{
+        'image_url': normalizedRemoteImage,
+      },
+    });
+  }
+
+  try {
+    final decoded = jsonDecode(basePlan!);
+    if (decoded is! Map) {
+      return basePlan;
+    }
+    final payload = <String, dynamic>{
+      for (final entry in decoded.entries) '${entry.key}': entry.value,
+    };
+    if (normalizedRemoteImage != null) {
+      final currentCover = payload['cover_image'];
+      final coverImage = currentCover is Map
+          ? <String, dynamic>{
+              for (final entry in currentCover.entries)
+                '${entry.key}': entry.value,
+            }
+          : <String, dynamic>{};
+      coverImage['image_url'] = normalizedRemoteImage;
+      payload['cover_image'] = coverImage;
+    }
+    return jsonEncode(payload);
+  } catch (_) {
+    return basePlan;
   }
 }
 
@@ -489,7 +1070,8 @@ class _FriendsHubCacheStore {
         return null;
       }
       final map = Map<String, dynamic>.from(decoded);
-      final cachedAt = _parseCacheTimestamp(map['cached_at'] ?? map['cachedAt']);
+      final cachedAt =
+          _parseCacheTimestamp(map['cached_at'] ?? map['cachedAt']);
       if (cachedAt != null &&
           DateTime.now().difference(cachedAt) > _friendsHubCacheMaxAge) {
         await prefs.remove(_keyFor(userId));
@@ -537,7 +1119,8 @@ class _FriendsHubCacheStore {
   static Map<String, dynamic> _socialMeToJson(SocialMeData data) {
     return <String, dynamic>{
       'profile': data.profile.toJson(),
-      if (data.invite != null) 'active_invite': _socialInviteToJson(data.invite!),
+      if (data.invite != null)
+        'active_invite': _socialInviteToJson(data.invite!),
       if (data.stats != null) 'stats': _socialStatsToJson(data.stats!),
       'invites': <Map<String, dynamic>>[
         for (final invite in data.invites) _socialInviteToJson(invite),

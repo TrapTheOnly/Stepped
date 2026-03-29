@@ -16,6 +16,7 @@ void main() {
           reason: 'Manual duration',
           source: 'user_selected',
         ),
+        recommendedDates: null,
         timeWindows: <GeminiTimeWindow>[
           GeminiTimeWindow(
             label: 'Manual Window',
@@ -55,13 +56,18 @@ void main() {
         rawText: 'manual',
       );
 
-      const generated = GeminiTripPlan(
+      final generated = GeminiTripPlan(
         country: 'Spain',
         summary: 'AI summary',
         stayDuration: GeminiStayDuration(
           days: 7,
           reason: 'AI duration',
           source: 'ai_recommended',
+        ),
+        recommendedDates: GeminiRecommendedDates(
+          start: DateTime(2026, 6, 12),
+          end: DateTime(2026, 6, 18),
+          reason: 'Best fit for the summer route.',
         ),
         timeWindows: <GeminiTimeWindow>[
           GeminiTimeWindow(
@@ -120,17 +126,20 @@ void main() {
 
       final merged = planner.mergePlans(current: current, generated: generated);
 
-      expect(merged.summary, 'Manual summary');
-      expect(merged.stayDuration?.days, 9);
-      expect(merged.timeWindows.first.label, 'Manual Window');
-      expect(merged.cityPlan.map((city) => city.city).toList(),
-          <String>['Madrid', 'Barcelona', 'Valencia']);
-      expect(merged.cityPlan.first.reason, 'Manual Madrid reason');
+      expect(merged.summary, 'AI summary');
+      expect(merged.stayDuration?.days, 7);
+      expect(merged.recommendedDates?.start, DateTime(2026, 6, 12));
+      expect(merged.timeWindows.first.label, 'AI Window');
+      expect(
+        merged.cityPlan.map((city) => city.city).toList(),
+        <String>['Madrid', 'Barcelona', 'Valencia'],
+      );
+      expect(merged.cityPlan.first.reason, 'AI Madrid reason');
 
       final madridDetail = merged.cityDetails
           .firstWhere((detail) => detail.city.toLowerCase() == 'madrid');
-      expect(madridDetail.timeline.first.place, 'Plaza Mayor');
-      expect(madridDetail.thingsToDo.first, 'Manual activity');
+      expect(madridDetail.timeline.first.place, 'Retiro Park');
+      expect(madridDetail.thingsToDo.first, 'AI activity');
       expect(madridDetail.image?.imageUrl, 'https://example.com/madrid.jpg');
     });
 
@@ -139,6 +148,7 @@ void main() {
         country: '',
         summary: '',
         stayDuration: null,
+        recommendedDates: null,
         timeWindows: <GeminiTimeWindow>[],
         cityPlan: <GeminiCityPlan>[
           GeminiCityPlan(
@@ -160,13 +170,18 @@ void main() {
         rawText: 'manual',
       );
 
-      const generated = GeminiTripPlan(
+      final generated = GeminiTripPlan(
         country: 'Spain',
         summary: 'AI summary',
         stayDuration: GeminiStayDuration(
           days: 6,
           reason: 'AI duration',
           source: 'ai_recommended',
+        ),
+        recommendedDates: GeminiRecommendedDates(
+          start: DateTime(2026, 3, 4),
+          end: DateTime(2026, 3, 9),
+          reason: 'Fits the spring conditions.',
         ),
         timeWindows: <GeminiTimeWindow>[
           GeminiTimeWindow(
@@ -206,6 +221,7 @@ void main() {
       expect(merged.country, 'Spain');
       expect(merged.summary, 'AI summary');
       expect(merged.stayDuration?.days, 6);
+      expect(merged.recommendedDates?.end, DateTime(2026, 3, 9));
       expect(merged.timeWindows.single.label, 'Spring');
       expect(merged.cityPlan.single.days, 3);
       expect(merged.cityPlan.single.reason, 'Historic center');
@@ -222,13 +238,18 @@ void main() {
     const planner = GeminiTripPlanner();
 
     test('toStorageJson round-trips via parseStoredPlan', () {
-      const plan = GeminiTripPlan(
+      final plan = GeminiTripPlan(
         country: 'Japan',
         summary: 'Tokyo and Kyoto split.',
         stayDuration: GeminiStayDuration(
           days: 8,
           reason: 'Balanced pace',
           source: 'user_selected',
+        ),
+        recommendedDates: GeminiRecommendedDates(
+          start: DateTime(2026, 10, 10),
+          end: DateTime(2026, 10, 17),
+          reason: 'Autumn timing matches foliage and weather.',
         ),
         timeWindows: <GeminiTimeWindow>[
           GeminiTimeWindow(
@@ -270,6 +291,7 @@ void main() {
       expect(parsed!.country, 'Japan');
       expect(parsed.summary, 'Tokyo and Kyoto split.');
       expect(parsed.stayDuration?.days, 8);
+      expect(parsed.recommendedDates?.start, DateTime(2026, 10, 10));
       expect(parsed.cityPlan.single.city, 'Tokyo');
       expect(parsed.cityDetails.single.timeline.single.place, 'Shibuya');
     });

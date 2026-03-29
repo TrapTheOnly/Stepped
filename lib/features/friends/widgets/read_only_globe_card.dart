@@ -21,16 +21,12 @@ class ReadOnlyGlobeCard extends StatefulWidget {
 }
 
 class _ReadOnlyGlobeCardState extends State<ReadOnlyGlobeCard> {
-  static const double _minZoom = 1.0;
-  static const double _maxZoom = 8.0;
-
   static final Future<GlobeCountryDataset> _datasetFuture =
       GlobeCountryDatasetLoader.load();
 
   double _rotation = 0.36;
   double _pitch = -0.22;
-  double _zoom = 1.42;
-  double _scaleStartZoom = 1.42;
+  static const double _fixedZoom = 1.08;
 
   @override
   Widget build(BuildContext context) {
@@ -77,25 +73,14 @@ class _ReadOnlyGlobeCardState extends State<ReadOnlyGlobeCard> {
                     child: snapshot.hasData
                         ? GestureDetector(
                             behavior: HitTestBehavior.opaque,
-                            onScaleStart: (details) {
-                              _scaleStartZoom = _zoom;
-                            },
-                            onScaleUpdate: (details) {
+                            onPanUpdate: (details) {
                               setState(() {
-                                if (details.pointerCount > 1) {
-                                  _zoom =
-                                      (_scaleStartZoom * details.scale).clamp(
-                                    _minZoom,
-                                    _maxZoom,
-                                  );
-                                  return;
-                                }
-
                                 _rotation = GlobeProjection.normalizeAngle(
-                                  _rotation + (details.focalPointDelta.dx * 0.0095 / _zoom),
+                                  _rotation +
+                                      (details.delta.dx * 0.0095 / _fixedZoom),
                                 );
                                 _pitch = (_pitch +
-                                        (details.focalPointDelta.dy * 0.0062 / _zoom))
+                                        (details.delta.dy * 0.0062 / _fixedZoom))
                                     .clamp(-1.2, 1.2);
                               });
                             },
@@ -104,8 +89,8 @@ class _ReadOnlyGlobeCardState extends State<ReadOnlyGlobeCard> {
                                 colorScheme: colorScheme,
                                 rotation: _rotation,
                                 pitch: _pitch,
-                                zoom: _zoom,
-                                lodLevel: _zoom >= 2.4 ? 1 : 0,
+                                zoom: _fixedZoom,
+                                lodLevel: 0,
                                 countries: snapshot.data!.countries,
                                 visitedCountryCodes: visitedSet,
                                 selectedCountryCode: null,

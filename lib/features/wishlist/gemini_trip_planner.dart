@@ -24,6 +24,7 @@ class GeminiTripPlanner {
   Future<GeminiTripPlan> generatePlan({
     required String apiKey,
     required String countryName,
+    required int generationAttempt,
     String? wishlistTitle,
     String? tripPurpose,
     String? homeBase,
@@ -57,7 +58,7 @@ class GeminiTripPlanner {
     }
     if (normalizedCities.length > wishlistMaxCitiesPerRequest) {
       throw const GeminiPlannerException(
-          'You can add up to 4 cities per request.');
+          'You can add up to 5 cities per request.');
     }
     final normalizedMonth = (preferredMonth != null &&
             preferredMonth >= DateTime.january &&
@@ -70,6 +71,7 @@ class GeminiTripPlanner {
       wishlistTitle: wishlistTitle,
       tripPurpose: tripPurpose,
       homeBase: homeBase?.trim(),
+      generationAttempt: generationAttempt,
       preciseWindow: preciseWindow,
       preferredMonth: normalizedMonth,
       durationPreference: durationPreference,
@@ -81,7 +83,7 @@ class GeminiTripPlanner {
     final baseText = await _requestGeminiText(
       apiKey: normalizedKey,
       prompt: basePrompt,
-      temperature: 0.2,
+      temperature: 0.48,
       maxOutputTokens: wishlistPlannerMaxOutputTokens,
     );
     final basePlan = parseBaseGeminiPlanText(
@@ -97,11 +99,18 @@ class GeminiTripPlanner {
       countryName: normalizedCountry,
       cityPlan: basePlan.cityPlan,
       tripPurpose: tripPurpose,
+      exactDateWindow: preciseWindow == null
+          ? basePlan.recommendedDates
+          : GeminiRecommendedDates(
+              start: preciseWindow.start,
+              end: preciseWindow.end,
+              reason: 'Using the exact dates selected by the user.',
+            ),
     );
     final detailsText = await _requestGeminiText(
       apiKey: normalizedKey,
       prompt: detailsPrompt,
-      temperature: 0.2,
+      temperature: 0.36,
       maxOutputTokens: wishlistPlannerMaxOutputTokens,
     );
     final generatedDetails = parseGeminiCityDetailsText(
@@ -117,6 +126,7 @@ class GeminiTripPlanner {
       country: basePlan.country,
       summary: basePlan.summary,
       stayDuration: basePlan.stayDuration,
+      recommendedDates: basePlan.recommendedDates,
       timeWindows: basePlan.timeWindows,
       cityPlan: basePlan.cityPlan,
       cityDetails: detailsWithImages,
@@ -151,6 +161,7 @@ class GeminiTripPlanner {
       country: plan.country,
       summary: plan.summary,
       stayDuration: plan.stayDuration,
+      recommendedDates: plan.recommendedDates,
       timeWindows: plan.timeWindows,
       cityPlan: plan.cityPlan,
       cityDetails:

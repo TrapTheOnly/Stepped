@@ -18,6 +18,7 @@ Future<GeminiTripPlan> generateWishlistPlan({
   required GeminiTripPlanner planner,
   required CloudTripPlannerClient cloudClient,
   required String? accessToken,
+  required int generationAttempt,
   required WishlistTimeInputMode timeInputMode,
   required DateTimeRange? dateRange,
   required int? selectedMonth,
@@ -37,6 +38,7 @@ Future<GeminiTripPlan> generateWishlistPlan({
           tripPurpose: tripPurpose,
           countryName: countryName,
           homeBase: prefs.homeBase,
+          generationAttempt: generationAttempt,
           preciseWindow: timeInputMode == WishlistTimeInputMode.preciseDates
               ? dateRange
               : null,
@@ -59,6 +61,7 @@ Future<GeminiTripPlan> generateWishlistPlan({
           tripPurpose: tripPurpose,
           countryName: countryName,
           homeBase: prefs.homeBase,
+          generationAttempt: generationAttempt,
           preciseWindow: timeInputMode == WishlistTimeInputMode.preciseDates
               ? dateRange
               : null,
@@ -195,12 +198,16 @@ Future<void> saveWishlistPlanDraft({
     item.copyWith(
       countryName: countryName.isEmpty ? null : countryName,
       countryCode: selectedCountryCode,
-      plannedStartDate: timeInputMode == WishlistTimeInputMode.preciseDates
-          ? dateRange?.start.millisecondsSinceEpoch
-          : null,
-      plannedEndDate: timeInputMode == WishlistTimeInputMode.preciseDates
-          ? dateRange?.end.millisecondsSinceEpoch
-          : null,
+      plannedStartDate: _resolvedPlannedStartDate(
+        timeInputMode: timeInputMode,
+        dateRange: dateRange,
+        plan: plan,
+      ),
+      plannedEndDate: _resolvedPlannedEndDate(
+        timeInputMode: timeInputMode,
+        dateRange: dateRange,
+        plan: plan,
+      ),
       plannedCities:
           plannedCities == null || plannedCities.isEmpty ? null : plannedCities,
       aiPlan: payload,
@@ -226,6 +233,7 @@ Future<GeminiTripPlan> generateAndSaveWishlistPlan({
   required bool allowAdditionalCities,
   required String? selectedCountryCode,
   required GeminiTripPlan? currentPlan,
+  required int generationAttempt,
 }) async {
   final preferredCities = parseWishlistPreferredCities(
     noCities: noCities,
@@ -236,6 +244,7 @@ Future<GeminiTripPlan> generateAndSaveWishlistPlan({
     planner: planner,
     cloudClient: cloudClient,
     accessToken: accessToken,
+    generationAttempt: generationAttempt,
     timeInputMode: timeInputMode,
     dateRange: dateRange,
     selectedMonth: selectedMonth,
@@ -251,11 +260,17 @@ Future<GeminiTripPlan> generateAndSaveWishlistPlan({
     title: item.title,
     countryName: countryName,
     purpose: tripPurpose,
+    summary: finalizedPlan.summary,
+    cityHints: _wishlistCoverCityHints(finalizedPlan),
+    cityImageQueries: _wishlistCoverImageQueries(finalizedPlan),
   );
   final coverImage = await findOpenverseImageForWishlistCover(
     title: item.title,
     countryName: countryName,
     purpose: tripPurpose,
+    summary: finalizedPlan.summary,
+    cityHints: _wishlistCoverCityHints(finalizedPlan),
+    cityImageQueries: _wishlistCoverImageQueries(finalizedPlan),
   );
   await saveWishlistPlanDraft(
     repository: repository,
@@ -315,6 +330,28 @@ Map<String, dynamic> _buildStoredWishlistPlanPayload({
   return payload;
 }
 
+List<String> _wishlistCoverCityHints(GeminiTripPlan plan) {
+  if (plan.cityPlan.isEmpty) {
+    return const <String>[];
+  }
+
+  final sorted = <GeminiCityPlan>[...plan.cityPlan]
+    ..sort((a, b) => b.days.compareTo(a.days));
+  return sorted
+      .map((city) => city.city.trim())
+      .where((city) => city.isNotEmpty)
+      .take(3)
+      .toList(growable: false);
+}
+
+List<String> _wishlistCoverImageQueries(GeminiTripPlan plan) {
+  return plan.cityDetails
+      .map((detail) => detail.imageQuery.trim())
+      .where((query) => query.isNotEmpty)
+      .take(3)
+      .toList(growable: false);
+}
+
 Map<String, dynamic>? _decodeStoredPlanMap(String? rawPlan) {
   final raw = rawPlan?.trim();
   if (raw == null || raw.isEmpty) {
@@ -333,4 +370,34 @@ Map<String, dynamic>? _decodeStoredPlanMap(String? rawPlan) {
   } catch (_) {
     return null;
   }
+}
+
+int? _resolvedPlannedStartDate({
+  required WishlistTimeInputMode timeInputMode,
+  required DateTimeRange? dateRange,
+  required GeminiTripPlan? plan,
+}) {
+  if (timeInputMode == WishlistTimeInputMode.preciseDates) {
+    return dateRange?.start.millisecondsSinceEpoch;
+  }
+  if (timeInputMode == WishlistTimeInputMode.aiRecommended ||
+      timeInputMode == WishlistTimeInputMode.monthAndDuration) {
+    return plan?.recommendedDates?.start.millisecondsSinceEpoch;
+  }
+  return null;
+}
+
+int? _resolvedPlannedEndDate({
+  required WishlistTimeInputMode timeInputMode,
+  required DateTimeRange? dateRange,
+  required GeminiTripPlan? plan,
+}) {
+  if (timeInputMode == WishlistTimeInputMode.preciseDates) {
+    return dateRange?.end.millisecondsSinceEpoch;
+  }
+  if (timeInputMode == WishlistTimeInputMode.aiRecommended ||
+      timeInputMode == WishlistTimeInputMode.monthAndDuration) {
+    return plan?.recommendedDates?.end.millisecondsSinceEpoch;
+  }
+  return null;
 }

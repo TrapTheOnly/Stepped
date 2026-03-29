@@ -1,7 +1,7 @@
-const int wishlistMaxCitiesPerRequest = 4;
+const int wishlistMaxCitiesPerRequest = 5;
 const int wishlistMaxTripDays = 30;
 const int wishlistPlanGenerationCostCredits = 1;
-const int wishlistPlannerMaxOutputTokens = 900;
+const int wishlistPlannerMaxOutputTokens = 1500;
 
 class WishlistCityInputAnalysis {
   const WishlistCityInputAnalysis({

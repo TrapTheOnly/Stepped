@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,12 +9,14 @@ import '../../data/db/app_db.dart';
 import '../../data/repositories/wishlist_repository.dart';
 import 'gemini_trip_planner.dart';
 import 'wishlist_plan_manual_edit_controller.dart';
+import 'wishlist_plan_manual_edit_city_screen.dart';
 import 'wishlist_plan_ui_state.dart';
 import 'widgets/wishlist_editor_shell.dart';
 import 'widgets/wishlist_editorial_widgets.dart';
 import 'widgets/wishlist_manual_edit_basics_card.dart';
 import 'widgets/wishlist_manual_edit_cities_section.dart';
 import 'widgets/wishlist_manual_edit_time_windows_section.dart';
+import '../trips/widgets/add_trip_cover_image_preview.dart';
 
 class WishlistPlanManualEditScreen extends ConsumerStatefulWidget {
   const WishlistPlanManualEditScreen({
@@ -47,16 +50,17 @@ class _WishlistPlanManualEditScreenState
         inputDecorationTheme: wishlistEditorInputDecorationTheme(context),
       ),
       child: WishlistEditorShell(
-        title: 'Manual Plan',
+        title: 'Manual Edit',
         onBack: () => context.pop(),
-        bottomDock: WishlistEditorDockButton(
-          label: _controller.isSaving ? 'Saving...' : 'Save changes',
-          icon: Icons.save_outlined,
-          isLoading: _controller.isSaving,
-          onTap: itemAsync.valueOrNull == null || _controller.isSaving
-              ? null
-              : () => _save(itemAsync.valueOrNull!),
-        ),
+        topActions: <Widget>[
+          WishlistEditorTopBarIconAction(
+            icon: Icons.save_outlined,
+            isLoading: _controller.isSaving,
+            onTap: itemAsync.valueOrNull == null || _controller.isSaving
+                ? null
+                : () => _save(itemAsync.valueOrNull!),
+          ),
+        ],
         body: itemAsync.when(
           loading: () => const WishlistEditorStatusView(
             title: 'Opening manual editor',
@@ -97,7 +101,8 @@ class _WishlistPlanManualEditScreenState
                   subtitle: _controller.countryController.text.trim().isEmpty
                       ? 'Build the route, timing windows, and city cards by hand.'
                       : _controller.countryController.text.trim(),
-                  imageUrl: wishlistPrimaryImageUrl(item),
+                  imageUrl: _controller.coverImage?.imageUrl ??
+                      wishlistPrimaryImageUrl(item),
                   chips: <String>[
                     if (_controller.durationDaysController.text
                         .trim()
@@ -108,6 +113,35 @@ class _WishlistPlanManualEditScreenState
                   ],
                 ),
                 const SizedBox(height: 18),
+                WishlistEditorSectionCard(
+                  title: 'Cover image',
+                  subtitle:
+                      'Keep the AI image or upload your own cover for this wishlist idea.',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _pickCoverImageFromDevice,
+                              icon: const Icon(Icons.upload_file_rounded),
+                              label: const Text('Upload image'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_controller.coverImage?.imageUrl.trim().isNotEmpty ??
+                          false) ...<Widget>[
+                        const SizedBox(height: 12),
+                        AddTripCoverImagePreview(
+                          uri: _controller.coverImage!.imageUrl.trim(),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
                 if (_controller.errorText != null) ...<Widget>[
                   WishlistEditorSectionCard(
                     title: 'Something needs attention',
@@ -158,52 +192,29 @@ class _WishlistPlanManualEditScreenState
                       setState(() {});
                     }
                   },
-                  onErrorClear: () => setState(_controller.clearError),
+                  onOpenCity: (index) async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => WishlistPlanManualEditCityScreen(
+                          city: _controller.cities[index],
+                          controller: _controller,
+                          onDraftChanged: () {
+                            if (mounted) {
+                              setState(() {});
+                            }
+                          },
+                        ),
+                      ),
+                    );
+                    if (mounted) {
+                      setState(() {});
+                    }
+                  },
                   onMoveCity: (from, to) {
                     setState(() => _controller.moveCity(from, to));
                   },
                   onDeleteCity: (index) {
                     setState(() => _controller.deleteCity(index));
-                  },
-                  onAddTimelineStep: (city) async {
-                    if (await _controller.addTimelineStep(context, city)) {
-                      setState(() {});
-                    }
-                  },
-                  onMoveTimelineStep: (city, from, to) {
-                    setState(
-                        () => _controller.moveTimelineStep(city, from, to));
-                  },
-                  onEditTimelineStep: (city, index) async {
-                    if (await _controller.editTimelineStep(
-                      context,
-                      city,
-                      index,
-                    )) {
-                      setState(() {});
-                    }
-                  },
-                  onDeleteTimelineStep: (city, index) {
-                    setState(() => _controller.deleteTimelineStep(city, index));
-                  },
-                  onAddThing: (city) async {
-                    if (await _controller.addThing(context, city)) {
-                      setState(() {});
-                    }
-                  },
-                  onMoveThing: (city, from, to) {
-                    setState(() => _controller.moveThing(city, from, to));
-                  },
-                  onEditThing: (city, index) async {
-                    if (await _controller.editThing(context, city, index)) {
-                      setState(() {});
-                    }
-                  },
-                  onDeleteThing: (city, index) {
-                    setState(() => _controller.deleteThing(city, index));
-                  },
-                  onCityStateChanged: () {
-                    setState(_controller.clearError);
                   },
                 ),
               ],
@@ -250,6 +261,17 @@ class _WishlistPlanManualEditScreenState
         payload: payload,
         existingRawPlan: item.aiPlan,
       );
+      if (_controller.coverImage != null) {
+        mergedPayload['cover_image'] = <String, dynamic>{
+          'image_url': _controller.coverImage!.imageUrl,
+          'source_page_url': _controller.coverImage!.sourcePageUrl,
+          'title': _controller.coverImage!.title,
+          'creator': _controller.coverImage!.creator,
+          'license': _controller.coverImage!.license,
+          'license_url': _controller.coverImage!.licenseUrl,
+          'source': _controller.coverImage!.source,
+        };
+      }
       final plannedCities = hydratedPlan.cityPlan
           .map((city) => city.city.trim())
           .where((city) => city.isNotEmpty)
@@ -285,5 +307,25 @@ class _WishlistPlanManualEditScreenState
         });
       }
     }
+  }
+
+  Future<void> _pickCoverImageFromDevice() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: false,
+      withData: false,
+    );
+    if (!mounted || result == null || result.files.isEmpty) {
+      return;
+    }
+
+    final path = result.files.single.path;
+    if (path == null || path.trim().isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _controller.setCoverImageUri(path.trim());
+    });
   }
 }

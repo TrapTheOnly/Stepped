@@ -4,7 +4,6 @@ import '../gemini_trip_models.dart';
 import '../wishlist_plan_form_types.dart';
 import '../wishlist_credits_client.dart';
 import 'wishlist_plan_city_preferences_section.dart';
-import 'wishlist_plan_credits_card.dart';
 import 'wishlist_plan_destination_section.dart';
 import 'wishlist_plan_purpose_section.dart';
 import 'wishlist_plan_generation_section.dart';
@@ -24,7 +23,6 @@ class WishlistPlanLoadedView extends StatelessWidget {
     required this.options,
     required this.countryController,
     required this.countryFocusNode,
-    required this.selectedCountryCode,
     required this.selectedCountryName,
     required this.purposeController,
     required this.purposeLength,
@@ -73,7 +71,6 @@ class WishlistPlanLoadedView extends StatelessWidget {
   final List<WishlistCountryOption> options;
   final TextEditingController countryController;
   final FocusNode countryFocusNode;
-  final String? selectedCountryCode;
   final String selectedCountryName;
   final TextEditingController purposeController;
   final int purposeLength;
@@ -134,44 +131,18 @@ class WishlistPlanLoadedView extends StatelessWidget {
           subtitle: subtitle,
           imageUrl: itemImageUrl,
           chips: <String>[
-            if (selectedCountryName.isNotEmpty) selectedCountryName,
             if (timeInputMode == WishlistTimeInputMode.preciseDates &&
                 dateRange != null)
               '${formatDate(dateRange!.start)} - ${formatDate(dateRange!.end)}',
+            if (timeInputMode == WishlistTimeInputMode.aiRecommended &&
+                plan?.recommendedDates != null)
+              '${formatDate(plan!.recommendedDates!.start)} - ${formatDate(plan!.recommendedDates!.end)}',
             if (timeInputMode == WishlistTimeInputMode.monthAndDuration &&
                 selectedMonth != null)
               _monthName(selectedMonth!),
           ],
         ),
         const SizedBox(height: 18),
-        if (credits != null) ...<Widget>[
-          WishlistPlanCreditsCard(credits: credits!),
-        ] else if (creditsLoading) ...<Widget>[
-          const WishlistEditorSectionCard(
-            title: 'Credits',
-            subtitle: 'Loading your current balance.',
-            child: Row(
-              children: <Widget>[
-                SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                SizedBox(width: 10),
-                Expanded(child: Text('Loading credit balance...')),
-              ],
-            ),
-          ),
-        ] else if (creditsError != null) ...<Widget>[
-          WishlistEditorSectionCard(
-            title: 'Credits unavailable',
-            subtitle: 'Could not load credits right now.',
-            child: Text(
-              'You can still review the form, but generation may fail until the balance is available.',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ),
-        ],
-        const SizedBox(height: 12),
         if (!hasAiConfiguration) ...<Widget>[
           WishlistPlanMissingAiConfigCard(
             usingCloudApi: usingCloudApi,
@@ -185,8 +156,6 @@ class WishlistPlanLoadedView extends StatelessWidget {
           options: options,
           countryController: countryController,
           countryFocusNode: countryFocusNode,
-          selectedCountryCode: selectedCountryCode,
-          selectedCountryName: selectedCountryName,
           onCountrySelected: onCountrySelected,
           onCountryInputChanged: onCountryInputChanged,
         ),

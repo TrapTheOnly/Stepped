@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 
 import '../../../widgets/frosted_squircle.dart';
 import 'wishlist_editorial_widgets.dart';
@@ -49,6 +50,7 @@ class WishlistEditorShell extends StatelessWidget {
     this.topActions = const <Widget>[],
     this.bottomDock,
     this.hideBottomDockWhenKeyboardVisible = false,
+    this.overlay,
   });
 
   final String title;
@@ -57,6 +59,7 @@ class WishlistEditorShell extends StatelessWidget {
   final List<Widget> topActions;
   final Widget? bottomDock;
   final bool hideBottomDockWhenKeyboardVisible;
+  final Widget? overlay;
 
   @override
   Widget build(BuildContext context) {
@@ -104,6 +107,7 @@ class WishlistEditorShell extends StatelessWidget {
                   child: bottomDock!,
                 ),
               ),
+            if (overlay != null) Positioned.fill(child: overlay!),
           ],
         ),
       ),
@@ -401,11 +405,31 @@ class _WishlistEditorTopBar extends StatelessWidget {
       shadowColor: scheme.primary.withValues(alpha: 0.06),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: SizedBox(
-        height: 34,
-        child: Row(
+        height: 38,
+        child: Stack(
+          alignment: Alignment.center,
           children: <Widget>[
-            SizedBox(
-              width: 82,
+            Positioned.fill(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 56),
+                child: Center(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontSize: 21,
+                          height: 1,
+                        ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: _WishlistEditorTopBarButton(
@@ -414,18 +438,10 @@ class _WishlistEditorTopBar extends StatelessWidget {
                 ),
               ),
             ),
-            Expanded(
-              child: Text(
-                title,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontSize: 24,
-                      height: 1,
-                    ),
-              ),
-            ),
-            SizedBox(
-              width: 82,
+            Positioned(
+              right: 0,
+              top: 0,
+              bottom: 0,
               child: Align(
                 alignment: Alignment.centerRight,
                 child: Row(
@@ -436,6 +452,100 @@ class _WishlistEditorTopBar extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class WishlistEditorTopBarIconAction extends StatelessWidget {
+  const WishlistEditorTopBarIconAction({
+    super.key,
+    required this.icon,
+    required this.onTap,
+    this.isLoading = false,
+  });
+
+  final IconData icon;
+  final VoidCallback? onTap;
+  final bool isLoading;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return IconButton(
+      onPressed: isLoading ? null : onTap,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 38, minHeight: 38),
+      visualDensity: VisualDensity.compact,
+      icon: isLoading
+          ? SizedBox.square(
+              dimension: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: scheme.onSurface,
+              ),
+            )
+          : Icon(
+              icon,
+              size: 20,
+              color: onTap == null
+                  ? scheme.onSurface.withValues(alpha: 0.34)
+                  : scheme.onSurface,
+            ),
+    );
+  }
+}
+
+class WishlistEditorTopBarTextAction extends StatelessWidget {
+  const WishlistEditorTopBarTextAction({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.isLoading = false,
+  });
+
+  final String label;
+  final VoidCallback? onTap;
+  final bool isLoading;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return TextButton(
+      onPressed: isLoading ? null : onTap,
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        minimumSize: const Size(0, 32),
+        foregroundColor: scheme.onSurface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(999),
+        ),
+      ),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 180),
+        child: isLoading
+            ? SizedBox.square(
+                key: const ValueKey<String>('loading'),
+                dimension: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: scheme.onSurface,
+                ),
+              )
+            : Text(
+                key: ValueKey<String>(label),
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: onTap == null
+                          ? scheme.onSurface.withValues(alpha: 0.34)
+                          : scheme.onSurface,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
       ),
     );
   }
@@ -480,17 +590,29 @@ class _WishlistHeroArtworkLayer extends StatelessWidget {
     if (imageUrl == null || imageUrl!.trim().isEmpty) {
       return const _WishlistHeroPlaceholderLayer();
     }
-    return Image.network(
-      imageUrl!,
-      fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => const _WishlistHeroPlaceholderLayer(),
-      loadingBuilder: (context, child, progress) {
-        if (progress == null) {
-          return child;
-        }
-        return const _WishlistHeroPlaceholderLayer();
-      },
-    );
+    final normalized = imageUrl!.trim();
+    if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
+      return Image.network(
+        normalized,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const _WishlistHeroPlaceholderLayer(),
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) {
+            return child;
+          }
+          return const _WishlistHeroPlaceholderLayer();
+        },
+      );
+    }
+
+    final localPath = normalized.startsWith('file://')
+        ? normalized.replaceFirst('file://', '')
+        : normalized;
+    final file = File(localPath);
+    if (!file.existsSync()) {
+      return const _WishlistHeroPlaceholderLayer();
+    }
+    return Image.file(file, fit: BoxFit.cover);
   }
 }
 

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../../widgets/country_flag.dart';
 import '../wishlist_plan_form_types.dart';
 import 'wishlist_editor_shell.dart';
+import 'wishlist_country_autocomplete_field.dart';
 
 class WishlistPlanDestinationSection extends StatelessWidget {
   const WishlistPlanDestinationSection({
@@ -12,8 +12,6 @@ class WishlistPlanDestinationSection extends StatelessWidget {
     required this.options,
     required this.countryController,
     required this.countryFocusNode,
-    required this.selectedCountryCode,
-    required this.selectedCountryName,
     required this.onCountrySelected,
     required this.onCountryInputChanged,
   });
@@ -23,8 +21,6 @@ class WishlistPlanDestinationSection extends StatelessWidget {
   final List<WishlistCountryOption> options;
   final TextEditingController countryController;
   final FocusNode countryFocusNode;
-  final String? selectedCountryCode;
-  final String selectedCountryName;
   final ValueChanged<WishlistCountryOption> onCountrySelected;
   final ValueChanged<String> onCountryInputChanged;
 
@@ -48,107 +44,13 @@ class WishlistPlanDestinationSection extends StatelessWidget {
                 ),
               ),
             ),
-          RawAutocomplete<WishlistCountryOption>(
-            textEditingController: countryController,
+          WishlistCountryAutocompleteField(
             focusNode: countryFocusNode,
-            displayStringForOption: (option) => option.name,
-            optionsBuilder: (textValue) {
-              final query = textValue.text.trim().toLowerCase();
-              if (query.isEmpty) {
-                return options.take(12);
-              }
-              return options.where((option) {
-                return option.name.toLowerCase().contains(query) ||
-                    option.code.toLowerCase().contains(query);
-              }).take(12);
-            },
+            controller: countryController,
+            options: options,
+            onTyped: onCountryInputChanged,
             onSelected: onCountrySelected,
-            fieldViewBuilder:
-                (context, controller, focusNode, onFieldSubmitted) {
-              return TextField(
-                controller: controller,
-                focusNode: focusNode,
-                decoration: const InputDecoration(
-                  labelText: 'Country',
-                  hintText: 'Start typing a country',
-                  prefixIcon: Icon(Icons.public_outlined),
-                ),
-                onChanged: onCountryInputChanged,
-              );
-            },
-            optionsViewBuilder: (context, onSelected, matches) {
-              return Align(
-                alignment: Alignment.topLeft,
-                child: Material(
-                  elevation: 8,
-                  borderRadius: BorderRadius.circular(20),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      maxWidth: 480,
-                      maxHeight: 280,
-                    ),
-                    child: ListView.builder(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      shrinkWrap: true,
-                      itemCount: matches.length,
-                      itemBuilder: (context, index) {
-                        final option = matches.elementAt(index);
-                        return ListTile(
-                          dense: true,
-                          leading: CountryFlag(
-                            iso2: option.code,
-                            width: 26,
-                            height: 18,
-                          ),
-                          title: Text(option.name),
-                          subtitle: Text(option.code),
-                          onTap: () => onSelected(option),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              );
-            },
           ),
-          if (selectedCountryName.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 12),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(22),
-                color: Theme.of(context)
-                    .colorScheme
-                    .surfaceContainerLowest
-                    .withValues(alpha: 0.82),
-                border: Border.all(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .outlineVariant
-                      .withValues(alpha: 0.12),
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                child: Row(
-                  children: <Widget>[
-                    if (selectedCountryCode != null)
-                      CountryFlag(
-                        iso2: selectedCountryCode!,
-                        width: 28,
-                        height: 20,
-                      ),
-                    if (selectedCountryCode != null) const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        selectedCountryName,
-                        style: Theme.of(context).textTheme.bodyLarge,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );

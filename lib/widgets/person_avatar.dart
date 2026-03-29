@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../features/social/social_asset_urls.dart';
+
 class PersonAvatar extends StatelessWidget {
   const PersonAvatar({
     super.key,
@@ -24,40 +26,56 @@ class PersonAvatar extends StatelessWidget {
     final initials = _initialsFor(displayName);
     final normalizedPhotoUrl = photoUrl?.trim();
     final imageProvider = _imageProviderFor(normalizedPhotoUrl);
+    final diameter = radius * 2;
 
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: backgroundColor ?? colorScheme.primaryContainer,
-      foregroundColor: foregroundColor ?? colorScheme.onPrimaryContainer,
-      backgroundImage: imageProvider,
-      child: imageProvider != null
-          ? null
-          : Text(
-              initials,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: foregroundColor ?? colorScheme.onPrimaryContainer,
-                  ),
+    return SizedBox(
+      width: diameter,
+      height: diameter,
+      child: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: backgroundColor ?? colorScheme.primaryContainer,
+              shape: BoxShape.circle,
             ),
+            child: Center(
+              child: _InitialsLabel(
+                initials: initials,
+                color: foregroundColor ?? colorScheme.onPrimaryContainer,
+              ),
+            ),
+          ),
+          if (imageProvider != null)
+            ClipOval(
+              child: Image(
+                image: imageProvider,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
   ImageProvider<Object>? _imageProviderFor(String? rawPhotoUrl) {
-    if (rawPhotoUrl == null || rawPhotoUrl.isEmpty) {
+    final normalizedPhotoUrl = normalizeSocialAssetUrl(rawPhotoUrl);
+    if (normalizedPhotoUrl == null || normalizedPhotoUrl.isEmpty) {
       return null;
     }
 
-    final parsed = Uri.tryParse(rawPhotoUrl);
+    final parsed = Uri.tryParse(normalizedPhotoUrl);
     final scheme = parsed?.scheme.toLowerCase();
     if (scheme == 'http' || scheme == 'https') {
-      return NetworkImage(rawPhotoUrl);
+      return NetworkImage(normalizedPhotoUrl);
     }
     if (scheme == 'file') {
       final file = File.fromUri(parsed!);
       return file.existsSync() ? FileImage(file) : null;
     }
 
-    final file = File(rawPhotoUrl);
+    final file = File(normalizedPhotoUrl);
     if (file.existsSync()) {
       return FileImage(file);
     }
@@ -78,5 +96,26 @@ class PersonAvatar extends StatelessWidget {
     }
     return (parts.first.substring(0, 1) + parts.last.substring(0, 1))
         .toUpperCase();
+  }
+}
+
+class _InitialsLabel extends StatelessWidget {
+  const _InitialsLabel({
+    required this.initials,
+    required this.color,
+  });
+
+  final String initials;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      initials,
+      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: color,
+          ),
+    );
   }
 }

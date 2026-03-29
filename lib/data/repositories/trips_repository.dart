@@ -39,6 +39,10 @@ class TripsRepository {
     return _database.updateTrip(trip);
   }
 
+  Future<void> replaceTrips(List<TripRecord> trips) {
+    return _database.replaceTrips(trips);
+  }
+
   Future<void> deleteTrip(int id) {
     return _database.deleteTrip(id);
   }

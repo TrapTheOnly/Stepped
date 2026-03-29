@@ -119,8 +119,7 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
                       child: _SectionHeading(
                         eyebrow: 'Your circle',
                         title: 'Friends',
-                        subtitle:
-                            'Tap a friend to open their public travel profile.',
+                        subtitle: '',
                       ),
                     ),
                     const SizedBox(height: 18),
@@ -481,6 +480,7 @@ class _SectionHeading extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final normalizedSubtitle = subtitle.trim();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -499,14 +499,16 @@ class _SectionHeading extends StatelessWidget {
                 fontWeight: FontWeight.w700,
               ),
         ),
-        const SizedBox(height: 6),
-        Text(
-          subtitle,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                height: 1.35,
-              ),
-        ),
+        if (normalizedSubtitle.isNotEmpty) ...<Widget>[
+          const SizedBox(height: 6),
+          Text(
+            normalizedSubtitle,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  height: 1.35,
+                ),
+          ),
+        ],
       ],
     );
   }

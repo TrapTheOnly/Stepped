@@ -25,3 +25,6 @@ scripts/
 *-session.md
 test/
 .codex/
+*.log
+/*.png
+/tmp/

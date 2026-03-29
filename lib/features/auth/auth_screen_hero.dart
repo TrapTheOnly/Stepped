@@ -27,7 +27,7 @@ class _AuthHero extends StatelessWidget {
             children: <Widget>[
               DecoratedBox(
                 decoration: ShapeDecoration(
-                  shape: squircleShape(24),
+                  shape: squircleShape(38),
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -38,11 +38,11 @@ class _AuthHero extends StatelessWidget {
                   ),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(9),
+                  padding: const EdgeInsets.all(6),
                   child: Image.asset(
                     'assets/branding/stepped_monochrome_logo.png',
-                    width: 34,
-                    height: 34,
+                    width: 108,
+                    height: 108,
                     fit: BoxFit.cover,
                     color: colorScheme.onPrimaryContainer,
                     filterQuality: FilterQuality.high,

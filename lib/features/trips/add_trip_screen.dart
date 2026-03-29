@@ -9,6 +9,7 @@ import '../../data/repositories/wishlist_repository.dart';
 import '../../widgets/frosted_squircle.dart';
 import '../map/map_viewmodel.dart';
 import '../wishlist/gemini_trip_planner.dart';
+import '../wishlist/wishlist_plan_date_utils.dart';
 import 'add_trip_controller.dart';
 import 'add_trip_form_types.dart';
 import 'add_trip_logic.dart';
@@ -25,10 +26,14 @@ class AddTripScreen extends ConsumerStatefulWidget {
     super.key,
     this.tripId,
     this.wishlistItemId,
+    this.initialCountryCode,
+    this.initialCountryName,
   });
 
   final int? tripId;
   final int? wishlistItemId;
+  final String? initialCountryCode;
+  final String? initialCountryName;
 
   @override
   ConsumerState<AddTripScreen> createState() => _AddTripScreenState();
@@ -57,6 +62,13 @@ class _AddTripScreenState extends ConsumerState<AddTripScreen> {
       const <String, TripCountryOption>{};
 
   bool get _isEditing => widget.tripId != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedCountryCode = widget.initialCountryCode?.trim().toUpperCase();
+    _selectedCountryName = widget.initialCountryName?.trim();
+  }
 
   @override
   void dispose() {
@@ -91,6 +103,7 @@ class _AddTripScreenState extends ConsumerState<AddTripScreen> {
     return Theme(
       data: Theme.of(context).copyWith(inputDecorationTheme: inputTheme),
       child: Scaffold(
+        resizeToAvoidBottomInset: false,
         backgroundColor: Colors.transparent,
         body: ColoredBox(
           color: colorScheme.surface,
@@ -320,8 +333,7 @@ class _AddTripScreenState extends ConsumerState<AddTripScreen> {
             suggestedCities: suggestedCities,
             inheritedSourceTitle: inheritance?.item.title,
             inheritance: inheritance,
-            onPickStartDate: () => _pickDate(isStart: true),
-            onPickEndDate: () => _pickDate(isStart: false),
+            onPickDateRange: _pickDateRange,
             onAddTypedCities: _addTypedCities,
             onAddSuggestedCity: _addSuggestedCity,
             onOpenCity: (city) => _openCityEditor(
@@ -410,28 +422,20 @@ class _AddTripScreenState extends ConsumerState<AddTripScreen> {
     _populatedFromWishlist = true;
   }
 
-  Future<void> _pickDate({required bool isStart}) async {
-    final now = DateTime.now();
-    final initialDate =
-        isStart ? (_startDate ?? now) : (_endDate ?? _startDate ?? now);
-    final picked = await showDatePicker(
+  Future<void> _pickDateRange() async {
+    final currentRange = _startDate != null && _endDate != null
+        ? DateTimeRange(start: _startDate!, end: _endDate!)
+        : null;
+    final picked = await pickWishlistDateRange(
       context: context,
-      initialDate: initialDate,
-      firstDate: DateTime(1970),
-      lastDate: DateTime(now.year + 10),
+      currentRange: currentRange,
     );
     if (picked == null) {
       return;
     }
     setState(() {
-      if (isStart) {
-        _startDate = picked;
-        if (_endDate != null && _endDate!.isBefore(picked)) {
-          _endDate = picked;
-        }
-      } else {
-        _endDate = picked;
-      }
+      _startDate = picked.start;
+      _endDate = picked.end;
     });
   }
 

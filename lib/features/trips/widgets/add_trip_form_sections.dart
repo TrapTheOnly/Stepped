@@ -73,8 +73,7 @@ class AddTripTravelDetailsSection extends StatelessWidget {
     required this.suggestedCities,
     this.inheritedSourceTitle,
     this.inheritance,
-    required this.onPickStartDate,
-    required this.onPickEndDate,
+    required this.onPickDateRange,
     required this.onAddTypedCities,
     required this.onAddSuggestedCity,
     required this.onOpenCity,
@@ -89,8 +88,7 @@ class AddTripTravelDetailsSection extends StatelessWidget {
   final List<String> suggestedCities;
   final String? inheritedSourceTitle;
   final TripWishlistInheritance? inheritance;
-  final VoidCallback onPickStartDate;
-  final VoidCallback onPickEndDate;
+  final VoidCallback onPickDateRange;
   final VoidCallback onAddTypedCities;
   final ValueChanged<String> onAddSuggestedCity;
   final ValueChanged<TripCityEntry> onOpenCity;
@@ -105,24 +103,11 @@ class AddTripTravelDetailsSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: AddTripDateField(
-                  label: 'Start date',
-                  value: startDate,
-                  onTap: onPickStartDate,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: AddTripDateField(
-                  label: 'End date',
-                  value: endDate,
-                  onTap: onPickEndDate,
-                ),
-              ),
-            ],
+          AddTripDateField(
+            label: 'Travel dates',
+            startDate: startDate,
+            endDate: endDate,
+            onTap: onPickDateRange,
           ),
           if (startDate == null || endDate == null)
             Padding(

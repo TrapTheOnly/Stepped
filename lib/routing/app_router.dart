@@ -7,6 +7,7 @@ import '../features/auth/auth_screen.dart';
 import '../features/friends/friend_link_accept_screen.dart';
 import '../features/friends/friend_profile_screen.dart';
 import '../features/friends/friend_trip_detail_screen.dart';
+import '../features/friends/friend_wishlist_detail_screen.dart';
 import '../features/friends/friends_screen.dart';
 import '../features/map/map_screen.dart';
 import '../features/profile/profile_screen.dart';
@@ -138,7 +139,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 builder: (context, state) {
                   final rawWishlistId = state.uri.queryParameters['wishlistId'];
                   final wishlistItemId = int.tryParse(rawWishlistId ?? '');
-                  return AddTripScreen(wishlistItemId: wishlistItemId);
+                  final initialCountryCode =
+                      state.uri.queryParameters['country'];
+                  final initialCountryName =
+                      state.uri.queryParameters['countryName'];
+                  return AddTripScreen(
+                    wishlistItemId: wishlistItemId,
+                    initialCountryCode: initialCountryCode,
+                    initialCountryName: initialCountryName,
+                  );
                 },
               ),
               GoRoute(
@@ -294,6 +303,25 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               );
             },
           ),
+          GoRoute(
+            path: 'wishlist/:wishlistId',
+            parentNavigatorKey: _rootNavigatorKey,
+            builder: (context, state) {
+              final friendUserId = state.pathParameters['friendUserId'];
+              final wishlistId = state.pathParameters['wishlistId'];
+              if (friendUserId == null ||
+                  friendUserId.trim().isEmpty ||
+                  wishlistId == null ||
+                  wishlistId.trim().isEmpty) {
+                return const _RouteErrorScreen(
+                    message: 'Invalid wishlist idea');
+              }
+              return FriendWishlistDetailScreen(
+                friendUserId: friendUserId,
+                wishlistItemId: wishlistId,
+              );
+            },
+          ),
         ],
       ),
       GoRoute(
@@ -436,6 +464,8 @@ class _AppShell extends StatelessWidget {
   }
 
   void _onDestinationSelected(BuildContext context, int index) {
+    _dismissPopupRoutes(_rootNavigatorKey);
+    _dismissPopupRoutes(_shellNavigatorKey);
     switch (index) {
       case 0:
         context.go('/');
@@ -450,6 +480,14 @@ class _AppShell extends StatelessWidget {
         context.go('/friends');
         return;
     }
+  }
+
+  void _dismissPopupRoutes(GlobalKey<NavigatorState> navigatorKey) {
+    final navigator = navigatorKey.currentState;
+    if (navigator == null) {
+      return;
+    }
+    navigator.popUntil((route) => route is! PopupRoute);
   }
 }
 
@@ -490,77 +528,172 @@ class _AppLaunchScreen extends StatelessWidget {
             ],
           ),
         ),
-        child: SafeArea(
-          child: Center(
-            child: FrostedSquircle(
-              radius: 36,
-              blurSigma: 22,
-              color: colorScheme.surface.withValues(alpha: 0.58),
-              borderColor: colorScheme.primaryContainer.withValues(alpha: 0.16),
-              shadowColor: colorScheme.primary.withValues(alpha: 0.08),
-              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  DecoratedBox(
-                    decoration: ShapeDecoration(
-                      shape: squircleShape(28),
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: <Color>[
-                          colorScheme.primary,
-                          colorScheme.primaryContainer,
-                        ],
-                      ),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Image.asset(
-                        'assets/branding/stepped_monochrome_logo.png',
-                        width: 44,
-                        height: 44,
-                        color: colorScheme.onPrimary,
-                        filterQuality: FilterQuality.high,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'STEPPED',
-                    style: textTheme.titleLarge?.copyWith(
-                      letterSpacing: 3.0,
-                      fontSize: 26,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Reopening your travel journal...',
-                    style: textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  SizedBox(
-                    width: 140,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: LinearProgressIndicator(
-                        minHeight: 4,
-                        backgroundColor:
-                            colorScheme.surfaceContainerHighest.withValues(
-                          alpha: 0.75,
-                        ),
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          colorScheme.primaryContainer,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+        child: Stack(
+          children: <Widget>[
+            Positioned(
+              top: -110,
+              left: -100,
+              child: _LaunchOrb(
+                diameter: 280,
+                color: colorScheme.primaryContainer.withValues(alpha: 0.24),
               ),
             ),
-          ),
+            Positioned(
+              top: 190,
+              right: -110,
+              child: _LaunchOrb(
+                diameter: 240,
+                color: colorScheme.secondaryContainer.withValues(alpha: 0.18),
+              ),
+            ),
+            Positioned(
+              bottom: -120,
+              left: 36,
+              child: _LaunchOrb(
+                diameter: 260,
+                color: colorScheme.primary.withValues(alpha: 0.10),
+              ),
+            ),
+            SafeArea(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 28),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      FrostedSquircle(
+                        radius: 44,
+                        blurSigma: 22,
+                        color: colorScheme.surface.withValues(alpha: 0.42),
+                        borderColor: colorScheme.primaryContainer
+                            .withValues(alpha: 0.14),
+                        shadowColor:
+                            colorScheme.primary.withValues(alpha: 0.08),
+                        padding: const EdgeInsets.all(14),
+                        child: DecoratedBox(
+                          decoration: ShapeDecoration(
+                            shape: squircleShape(34),
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: <Color>[
+                                colorScheme.primary,
+                                colorScheme.primaryContainer,
+                              ],
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(18),
+                            child: Image.asset(
+                              'assets/branding/stepped_monochrome_logo.png',
+                              width: 72,
+                              height: 72,
+                              color: colorScheme.onPrimary,
+                              filterQuality: FilterQuality.high,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 26),
+                      Text(
+                        'STEPPED',
+                        style: textTheme.titleLarge?.copyWith(
+                          letterSpacing: 4,
+                          fontSize: 30,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Reopening your travel journal',
+                        style: textTheme.bodyLarge?.copyWith(
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Restoring your places, routes, and profile.',
+                        textAlign: TextAlign.center,
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      FrostedSquircle(
+                        radius: 28,
+                        blurSigma: 18,
+                        color: colorScheme.surface.withValues(alpha: 0.36),
+                        borderColor:
+                            colorScheme.outlineVariant.withValues(alpha: 0.10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 16,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Text(
+                              'Opening your map',
+                              style: textTheme.labelMedium?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                                letterSpacing: 1.1,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: 180,
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(999),
+                                child: LinearProgressIndicator(
+                                  minHeight: 4,
+                                  backgroundColor: colorScheme
+                                      .surfaceContainerHighest
+                                      .withValues(alpha: 0.70),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    colorScheme.primaryContainer,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LaunchOrb extends StatelessWidget {
+  const _LaunchOrb({
+    required this.diameter,
+    required this.color,
+  });
+
+  final double diameter;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Container(
+        width: diameter,
+        height: diameter,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color,
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: color.withValues(alpha: 0.22),
+              blurRadius: 90,
+              spreadRadius: 8,
+            ),
+          ],
         ),
       ),
     );

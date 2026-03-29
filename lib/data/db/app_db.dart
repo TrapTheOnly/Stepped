@@ -17,7 +17,7 @@ final databaseProvider = Provider<AppDatabase>((ref) {
 class AppDatabase {
   static const _databaseName = 'stepped.db';
 
-  static const _databaseVersion = 4;
+  static const _databaseVersion = 5;
 
   Database? _database;
 
@@ -96,6 +96,18 @@ class AppDatabase {
     _tripChanges.add(null);
     _visitChanges.add(null);
     return insertedId;
+  }
+
+  Future<void> replaceTrips(List<TripRecord> trips) async {
+    final db = await _db;
+    await db.transaction((txn) async {
+      await txn.delete(tripsTable);
+      for (final trip in trips) {
+        await txn.insert(tripsTable, trip.toMap());
+      }
+    });
+
+    _tripChanges.add(null);
   }
 
   Future<void> updateTrip(TripRecord trip) async {
@@ -202,6 +214,17 @@ class AppDatabase {
     _visitChanges.add(null);
   }
 
+  Future<void> replaceVisitedCountries(List<CountryVisitRecord> visits) async {
+    final db = await _db;
+    await db.transaction((txn) async {
+      await txn.delete(countryVisitsTable);
+      for (final visit in visits) {
+        await txn.insert(countryVisitsTable, visit.toMap());
+      }
+    });
+    _visitChanges.add(null);
+  }
+
   Future<List<WishlistItemRecord>> getWishlistOrderedByCreatedAtDesc() async {
     final db = await _db;
     final rows = await db.query(
@@ -276,6 +299,17 @@ class AppDatabase {
     _wishlistChanges.add(null);
   }
 
+  Future<void> replaceWishlistItems(List<WishlistItemRecord> items) async {
+    final db = await _db;
+    await db.transaction((txn) async {
+      await txn.delete(wishlistTable);
+      for (final item in items) {
+        await txn.insert(wishlistTable, item.toMap());
+      }
+    });
+    _wishlistChanges.add(null);
+  }
+
   Future<void> close() async {
     final db = _database;
     if (db != null) {
@@ -305,7 +339,9 @@ extension _AppDatabaseInternalMethods on AppDatabase {
         await db.execute(createTripsTable);
         await db.execute(createWishlistTable);
         await db.execute(createTripsStartDateIndex);
+        await db.execute(createTripsRemoteIdIndex);
         await db.execute(createWishlistCreatedAtIndex);
+        await db.execute(createWishlistRemoteIdIndex);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 1) {
@@ -313,7 +349,9 @@ extension _AppDatabaseInternalMethods on AppDatabase {
           await db.execute(createTripsTable);
           await db.execute(createWishlistTable);
           await db.execute(createTripsStartDateIndex);
+          await db.execute(createTripsRemoteIdIndex);
           await db.execute(createWishlistCreatedAtIndex);
+          await db.execute(createWishlistRemoteIdIndex);
         }
         if (oldVersion < 2) {
           await _addColumnIfMissing(
@@ -353,6 +391,18 @@ extension _AppDatabaseInternalMethods on AppDatabase {
             'ALTER TABLE $tripsTable ADD COLUMN cityDataJson TEXT',
           );
         }
+        if (oldVersion < 5) {
+          await _addColumnIfMissing(
+            db,
+            'ALTER TABLE $tripsTable ADD COLUMN remoteId TEXT',
+          );
+          await _addColumnIfMissing(
+            db,
+            'ALTER TABLE $wishlistTable ADD COLUMN remoteId TEXT',
+          );
+          await _createIndexIfMissing(db, createTripsRemoteIdIndex);
+          await _createIndexIfMissing(db, createWishlistRemoteIdIndex);
+        }
       },
     );
 
@@ -375,6 +425,14 @@ extension _AppDatabaseInternalMethods on AppDatabase {
       await db.execute(statement);
     } on DatabaseException {
       // Ignore duplicate-column failures for defensive migrations.
+    }
+  }
+
+  Future<void> _createIndexIfMissing(Database db, String statement) async {
+    try {
+      await db.execute(statement);
+    } on DatabaseException {
+      // Ignore duplicate-index failures for defensive migrations.
     }
   }
 }

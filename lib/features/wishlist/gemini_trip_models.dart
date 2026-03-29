@@ -79,6 +79,18 @@ class GeminiStayDuration {
   final String source;
 }
 
+class GeminiRecommendedDates {
+  const GeminiRecommendedDates({
+    required this.start,
+    required this.end,
+    required this.reason,
+  });
+
+  final DateTime start;
+  final DateTime end;
+  final String reason;
+}
+
 class GeminiCityPlan {
   const GeminiCityPlan({
     required this.city,
@@ -161,6 +173,7 @@ class GeminiTripPlan {
     required this.country,
     required this.summary,
     required this.stayDuration,
+    required this.recommendedDates,
     required this.timeWindows,
     required this.cityPlan,
     required this.cityDetails,
@@ -170,6 +183,7 @@ class GeminiTripPlan {
   final String country;
   final String summary;
   final GeminiStayDuration? stayDuration;
+  final GeminiRecommendedDates? recommendedDates;
   final List<GeminiTimeWindow> timeWindows;
   final List<GeminiCityPlan> cityPlan;
   final List<GeminiCityDetail> cityDetails;

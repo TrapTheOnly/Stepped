@@ -11,6 +11,7 @@ GeminiTripPlan geminiTripPlanFromDecodedMap({
   final country = _readString(decoded['country']) ?? fallbackCountry;
   final summary = _readString(decoded['summary']) ?? '';
   final stayDuration = _readStayDuration(decoded['duration']);
+  final recommendedDates = _readRecommendedDates(decoded['recommended_dates']);
   final timeWindows = _readTimeWindows(decoded['time_windows']);
   final cityPlan = _readCityPlan(decoded['city_plan']);
   final cityDetailsFromPayload = readGeminiCityDetails(decoded['city_cards']);
@@ -20,6 +21,7 @@ GeminiTripPlan geminiTripPlanFromDecodedMap({
     country: country,
     summary: summary,
     stayDuration: stayDuration,
+    recommendedDates: recommendedDates,
     timeWindows: timeWindows,
     cityPlan: cityPlan,
     cityDetails: cityDetails,
@@ -91,6 +93,26 @@ GeminiStayDuration? _readStayDuration(dynamic raw) {
     days: days.clamp(1, 45),
     reason: reason,
     source: normalizedSource,
+  );
+}
+
+GeminiRecommendedDates? _readRecommendedDates(dynamic raw) {
+  if (raw is! Map<String, dynamic>) {
+    return null;
+  }
+  final start = _readDate(raw['start']);
+  final end = _readDate(raw['end']);
+  final reason = _readString(raw['reason']);
+  if (start == null || end == null || reason == null) {
+    return null;
+  }
+  if (end.isBefore(start)) {
+    return null;
+  }
+  return GeminiRecommendedDates(
+    start: start,
+    end: end,
+    reason: reason,
   );
 }
 
@@ -280,4 +302,12 @@ bool? _readBool(dynamic value) {
     return false;
   }
   return null;
+}
+
+DateTime? _readDate(dynamic value) {
+  final raw = _readString(value);
+  if (raw == null) {
+    return null;
+  }
+  return DateTime.tryParse(raw);
 }

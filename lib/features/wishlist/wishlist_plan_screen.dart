@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/db/app_db.dart';
 import '../../data/repositories/wishlist_repository.dart';
+import '../../widgets/frosted_squircle.dart';
 import '../auth/auth_controller.dart';
 import '../map/map_viewmodel.dart';
 import '../settings/app_preferences.dart';
@@ -19,6 +22,54 @@ import 'widgets/wishlist_editorial_widgets.dart';
 import 'widgets/wishlist_plan_loaded_view.dart';
 
 const _wishlistAiPurposeMaxChars = 300;
+const Duration _generationMinimumDuration = Duration(seconds: 20);
+const Duration _generationProgressTick = Duration(milliseconds: 120);
+const Duration _generationHoldMessageInterval = Duration(seconds: 6);
+const List<String> _generationHoldMessages = <String>[
+  'Polishing the city-by-city route',
+  'Still looking for stronger stops',
+  'Rethinking the best places to visit',
+  'Tightening the daily pacing',
+  'Final pass on city ideas',
+];
+const List<_WishlistGenerationStage> _generationStages =
+    <_WishlistGenerationStage>[
+  _WishlistGenerationStage(
+    start: Duration.zero,
+    end: Duration(milliseconds: 2500),
+    startProgress: 0.08,
+    endProgress: 0.16,
+    message: 'Reading your trip idea',
+  ),
+  _WishlistGenerationStage(
+    start: Duration(milliseconds: 2500),
+    end: Duration(milliseconds: 5000),
+    startProgress: 0.16,
+    endProgress: 0.3,
+    message: 'Locking the strongest cities',
+  ),
+  _WishlistGenerationStage(
+    start: Duration(milliseconds: 5000),
+    end: Duration(milliseconds: 9000),
+    startProgress: 0.3,
+    endProgress: 0.48,
+    message: 'Balancing timing and route',
+  ),
+  _WishlistGenerationStage(
+    start: Duration(milliseconds: 9000),
+    end: Duration(milliseconds: 12500),
+    startProgress: 0.48,
+    endProgress: 0.64,
+    message: 'Threading in your purpose anchors',
+  ),
+  _WishlistGenerationStage(
+    start: Duration(milliseconds: 12500),
+    end: _generationMinimumDuration,
+    startProgress: 0.64,
+    endProgress: 0.85,
+    message: 'Planning what you will do in each city',
+  ),
+];
 
 class WishlistPlanScreen extends ConsumerStatefulWidget {
   const WishlistPlanScreen({super.key, required this.itemId});
@@ -46,11 +97,18 @@ class _WishlistPlanScreenState extends ConsumerState<WishlistPlanScreen> {
   String? _selectedCountryCode;
   GeminiTripPlan? _plan;
   String? _errorText;
+  double _generationProgress = _generationStages.first.startProgress;
+  String _generationStatusMessage = _generationStages.first.message;
+  Timer? _generationProgressTimer;
+  Stopwatch? _generationStopwatch;
+  bool _generationRequestCompleted = false;
+  int _generationAttempt = 0;
   Map<String, WishlistCountryOption> _countriesByCode =
       const <String, WishlistCountryOption>{};
 
   @override
   void dispose() {
+    _stopGenerationProgress();
     _countryController.dispose();
     _citiesController.dispose();
     _purposeController.dispose();
@@ -91,6 +149,7 @@ class _WishlistPlanScreenState extends ConsumerState<WishlistPlanScreen> {
       child: WishlistEditorShell(
         title: 'AI Planner',
         onBack: () => context.pop(),
+        hideBottomDockWhenKeyboardVisible: true,
         topActions: <Widget>[
           IconButton(
             onPressed:
@@ -120,6 +179,12 @@ class _WishlistPlanScreenState extends ConsumerState<WishlistPlanScreen> {
                     authController.accessToken,
                   ),
         ),
+        overlay: _isGenerating
+            ? _WishlistAiGenerationOverlay(
+                progress: _generationProgress,
+                statusMessage: _generationStatusMessage,
+              )
+            : null,
         body: itemAsync.when(
           loading: () => const WishlistEditorStatusView(
             title: 'Opening AI planner',
@@ -168,7 +233,6 @@ class _WishlistPlanScreenState extends ConsumerState<WishlistPlanScreen> {
               options: options,
               countryController: _countryController,
               countryFocusNode: _countryFocusNode,
-              selectedCountryCode: _selectedCountryCode,
               selectedCountryName: selectedCountryName,
               purposeController: _purposeController,
               purposeLength: _purposeController.text.length,
@@ -334,7 +398,9 @@ class _WishlistPlanScreenState extends ConsumerState<WishlistPlanScreen> {
     setState(() {
       _isGenerating = true;
       _errorText = null;
+      _generationAttempt += 1;
     });
+    _startGenerationProgress();
     try {
       final planner = ref.read(geminiTripPlannerProvider);
       final finalizedPlan = await generateAndSaveWishlistPlan(
@@ -355,6 +421,7 @@ class _WishlistPlanScreenState extends ConsumerState<WishlistPlanScreen> {
         allowAdditionalCities: _allowAdditionalCities,
         selectedCountryCode: _selectedCountryCode,
         currentPlan: _plan,
+        generationAttempt: _generationAttempt,
       );
       if (!mounted) {
         return;
@@ -365,14 +432,20 @@ class _WishlistPlanScreenState extends ConsumerState<WishlistPlanScreen> {
       ref.invalidate(wishlistItemProvider(widget.itemId));
       ref.invalidate(wishlistStreamProvider);
       ref.invalidate(wishlistCreditsProvider);
+      await _finishGenerationProgress();
+      if (!mounted) {
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('AI plan updated and saved.')),
       );
     } catch (error) {
+      _stopGenerationProgress();
       setState(() {
         _errorText = '$error';
       });
     } finally {
+      _stopGenerationProgress();
       if (mounted) {
         setState(() {
           _isGenerating = false;
@@ -449,4 +522,220 @@ class _WishlistPlanScreenState extends ConsumerState<WishlistPlanScreen> {
     }
     return trimmed.substring(0, _wishlistAiPurposeMaxChars);
   }
+
+  void _startGenerationProgress() {
+    _stopGenerationProgress();
+    _generationRequestCompleted = false;
+    _generationProgress = _generationStages.first.startProgress;
+    _generationStatusMessage = _generationStages.first.message;
+    _generationStopwatch = Stopwatch()..start();
+    _generationProgressTimer = Timer.periodic(
+      _generationProgressTick,
+      (_) => _updateGenerationProgress(),
+    );
+    _updateGenerationProgress();
+  }
+
+  void _updateGenerationProgress() {
+    if (!mounted || !_isGenerating) {
+      _stopGenerationProgress();
+      return;
+    }
+    final elapsed = _generationStopwatch?.elapsed ?? Duration.zero;
+    if (elapsed < _generationMinimumDuration) {
+      final snapshot = _generationSnapshotFor(elapsed);
+      setState(() {
+        _generationProgress = snapshot.progress;
+        _generationStatusMessage = snapshot.message;
+      });
+      return;
+    }
+    if (_generationRequestCompleted) {
+      return;
+    }
+    final holdElapsed = elapsed - _generationMinimumDuration;
+    final holdIndex = (holdElapsed.inMilliseconds ~/
+            _generationHoldMessageInterval.inMilliseconds) %
+        _generationHoldMessages.length;
+    setState(() {
+      _generationProgress = _generationStages.last.endProgress;
+      _generationStatusMessage = _generationHoldMessages[holdIndex];
+    });
+  }
+
+  Future<void> _finishGenerationProgress() async {
+    _generationRequestCompleted = true;
+    final elapsed = _generationStopwatch?.elapsed ?? Duration.zero;
+    final remaining = _generationMinimumDuration - elapsed;
+    if (remaining > Duration.zero) {
+      await Future.delayed(remaining);
+    }
+    if (!mounted) {
+      return;
+    }
+    _generationProgressTimer?.cancel();
+    setState(() {
+      _generationProgress = 1;
+      _generationStatusMessage = 'Finalizing your trip';
+    });
+    await Future.delayed(const Duration(milliseconds: 650));
+  }
+
+  void _stopGenerationProgress() {
+    _generationProgressTimer?.cancel();
+    _generationProgressTimer = null;
+    _generationStopwatch?.stop();
+    _generationStopwatch = null;
+    _generationRequestCompleted = false;
+  }
+}
+
+class _WishlistAiGenerationOverlay extends StatelessWidget {
+  const _WishlistAiGenerationOverlay({
+    required this.progress,
+    required this.statusMessage,
+  });
+
+  final double progress;
+  final String statusMessage;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final percentage = (progress * 100).clamp(0, 100).round();
+
+    return AbsorbPointer(
+      absorbing: true,
+      child: ColoredBox(
+        color: Colors.black.withValues(alpha: 0.24),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 28),
+            child: FrostedSquircle(
+              radius: 32,
+              blurSigma: 24,
+              color: scheme.surface.withValues(alpha: 0.76),
+              borderColor: scheme.primaryContainer.withValues(alpha: 0.18),
+              shadowColor: scheme.primary.withValues(alpha: 0.1),
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  SizedBox(
+                    width: 74,
+                    height: 74,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      alignment: Alignment.center,
+                      children: <Widget>[
+                        CircularProgressIndicator(
+                          value: progress.clamp(0, 1),
+                          strokeWidth: 4,
+                          backgroundColor:
+                              scheme.surfaceContainerHighest.withValues(alpha: 0.72),
+                        ),
+                        Center(
+                          child: Text(
+                            '$percentage%',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelLarge
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Building your AI trip',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                  const SizedBox(height: 10),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 250),
+                    child: Text(
+                      statusMessage,
+                      key: ValueKey<String>(statusMessage),
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      value: progress.clamp(0, 1),
+                      minHeight: 10,
+                      backgroundColor:
+                          scheme.surfaceContainerHighest.withValues(alpha: 0.8),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WishlistGenerationStage {
+  const _WishlistGenerationStage({
+    required this.start,
+    required this.end,
+    required this.startProgress,
+    required this.endProgress,
+    required this.message,
+  });
+
+  final Duration start;
+  final Duration end;
+  final double startProgress;
+  final double endProgress;
+  final String message;
+}
+
+class _WishlistGenerationSnapshot {
+  const _WishlistGenerationSnapshot({
+    required this.progress,
+    required this.message,
+  });
+
+  final double progress;
+  final String message;
+}
+
+_WishlistGenerationSnapshot _generationSnapshotFor(Duration elapsed) {
+  for (final stage in _generationStages) {
+    if (elapsed < stage.end) {
+      final stageDurationMs = (stage.end - stage.start).inMilliseconds;
+      final safeStageDuration = stageDurationMs <= 0 ? 1 : stageDurationMs;
+      final rawStageElapsed = (elapsed - stage.start).inMilliseconds;
+      final boundedStageElapsed = rawStageElapsed < 0
+          ? 0
+          : rawStageElapsed > safeStageDuration
+              ? safeStageDuration
+              : rawStageElapsed;
+      final t = boundedStageElapsed / safeStageDuration;
+      final progress =
+          stage.startProgress + ((stage.endProgress - stage.startProgress) * t);
+      return _WishlistGenerationSnapshot(
+        progress: progress,
+        message: stage.message,
+      );
+    }
+  }
+  final finalStage = _generationStages.last;
+  return _WishlistGenerationSnapshot(
+    progress: finalStage.endProgress,
+    message: finalStage.message,
+  );
 }

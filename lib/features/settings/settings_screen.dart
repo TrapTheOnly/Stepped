@@ -143,16 +143,21 @@ extension _SettingsScreenBuildMethods on _SettingsScreenState {
                       ),
                       const SizedBox(height: 34),
                       _SettingsHorizontalPadding(
-                        child: WishlistSettingsSection(
+                        child: GeneralSettingsSection(
                           confirmWishlistDelete: prefs.confirmWishlistDelete,
+                          onConfirmWishlistDeleteChanged:
+                              notifier.updateConfirmWishlistDelete,
+                        ),
+                      ),
+                      const SizedBox(height: 34),
+                      _SettingsHorizontalPadding(
+                        child: WishlistSettingsSection(
                           showWishlistDates: prefs.showWishlistDates,
                           shareWishlistWithFriends:
                               _privacySettings?.shareWishlistWithFriends,
                           isSavingPrivacy:
                               socialPrivacyAsync.isLoading || _isSavingPrivacy,
                           privacyErrorMessage: privacyError,
-                          onConfirmWishlistDeleteChanged:
-                              notifier.updateConfirmWishlistDelete,
                           onShowWishlistDatesChanged:
                               notifier.updateShowWishlistDates,
                           onShareWishlistChanged: _handleWishlistPrivacyChanged,

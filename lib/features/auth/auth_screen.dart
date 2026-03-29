@@ -231,11 +231,20 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
     if (!mounted) {
       return;
     }
+    final normalized = message.trim();
+    if (normalized.isEmpty) {
+      return;
+    }
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(content: Text(message)),
+        SnackBar(
+          content: Text(normalized),
+          behavior: SnackBarBehavior.floating,
+          showCloseIcon: true,
+          duration: const Duration(seconds: 4),
+        ),
       );
   }
 }

@@ -161,24 +161,46 @@ class AppearanceSettingsSection extends StatelessWidget {
   }
 }
 
+class GeneralSettingsSection extends StatelessWidget {
+  const GeneralSettingsSection({
+    super.key,
+    required this.confirmWishlistDelete,
+    required this.onConfirmWishlistDeleteChanged,
+  });
+
+  final bool confirmWishlistDelete;
+  final ValueChanged<bool> onConfirmWishlistDeleteChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsSectionShell(
+      title: 'General',
+      child: SettingsEditorialCard(
+        child: _SettingsSwitchTile(
+          value: confirmWishlistDelete,
+          onChanged: onConfirmWishlistDeleteChanged,
+          icon: Icons.delete_outline_rounded,
+          title: 'Confirm before delete',
+        ),
+      ),
+    );
+  }
+}
+
 class WishlistSettingsSection extends StatelessWidget {
   const WishlistSettingsSection({
     super.key,
-    required this.confirmWishlistDelete,
     required this.showWishlistDates,
     required this.shareWishlistWithFriends,
     required this.isSavingPrivacy,
-    required this.onConfirmWishlistDeleteChanged,
     required this.onShowWishlistDatesChanged,
     required this.onShareWishlistChanged,
     this.privacyErrorMessage,
   });
 
-  final bool confirmWishlistDelete;
   final bool showWishlistDates;
   final bool? shareWishlistWithFriends;
   final bool isSavingPrivacy;
-  final ValueChanged<bool> onConfirmWishlistDeleteChanged;
   final ValueChanged<bool> onShowWishlistDatesChanged;
   final ValueChanged<bool>? onShareWishlistChanged;
   final String? privacyErrorMessage;
@@ -190,13 +212,6 @@ class WishlistSettingsSection extends StatelessWidget {
       child: SettingsEditorialCard(
         child: Column(
           children: <Widget>[
-            _SettingsSwitchTile(
-              value: confirmWishlistDelete,
-              onChanged: onConfirmWishlistDeleteChanged,
-              icon: Icons.delete_outline_rounded,
-              title: 'Confirm before delete',
-            ),
-            const SizedBox(height: 12),
             _SettingsSwitchTile(
               value: showWishlistDates,
               onChanged: onShowWishlistDatesChanged,

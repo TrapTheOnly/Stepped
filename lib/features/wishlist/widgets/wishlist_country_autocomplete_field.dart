@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../../../widgets/frosted_squircle.dart';
 import '../../../widgets/country_flag.dart';
-import '../add_trip_form_types.dart';
+import '../../../widgets/frosted_squircle.dart';
+import '../wishlist_plan_form_types.dart';
 
-class AddTripCountryAutocompleteField extends StatelessWidget {
-  const AddTripCountryAutocompleteField({
+class WishlistCountryAutocompleteField extends StatelessWidget {
+  const WishlistCountryAutocompleteField({
     super.key,
-    required this.fieldKey,
     required this.focusNode,
     required this.controller,
     required this.options,
@@ -15,12 +14,11 @@ class AddTripCountryAutocompleteField extends StatelessWidget {
     required this.onSelected,
   });
 
-  final GlobalKey fieldKey;
   final FocusNode focusNode;
   final TextEditingController controller;
-  final List<TripCountryOption> options;
+  final List<WishlistCountryOption> options;
   final ValueChanged<String> onTyped;
-  final ValueChanged<TripCountryOption> onSelected;
+  final ValueChanged<WishlistCountryOption> onSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -60,7 +58,6 @@ class AddTripCountryAutocompleteField extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: TextFormField(
-                        key: fieldKey,
                         controller: controller,
                         focusNode: focusNode,
                         onChanged: onTyped,
@@ -128,17 +125,17 @@ class AddTripCountryAutocompleteField extends StatelessWidget {
   }
 }
 
-List<TripCountryOption> _matchingOptions({
+List<WishlistCountryOption> _matchingOptions({
   required String query,
-  required List<TripCountryOption> options,
+  required List<WishlistCountryOption> options,
 }) {
   final trimmed = query.trim().toLowerCase();
   if (trimmed.isEmpty) {
-    return const <TripCountryOption>[];
+    return const <WishlistCountryOption>[];
   }
 
-  final startsWith = <TripCountryOption>[];
-  final contains = <TripCountryOption>[];
+  final startsWith = <WishlistCountryOption>[];
+  final contains = <WishlistCountryOption>[];
   for (final option in options) {
     final name = option.name.toLowerCase();
     final code = option.code.toLowerCase();
@@ -151,7 +148,7 @@ List<TripCountryOption> _matchingOptions({
     }
   }
 
-  return <TripCountryOption>[
+  return <WishlistCountryOption>[
     ...startsWith,
     ...contains,
   ].take(3).toList(growable: false);
@@ -163,7 +160,7 @@ class _CountrySearchResultCard extends StatelessWidget {
     required this.onTap,
   });
 
-  final TripCountryOption option;
+  final WishlistCountryOption option;
   final VoidCallback onTap;
 
   @override

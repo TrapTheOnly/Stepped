@@ -13,7 +13,9 @@ import 'widgets/read_only_globe_card.dart';
 const _friendProfileTopOverlayClearance = 114.0;
 const _friendProfileBottomPadding = 64.0;
 
-class FriendProfileScreen extends ConsumerWidget {
+enum _FriendProfileTab { trips, wishlist }
+
+class FriendProfileScreen extends ConsumerStatefulWidget {
   const FriendProfileScreen({
     super.key,
     required this.friendUserId,
@@ -22,8 +24,50 @@ class FriendProfileScreen extends ConsumerWidget {
   final String friendUserId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final profileAsync = ref.watch(friendProfileProvider(friendUserId));
+  ConsumerState<FriendProfileScreen> createState() => _FriendProfileScreenState();
+}
+
+class _FriendProfileScreenState extends ConsumerState<FriendProfileScreen>
+    with WidgetsBindingObserver {
+  DateTime? _lastRefreshAt;
+  bool _isRemoving = false;
+  _FriendProfileTab _selectedTab = _FriendProfileTab.trips;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _refreshProfile(force: true);
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant FriendProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.friendUserId != widget.friendUserId) {
+      _refreshProfile(force: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshProfile();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final profileAsync = ref.watch(friendProfileProvider(widget.friendUserId));
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
@@ -39,14 +83,16 @@ class FriendProfileScreen extends ConsumerWidget {
             ),
             Positioned.fill(
               child: profileAsync.when(
+                skipLoadingOnRefresh: true,
+                skipLoadingOnReload: true,
                 loading: () => const _FriendProfileScrollView(
                   children: <Widget>[
                     SizedBox(height: _friendProfileTopOverlayClearance),
                     _FriendHorizontalPadding(
-                      child: _FriendProfileStatusCard(
+                      child: _StatusCard(
                         title: 'Loading public profile',
                         message:
-                            'Bringing in their map, stats, and shared trips.',
+                            'Bringing in their map, stats, and shared travel plans.',
                         showProgress: true,
                       ),
                     ),
@@ -56,7 +102,7 @@ class FriendProfileScreen extends ConsumerWidget {
                   children: <Widget>[
                     const SizedBox(height: _friendProfileTopOverlayClearance),
                     _FriendHorizontalPadding(
-                      child: _FriendProfileStatusCard(
+                      child: _StatusCard(
                         title: 'Profile unavailable',
                         message: _messageForError(error),
                       ),
@@ -67,7 +113,7 @@ class FriendProfileScreen extends ConsumerWidget {
                   children: <Widget>[
                     const SizedBox(height: _friendProfileTopOverlayClearance),
                     _FriendHorizontalPadding(
-                      child: _FriendHeroCard(friend: profile.friend),
+                      child: _HeroCard(friend: profile.friend),
                     ),
                     const SizedBox(height: 18),
                     _FriendHorizontalPadding(
@@ -79,66 +125,29 @@ class FriendProfileScreen extends ConsumerWidget {
                         subtitle: '',
                       ),
                     ),
-                    const SizedBox(height: 28),
-                    const _FriendHorizontalPadding(
-                      child: _FriendSectionHeading(
-                        eyebrow: 'Journal',
-                        title: 'Trips',
-                        subtitle:
-                            'Open a trip to see the shared cities, dates, and notes from their public journal.',
+                    const SizedBox(height: 22),
+                    _FriendHorizontalPadding(
+                      child: _TabPicker(
+                        selectedTab: _selectedTab,
+                        onSelected: (tab) {
+                          setState(() {
+                            _selectedTab = tab;
+                          });
+                        },
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    if (profile.trips.isEmpty)
-                      const _FriendHorizontalPadding(
-                        child: _FriendProfileStatusCard(
-                          title: 'No public trips yet',
-                          message:
-                              'This friend has not shared any trips through the social profile yet.',
-                        ),
-                      )
-                    else
-                      for (final trip in profile.trips) ...<Widget>[
-                        _FriendHorizontalPadding(
-                          child: _FriendTripCard(
-                            trip: trip,
-                            onTap: () => context.push(
-                              '/friends/profile/$friendUserId/trips/${Uri.encodeComponent(_tripRouteId(trip))}',
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                    const SizedBox(height: 28),
-                    const _FriendHorizontalPadding(
-                      child: _FriendSectionHeading(
-                        eyebrow: 'Wishlist',
-                        title: 'Shared spots',
-                        subtitle:
-                            'Saved wishlist ideas they have chosen to share with friends.',
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    if (profile.wishlistItems.isEmpty)
-                      _FriendHorizontalPadding(
-                        child: _FriendProfileStatusCard(
-                          title: profile.isWishlistPrivate
-                              ? 'Wishlist is private'
-                              : 'No shared wishlist items',
-                          message: _wishlistEmptyMessage(profile),
-                        ),
-                      )
-                    else
-                      for (final item in profile.wishlistItems) ...<Widget>[
-                        _FriendHorizontalPadding(
-                          child: _SharedWishlistCard(item: item),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
                     const SizedBox(height: 18),
                     _FriendHorizontalPadding(
-                      child: _RemoveFriendButton(friendUserId: friendUserId),
+                      child: _SectionLabel(
+                        title: _selectedTab == _FriendProfileTab.trips
+                            ? 'Trips'
+                            : 'Wishlist Ideas',
+                      ),
                     ),
+                    const SizedBox(height: 14),
+                    ...(_selectedTab == _FriendProfileTab.trips
+                        ? _buildTripSection(context, profile)
+                        : _buildWishlistSection(context, profile)),
                   ],
                 ),
               ),
@@ -151,9 +160,11 @@ class FriendProfileScreen extends ConsumerWidget {
                 bottom: false,
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: _FriendDetailTopBar(
-                    title: 'Friend Profile',
+                  child: _TopBar(
+                    title: 'Profile',
+                    isRemoving: _isRemoving,
                     onBack: () => _popOrGoToFriends(context),
+                    onRemove: _isRemoving ? null : _confirmRemove,
                   ),
                 ),
               ),
@@ -164,11 +175,86 @@ class FriendProfileScreen extends ConsumerWidget {
     );
   }
 
+  List<Widget> _buildTripSection(
+    BuildContext context,
+    FriendProfileResponse profile,
+  ) {
+    if (profile.trips.isEmpty) {
+      return const <Widget>[
+        _FriendHorizontalPadding(
+          child: _StatusCard(
+            title: 'No public trips yet',
+            message:
+                'This friend has not shared any trips through the social profile yet.',
+          ),
+        ),
+      ];
+    }
+
+    return <Widget>[
+      for (final trip in profile.trips) ...<Widget>[
+        _FriendHorizontalPadding(
+          child: _TripCard(
+            trip: trip,
+            onTap: () => context.push(
+              '/friends/profile/${widget.friendUserId}/trips/${Uri.encodeComponent(_tripRouteId(trip))}',
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    ];
+  }
+
+  List<Widget> _buildWishlistSection(
+    BuildContext context,
+    FriendProfileResponse profile,
+  ) {
+    if (profile.wishlistItems.isEmpty) {
+      return <Widget>[
+        _FriendHorizontalPadding(
+          child: _StatusCard(
+            title: profile.isWishlistPrivate
+                ? 'Wishlist is private'
+                : 'No shared wishlist ideas',
+            message: _wishlistEmptyMessage(profile),
+          ),
+        ),
+      ];
+    }
+
+    return <Widget>[
+      for (final item in profile.wishlistItems) ...<Widget>[
+        _FriendHorizontalPadding(
+          child: _WishlistCard(
+            item: item,
+            onTap: () => context.push(
+              '/friends/profile/${widget.friendUserId}/wishlist/${Uri.encodeComponent(item.id)}',
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    ];
+  }
+
   String _messageForError(Object error) {
     if (error is SocialApiException) {
       return error.message;
     }
     return 'We could not load this friend profile right now.';
+  }
+
+  void _refreshProfile({bool force = false}) {
+    final now = DateTime.now();
+    if (!force && _lastRefreshAt != null) {
+      final elapsed = now.difference(_lastRefreshAt!);
+      if (elapsed < const Duration(seconds: 12)) {
+        return;
+      }
+    }
+    _lastRefreshAt = now;
+    ref.invalidate(friendProfileProvider(widget.friendUserId));
   }
 
   void _popOrGoToFriends(BuildContext context) {
@@ -177,6 +263,73 @@ class FriendProfileScreen extends ConsumerWidget {
       return;
     }
     context.go('/friends');
+  }
+
+  Future<void> _confirmRemove() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Remove friend?'),
+          content: const Text(
+            'This removes the connection from your circle. You can add each other again later with a new invite link.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Remove'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    final session = ref.read(socialSessionProvider);
+    if (session == null) {
+      return;
+    }
+
+    setState(() {
+      _isRemoving = true;
+    });
+
+    try {
+      await ref.read(socialApiClientProvider).deleteFriend(
+            accessToken: session.accessToken,
+            friendUserId: widget.friendUserId,
+          );
+      if (!mounted) {
+        return;
+      }
+      ref.invalidate(socialFriendsProvider);
+      ref.invalidate(friendsHubProvider);
+      ref.invalidate(socialMeProvider);
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(content: Text('Friend removed')),
+      );
+      context.go('/friends');
+    } on SocialApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRemoving = false;
+        });
+      }
+    }
   }
 }
 
@@ -193,9 +346,9 @@ String _wishlistEmptyMessage(FriendProfileResponse profile) {
     return 'This user keeps wishlist private.';
   }
   if (profile.isWishlistSharedWithFriends) {
-    return 'No shared wishlist items yet.';
+    return 'No shared wishlist ideas yet.';
   }
-  return 'This friend is either keeping wishlist plans private or has not shared any saved spots yet.';
+  return 'This friend is either keeping wishlist plans private or has not shared any saved ideas yet.';
 }
 
 class _FriendProfileAtmosphere extends StatelessWidget {
@@ -204,7 +357,6 @@ class _FriendProfileAtmosphere extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -232,14 +384,18 @@ class _FriendProfileAtmosphere extends StatelessWidget {
   }
 }
 
-class _FriendDetailTopBar extends StatelessWidget {
-  const _FriendDetailTopBar({
+class _TopBar extends StatelessWidget {
+  const _TopBar({
     required this.title,
     required this.onBack,
+    required this.onRemove,
+    required this.isRemoving,
   });
 
   final String title;
   final VoidCallback onBack;
+  final VoidCallback? onRemove;
+  final bool isRemoving;
 
   @override
   Widget build(BuildContext context) {
@@ -275,6 +431,28 @@ class _FriendDetailTopBar extends StatelessWidget {
                     color: colorScheme.onSurface,
                     letterSpacing: 0.8,
                   ),
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: IconButton(
+                onPressed: onRemove,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                icon: isRemoving
+                    ? SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: colorScheme.error,
+                        ),
+                      )
+                    : Icon(
+                        Icons.person_remove_outlined,
+                        size: 22,
+                        color: colorScheme.error,
+                      ),
+              ),
             ),
           ],
         ),
@@ -323,15 +501,14 @@ class _FriendHorizontalPadding extends StatelessWidget {
   }
 }
 
-class _FriendHeroCard extends StatelessWidget {
-  const _FriendHeroCard({required this.friend});
+class _HeroCard extends StatelessWidget {
+  const _HeroCard({required this.friend});
 
   final FriendProfile friend;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-
     return FrostedSquircle(
       radius: 30,
       blurSigma: 18,
@@ -389,21 +566,21 @@ class _FriendHeroCard extends StatelessWidget {
           Row(
             children: <Widget>[
               Expanded(
-                child: _FriendMetricCard(
+                child: _MetricCard(
                   label: 'Trips',
                   value: '${friend.stats.totalTrips}',
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: _FriendMetricCard(
+                child: _MetricCard(
                   label: 'Countries',
                   value: '${friend.stats.visitedCountriesCount}',
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: _FriendMetricCard(
+                child: _MetricCard(
                   label: 'Friends',
                   value: '${friend.stats.totalFriends}',
                 ),
@@ -416,8 +593,8 @@ class _FriendHeroCard extends StatelessWidget {
   }
 }
 
-class _FriendMetricCard extends StatelessWidget {
-  const _FriendMetricCard({
+class _MetricCard extends StatelessWidget {
+  const _MetricCard({
     required this.label,
     required this.value,
   });
@@ -428,7 +605,6 @@ class _FriendMetricCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colorScheme.surface.withValues(alpha: 0.76),
@@ -454,53 +630,63 @@ class _FriendMetricCard extends StatelessWidget {
   }
 }
 
-class _FriendSectionHeading extends StatelessWidget {
-  const _FriendSectionHeading({
-    required this.eyebrow,
-    required this.title,
-    required this.subtitle,
+class _TabPicker extends StatelessWidget {
+  const _TabPicker({
+    required this.selectedTab,
+    required this.onSelected,
   });
 
-  final String eyebrow;
-  final String title;
-  final String subtitle;
+  final _FriendProfileTab selectedTab;
+  final ValueChanged<_FriendProfileTab> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Text(
-          eyebrow.toUpperCase(),
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                letterSpacing: 1.6,
-                color: colorScheme.primary,
-                fontWeight: FontWeight.w700,
+    final scheme = Theme.of(context).colorScheme;
+    return FrostedSquircle(
+      radius: 28,
+      blurSigma: 18,
+      color: scheme.surface.withValues(alpha: 0.68),
+      borderColor: scheme.primaryContainer.withValues(alpha: 0.14),
+      padding: const EdgeInsets.all(6),
+      child: Row(
+        children: _FriendProfileTab.values.map((tab) {
+          final isSelected = tab == selectedTab;
+          final label =
+              tab == _FriendProfileTab.trips ? 'Trips' : 'Wishlist Ideas';
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => onSelected(tab),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(22),
+                  color: isSelected
+                      ? scheme.primaryContainer.withValues(alpha: 0.7)
+                      : Colors.transparent,
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: isSelected
+                            ? scheme.onPrimaryContainer
+                            : scheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
               ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          title,
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          subtitle,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                height: 1.35,
-              ),
-        ),
-      ],
+            ),
+          );
+        }).toList(growable: false),
+      ),
     );
   }
 }
 
-class _FriendProfileStatusCard extends StatelessWidget {
-  const _FriendProfileStatusCard({
+class _StatusCard extends StatelessWidget {
+  const _StatusCard({
     required this.title,
     required this.message,
     this.showProgress = false,
@@ -544,8 +730,24 @@ class _FriendProfileStatusCard extends StatelessWidget {
   }
 }
 
-class _FriendTripCard extends StatelessWidget {
-  const _FriendTripCard({
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+    );
+  }
+}
+
+class _TripCard extends StatelessWidget {
+  const _TripCard({
     required this.trip,
     required this.onTap,
   });
@@ -559,8 +761,8 @@ class _FriendTripCard extends StatelessWidget {
     final borderRadius = BorderRadius.circular(30);
     final start = DateTime.fromMillisecondsSinceEpoch(trip.startDate);
     final end = DateTime.fromMillisecondsSinceEpoch(trip.endDate);
-    final dateLabel = '${DateFormat.yMMMd().format(start)} - '
-        '${DateFormat.yMMMd().format(end)}';
+    final dateLabel =
+        '${DateFormat.yMMMd().format(start)} - ${DateFormat.yMMMd().format(end)}';
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -674,21 +876,6 @@ class _FriendTripCard extends StatelessWidget {
                                 ),
                           ),
                         ],
-                        if ((trip.notes ?? '').trim().isNotEmpty) ...<Widget>[
-                          const SizedBox(height: 10),
-                          Text(
-                            trip.notes!.trim(),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(
-                                  color: Colors.white.withValues(alpha: 0.78),
-                                  height: 1.3,
-                                ),
-                          ),
-                        ],
                       ],
                     ),
                   ),
@@ -734,7 +921,6 @@ class _TripPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -770,105 +956,227 @@ class _TripPlaceholder extends StatelessWidget {
   }
 }
 
-class _SharedWishlistCard extends StatelessWidget {
-  const _SharedWishlistCard({required this.item});
+class _WishlistCard extends StatelessWidget {
+  const _WishlistCard({
+    required this.item,
+    required this.onTap,
+  });
 
   final SharedWishlistItem item;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final createdAt = item.createdAt;
-    final createdLabel =
-        createdAt == null ? null : DateFormat.yMMMd().format(createdAt);
-    final hasDates =
-        item.plannedStartDate != null || item.plannedEndDate != null;
-    final dateLabel = hasDates
-        ? _sharedWishlistDateLabel(
-            startDate: item.plannedStartDate,
-            endDate: item.plannedEndDate,
-          )
-        : null;
-    final plannedCities = item.plannedCities.trim();
-    final countryName = item.countryName.trim();
-    final notes = item.notes?.trim() ?? '';
-    final imageUrl = item.imageUrl?.trim() ?? '';
+    final borderRadius = BorderRadius.circular(30);
+    final dateLabel = _sharedWishlistDateLabel(
+      startDate: item.plannedStartDate,
+      endDate: item.plannedEndDate,
+    );
+    final meta = <String>[
+      if (item.countryName.trim().isNotEmpty) item.countryName.trim(),
+      if (item.plannedCities.trim().isNotEmpty) item.plannedCities.trim(),
+      if (dateLabel != null) dateLabel,
+    ];
 
-    return FrostedSquircle(
-      radius: 30,
-      blurSigma: 18,
-      color: colorScheme.surface.withValues(alpha: 0.72),
-      borderColor: colorScheme.primaryContainer.withValues(alpha: 0.16),
-      shadowColor: colorScheme.primary.withValues(alpha: 0.08),
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          if (imageUrl.isNotEmpty) ...<Widget>[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: AspectRatio(
-                aspectRatio: 16 / 9,
-                child: Image.network(
-                  imageUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _SharedWishlistImageFallback(
-                    title: item.title,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: borderRadius,
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: colorScheme.primary.withValues(alpha: 0.08),
+            blurRadius: 28,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: borderRadius,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            child: SizedBox(
+              height: 220,
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  _WishlistArtwork(
+                    imageUrl: item.imageUrl,
                   ),
-                ),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: <Color>[
+                          Colors.black.withValues(alpha: 0.06),
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.72),
+                        ],
+                        stops: const <double>[0, 0.36, 1],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 16,
+                    right: 16,
+                    child: DecoratedBox(
+                      decoration: ShapeDecoration(
+                        color: Colors.white.withValues(alpha: 0.16),
+                        shape: const StadiumBorder(),
+                      ),
+                      child: const Padding(
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Icon(
+                              Icons.open_in_new_rounded,
+                              size: 16,
+                              color: Colors.white,
+                            ),
+                            SizedBox(width: 8),
+                            Text(
+                              'Open idea',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 18,
+                    right: 18,
+                    bottom: 18,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          item.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context)
+                              .textTheme
+                              .displaySmall
+                              ?.copyWith(
+                                color: Colors.white,
+                                fontSize: 32,
+                                height: 0.98,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                        if (meta.isNotEmpty) ...<Widget>[
+                          const SizedBox(height: 8),
+                          Text(
+                            meta.join(' · '),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  color: Colors.white.withValues(alpha: 0.86),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ],
+                        if ((item.notes ?? '').trim().isNotEmpty) ...<Widget>[
+                          const SizedBox(height: 10),
+                          Text(
+                            item.notes!.trim(),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(
+                                  color: Colors.white.withValues(alpha: 0.78),
+                                  height: 1.3,
+                                ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 16),
-          ],
-          Text(
-            item.title,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
           ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: <Widget>[
-              if (countryName.isNotEmpty)
-                _SharedWishlistMetaChip(
-                  icon: Icons.public_rounded,
-                  label: countryName,
-                ),
-              if (plannedCities.isNotEmpty)
-                _SharedWishlistMetaChip(
-                  icon: Icons.location_city_rounded,
-                  label: plannedCities,
-                ),
-              if (dateLabel != null)
-                _SharedWishlistMetaChip(
-                  icon: Icons.schedule_rounded,
-                  label: dateLabel,
-                ),
-              if (createdLabel != null)
-                _SharedWishlistMetaChip(
-                  icon: Icons.bookmark_added_rounded,
-                  label: 'Saved $createdLabel',
-                ),
-            ],
-          ),
-          if (notes.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 14),
-            Text(
-              notes,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    height: 1.35,
-                  ),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
 }
 
-String _sharedWishlistDateLabel({
+class _WishlistArtwork extends StatelessWidget {
+  const _WishlistArtwork({
+    required this.imageUrl,
+  });
+
+  final String? imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalizedUrl = imageUrl?.trim();
+    if (normalizedUrl != null && normalizedUrl.isNotEmpty) {
+      return Image.network(
+        normalizedUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const _WishlistPlaceholder(),
+      );
+    }
+    return const _WishlistPlaceholder();
+  }
+}
+
+class _WishlistPlaceholder extends StatelessWidget {
+  const _WishlistPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: <Color>[
+            colorScheme.surfaceContainerHigh.withValues(alpha: 0.92),
+            colorScheme.surfaceContainer.withValues(alpha: 0.84),
+            colorScheme.surfaceContainerLow.withValues(alpha: 0.94),
+          ],
+        ),
+      ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: RadialGradient(
+            center: const Alignment(0.6, -0.2),
+            radius: 1.2,
+            colors: <Color>[
+              colorScheme.primary.withValues(alpha: 0.16),
+              Colors.transparent,
+            ],
+          ),
+        ),
+        child: Center(
+          child: Icon(
+            Icons.travel_explore_rounded,
+            size: 72,
+            color: colorScheme.onSurface.withValues(alpha: 0.22),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String? _sharedWishlistDateLabel({
   required int? startDate,
   required int? endDate,
 }) {
@@ -886,212 +1194,5 @@ String _sharedWishlistDateLabel({
   if (end != null) {
     return 'Until ${formatter.format(end)}';
   }
-  return '';
-}
-
-class _SharedWishlistMetaChip extends StatelessWidget {
-  const _SharedWishlistMetaChip({
-    required this.icon,
-    required this.label,
-  });
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return DecoratedBox(
-      decoration: ShapeDecoration(
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.44),
-        shape: const StadiumBorder(),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(icon, size: 16, color: colorScheme.primary),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SharedWishlistImageFallback extends StatelessWidget {
-  const _SharedWishlistImageFallback({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: <Color>[
-            colorScheme.primaryContainer.withValues(alpha: 0.6),
-            colorScheme.surfaceContainerHighest.withValues(alpha: 0.72),
-          ],
-        ),
-      ),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Text(
-            title,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RemoveFriendButton extends ConsumerStatefulWidget {
-  const _RemoveFriendButton({required this.friendUserId});
-
-  final String friendUserId;
-
-  @override
-  ConsumerState<_RemoveFriendButton> createState() =>
-      _RemoveFriendButtonState();
-}
-
-class _RemoveFriendButtonState extends ConsumerState<_RemoveFriendButton> {
-  bool _isRemoving = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return FrostedSquircle(
-      radius: 28,
-      blurSigma: 18,
-      color: scheme.errorContainer.withValues(alpha: 0.42),
-      borderColor: scheme.error.withValues(alpha: 0.18),
-      shadowColor: scheme.error.withValues(alpha: 0.08),
-      padding: EdgeInsets.zero,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: _isRemoving ? null : _confirmRemove,
-          borderRadius: BorderRadius.circular(28),
-          child: SizedBox(
-            height: 58,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                if (_isRemoving) ...<Widget>[
-                  SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.2,
-                      color: scheme.onErrorContainer,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                ] else ...<Widget>[
-                  Icon(
-                    Icons.person_remove_outlined,
-                    color: scheme.onErrorContainer,
-                  ),
-                  const SizedBox(width: 10),
-                ],
-                Text(
-                  _isRemoving ? 'Removing friend' : 'Remove friend',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: scheme.onErrorContainer,
-                      ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _confirmRemove() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Remove friend?'),
-          content: const Text(
-            'This removes the connection from your circle. You can add each other again later with a new invite link.',
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Remove'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true || !mounted) {
-      return;
-    }
-
-    final session = ref.read(socialSessionProvider);
-    if (session == null) {
-      return;
-    }
-
-    setState(() {
-      _isRemoving = true;
-    });
-
-    try {
-      await ref.read(socialApiClientProvider).deleteFriend(
-            accessToken: session.accessToken,
-            friendUserId: widget.friendUserId,
-          );
-      if (!mounted) {
-        return;
-      }
-      ref.invalidate(socialFriendsProvider);
-      ref.invalidate(friendsHubProvider);
-      ref.invalidate(socialMeProvider);
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        const SnackBar(content: Text('Friend removed')),
-      );
-      context.go('/friends');
-    } on SocialApiException catch (error) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isRemoving = false;
-        });
-      }
-    }
-  }
+  return null;
 }

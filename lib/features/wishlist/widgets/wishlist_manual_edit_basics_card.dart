@@ -21,9 +21,9 @@ class WishlistManualEditBasicsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return WishlistEditorSectionCard(
-      title: 'Plan basics',
+      title: 'Overview',
       subtitle:
-          'Set the country, the high-level summary, and the overall duration before shaping the seasonal notes and city cards.',
+          'Set the destination, trip overview, and overall length before refining season notes and cities.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[

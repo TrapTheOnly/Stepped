@@ -14,9 +14,13 @@ class WishlistManualEditSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: <Widget>[
-        Expanded(
+        ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 120, maxWidth: 220),
           child: Text(
             title,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -46,9 +50,13 @@ class WishlistManualEditSubSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: <Widget>[
-        Expanded(
+        ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 120, maxWidth: 220),
           child: Text(
             title,
             style: Theme.of(context).textTheme.titleSmall?.copyWith(

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +9,7 @@ import '../../data/db/app_db.dart';
 import '../../data/repositories/wishlist_repository.dart';
 import '../../widgets/frosted_squircle.dart';
 import 'gemini_trip_planner.dart';
+import 'wishlist_plan_parsing.dart';
 import 'widgets/wishlist_editorial_widgets.dart';
 
 const _topClearance = 114.0;
@@ -78,6 +81,10 @@ class WishlistPlanReviewScreen extends ConsumerWidget {
           item.aiPlan ?? '',
           fallbackCountry: item.countryName ?? '',
         );
+        final requestOptions =
+            item.aiPlan == null || item.aiPlan!.trim().isEmpty
+                ? null
+                : parseWishlistStoredRequestOptions(item.aiPlan!);
 
         return _ReviewShell(
           onStartTrip: item.id == null
@@ -101,7 +108,10 @@ class WishlistPlanReviewScreen extends ConsumerWidget {
               if (plan != null) ...<Widget>[
                 const SizedBox(height: 18),
                 WishlistHorizontalPadding(
-                  child: _PlanOverviewCard(plan: plan),
+                  child: _PlanOverviewCard(
+                    plan: plan,
+                    purpose: requestOptions?.purpose,
+                  ),
                 ),
                 if (plan.timeWindows.isNotEmpty) ...<Widget>[
                   const SizedBox(height: 16),
@@ -415,11 +425,13 @@ class _HeroCard extends StatelessWidget {
             fit: StackFit.expand,
             children: <Widget>[
               if (imageUrl != null && imageUrl.isNotEmpty)
-                CachedNetworkImage(
-                  imageUrl: imageUrl,
-                  fit: BoxFit.cover,
-                  errorWidget: (_, __, ___) => const _HeroFallback(),
-                )
+                imageUrl.startsWith('http://') || imageUrl.startsWith('https://')
+                    ? CachedNetworkImage(
+                        imageUrl: imageUrl,
+                        fit: BoxFit.cover,
+                        errorWidget: (_, __, ___) => const _HeroFallback(),
+                      )
+                    : _LocalWishlistReviewImage(imageUrl: imageUrl)
               else
                 const _HeroFallback(),
               DecoratedBox(
@@ -500,6 +512,24 @@ class _HeroCard extends StatelessWidget {
       return fromItem;
     }
     return 'Destination still being shaped';
+  }
+}
+
+class _LocalWishlistReviewImage extends StatelessWidget {
+  const _LocalWishlistReviewImage({required this.imageUrl});
+
+  final String imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final localPath = imageUrl.startsWith('file://')
+        ? imageUrl.replaceFirst('file://', '')
+        : imageUrl;
+    final file = File(localPath);
+    if (!file.existsSync()) {
+      return const _HeroFallback();
+    }
+    return Image.file(file, fit: BoxFit.cover);
   }
 }
 
@@ -812,16 +842,20 @@ class _EmptyPlanDock extends StatelessWidget {
 }
 
 class _PlanOverviewCard extends StatelessWidget {
-  const _PlanOverviewCard({required this.plan});
+  const _PlanOverviewCard({
+    required this.plan,
+    this.purpose,
+  });
 
   final GeminiTripPlan plan;
+  final String? purpose;
 
   @override
   Widget build(BuildContext context) {
     final summary = plan.summary.trim().isEmpty
         ? 'A saved draft is ready for this destination.'
         : plan.summary.trim();
-    final durationReason = plan.stayDuration?.reason.trim() ?? '';
+    final savedPurpose = purpose?.trim() ?? '';
 
     return _GlassSection(
       title: 'Overview',
@@ -829,7 +863,7 @@ class _PlanOverviewCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(summary, style: Theme.of(context).textTheme.bodyLarge),
-          if (durationReason.isNotEmpty) ...<Widget>[
+          if (savedPurpose.isNotEmpty) ...<Widget>[
             const SizedBox(height: 18),
             DecoratedBox(
               decoration: BoxDecoration(
@@ -851,12 +885,12 @@ class _PlanOverviewCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      'Why this length works',
+                      'Trip intent',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      durationReason,
+                      savedPurpose,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color:
                                 Theme.of(context).colorScheme.onSurfaceVariant,

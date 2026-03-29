@@ -22,6 +22,7 @@ class WishlistPlanManualEditController {
   String _seedDurationDays = '';
   String _seedDurationReason = '';
   String _seedDurationSource = 'ai_recommended';
+  GeminiCityImage? coverImage;
 
   int _nextId = 1;
   List<EditableTimeWindow> timeWindows = <EditableTimeWindow>[];
@@ -52,6 +53,7 @@ class WishlistPlanManualEditController {
     _seedDurationReason = hydrated.durationReason.trim();
     _seedDurationSource = hydrated.durationSource;
     durationSource = hydrated.durationSource;
+    coverImage = hydrated.coverImage;
     timeWindows = hydrated.timeWindows;
     cities = hydrated.cities;
     requestPayload = hydrated.requestPayload;
@@ -66,6 +68,11 @@ class WishlistPlanManualEditController {
 
   void clearError() {
     errorText = null;
+  }
+
+  void setCoverImageUri(String uri) {
+    coverImage = buildManualWishlistImage(uri, title: 'Wishlist cover');
+    clearError();
   }
 
   Future<bool> addTimeWindow(BuildContext context) async {
