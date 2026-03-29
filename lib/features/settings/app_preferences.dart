@@ -131,6 +131,39 @@ class AppPreferencesController extends AsyncNotifier<AppPreferences> {
     _emitUpdated((current) => current.copyWith(bio: normalized));
   }
 
+  Future<void> hydrateProfileCache({
+    required String displayName,
+    required String homeBase,
+    required String bio,
+  }) async {
+    final prefs = await _ensurePreferences();
+    final normalizedDisplayName = displayName.trim().isEmpty
+        ? AppPreferences.defaults.displayName
+        : displayName.trim();
+    final normalizedHomeBase = homeBase.trim();
+    final normalizedBio = bio.trim();
+
+    await prefs.setString(_displayNameKey, normalizedDisplayName);
+    if (normalizedHomeBase.isEmpty) {
+      await prefs.remove(_homeBaseKey);
+    } else {
+      await prefs.setString(_homeBaseKey, normalizedHomeBase);
+    }
+    if (normalizedBio.isEmpty) {
+      await prefs.remove(_bioKey);
+    } else {
+      await prefs.setString(_bioKey, normalizedBio);
+    }
+
+    _emitUpdated(
+      (current) => current.copyWith(
+        displayName: normalizedDisplayName,
+        homeBase: normalizedHomeBase,
+        bio: normalizedBio,
+      ),
+    );
+  }
+
   Future<void> updateConfirmWishlistDelete(bool value) async {
     final prefs = await _ensurePreferences();
     await prefs.setBool(_confirmWishlistDeleteKey, value);

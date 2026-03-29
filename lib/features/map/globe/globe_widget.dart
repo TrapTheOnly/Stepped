@@ -4,7 +4,6 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
-import '../../../widgets/country_flag.dart';
 import 'globe_country_data.dart';
 import 'globe_painter.dart';
 import 'globe_projection.dart';
@@ -13,9 +12,9 @@ class GlobeWidget extends StatefulWidget {
   const GlobeWidget({
     super.key,
     required this.visitedCountryCodes,
-    required this.onSetVisited,
     this.onFocusRequestConsumed,
     this.onInteractionChanged,
+    this.onSelectedCountryChanged,
     this.sensitivity = 0.0095,
     this.focusCountryCode,
     this.focusRequestToken,
@@ -23,10 +22,9 @@ class GlobeWidget extends StatefulWidget {
   });
 
   final List<String> visitedCountryCodes;
-  final Future<void> Function(
-      String countryCode, String countryName, bool visited) onSetVisited;
   final void Function(String countryCode, int? token)? onFocusRequestConsumed;
   final ValueChanged<bool>? onInteractionChanged;
+  final ValueChanged<GlobeCountryShape?>? onSelectedCountryChanged;
   final double sensitivity;
   final String? focusCountryCode;
   final int? focusRequestToken;
@@ -44,7 +42,6 @@ class _GlobeWidgetState extends State<GlobeWidget>
   static const _minZoom = 1.0;
   static const _maxZoom = 10.0;
   static const _focusedZoom = 6.2;
-  static const _calloutZoomThreshold = 2.6;
 
   static const _doubleTapIntervalMs = 320;
   static const _doubleTapDistance = 40.0;
@@ -91,7 +88,6 @@ class _GlobeWidgetState extends State<GlobeWidget>
   Duration? _lastInertiaElapsed;
 
   GlobeCountryShape? _selectedCountry;
-  bool _isSubmitting = false;
 
   @override
   void initState() {
@@ -147,10 +143,6 @@ class _GlobeWidgetState extends State<GlobeWidget>
             return LayoutBuilder(
               builder: (context, constraints) {
                 final size = Size(constraints.maxWidth, constraints.maxHeight);
-                final selectedProjection = _projectSelectedCountry(size);
-                final showCallout = _selectedCountry != null &&
-                    selectedProjection != null &&
-                    _zoom >= _calloutZoomThreshold;
 
                 return Listener(
                   onPointerDown: _handlePointerDown,
@@ -166,7 +158,6 @@ class _GlobeWidgetState extends State<GlobeWidget>
                       details: details,
                       size: size,
                       dataset: dataset,
-                      selectedProjection: selectedProjection,
                     ),
                     child: Stack(
                       clipBehavior: Clip.none,
@@ -186,17 +177,6 @@ class _GlobeWidgetState extends State<GlobeWidget>
                             child: const SizedBox.expand(),
                           ),
                         ),
-                        if (showCallout)
-                          _CountryActionCallout(
-                            anchor: selectedProjection.offset,
-                            size: size,
-                            countryCode: _selectedCountry!.iso2,
-                            countryName: _selectedCountry!.name,
-                            isVisited:
-                                visitedSet.contains(_selectedCountry!.iso2),
-                            isBusy: _isSubmitting,
-                            onSetVisited: _toggleSelectedCountryVisit,
-                          ),
                       ],
                     ),
                   ),
@@ -310,20 +290,12 @@ class _GlobeWidgetState extends State<GlobeWidget>
     required TapDownDetails details,
     required Size size,
     required GlobeCountryDataset dataset,
-    required GlobeProjectedPoint? selectedProjection,
   }) {
-    if (_isSubmitting) {
-      return;
-    }
     if (!_doubleTapEnabled) {
       return;
     }
 
     final localPosition = details.localPosition;
-    if (_isTapInsideCallout(localPosition, size, selectedProjection)) {
-      return;
-    }
-
     final now = DateTime.now();
     final lastTapAt = _lastTapAt;
     final lastTapPosition = _lastTapPosition;
@@ -353,6 +325,19 @@ class _GlobeWidgetState extends State<GlobeWidget>
     );
   }
 
+  void _setSelectedCountry(GlobeCountryShape? country) {
+    final previousCode = _selectedCountry?.iso2;
+    final nextCode = country?.iso2;
+    if (previousCode == nextCode) {
+      return;
+    }
+
+    setState(() {
+      _selectedCountry = country;
+    });
+    widget.onSelectedCountryChanged?.call(country);
+  }
+
   void _handleDoubleTap({
     required Offset localPosition,
     required Size size,
@@ -372,9 +357,7 @@ class _GlobeWidgetState extends State<GlobeWidget>
     );
 
     if (country == null) {
-      setState(() {
-        _selectedCountry = null;
-      });
+      _setSelectedCountry(null);
       _animateCameraTo(
         rotation: _rotation,
         pitch: 0,
@@ -386,15 +369,11 @@ class _GlobeWidgetState extends State<GlobeWidget>
 
     final isSameSelection = _selectedCountry?.iso2 == country.iso2;
     if (isSameSelection) {
-      setState(() {
-        _selectedCountry = null;
-      });
+      _setSelectedCountry(null);
       return;
     }
 
-    setState(() {
-      _selectedCountry = country;
-    });
+    _setSelectedCountry(country);
 
     final targetRotation = GlobeProjection.nearestAngle(
       current: _rotation,
@@ -406,59 +385,6 @@ class _GlobeWidgetState extends State<GlobeWidget>
       pitch: targetPitch,
       zoom: _focusedZoom,
     );
-  }
-
-  Future<void> _toggleSelectedCountryVisit(bool visited) async {
-    final selectedCountry = _selectedCountry;
-    if (selectedCountry == null || _isSubmitting) {
-      return;
-    }
-
-    setState(() {
-      _isSubmitting = true;
-    });
-
-    try {
-      await widget.onSetVisited(
-        selectedCountry.iso2,
-        selectedCountry.name,
-        visited,
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSubmitting = false;
-        });
-      }
-    }
-  }
-
-  GlobeProjectedPoint? _projectSelectedCountry(Size size) {
-    final country = _selectedCountry;
-    if (country == null) {
-      return null;
-    }
-
-    final center = size.center(Offset.zero);
-    final globeRadius = math.min(size.width, size.height) * 0.42 * _zoom;
-    final projected = GlobeProjection.project(
-      point: country.centroid,
-      rotation: _rotation,
-      pitch: _pitch,
-      center: center,
-      radius: globeRadius,
-    );
-
-    if (!projected.visible) {
-      return null;
-    }
-
-    final insideDistance = (projected.offset - center).distance;
-    if (insideDistance > globeRadius) {
-      return null;
-    }
-
-    return projected;
   }
 
   GlobeCountryShape? _hitTestCountry({
@@ -581,29 +507,6 @@ class _GlobeWidgetState extends State<GlobeWidget>
     }
 
     return null;
-  }
-
-  bool _isTapInsideCallout(
-    Offset localPosition,
-    Size size,
-    GlobeProjectedPoint? selectedProjection,
-  ) {
-    if (selectedProjection == null ||
-        _selectedCountry == null ||
-        _zoom < _calloutZoomThreshold) {
-      return false;
-    }
-
-    final popupWidth = math.min(252.0, size.width - 16);
-    final rawLeft = selectedProjection.offset.dx - (popupWidth / 2);
-    final left = rawLeft.clamp(8.0, size.width - popupWidth - 8.0).toDouble();
-    final topCandidate = selectedProjection.offset.dy - 104;
-    final top = topCandidate < 8
-        ? (selectedProjection.offset.dy + 20).clamp(8.0, size.height - 80)
-        : topCandidate;
-
-    final calloutRect = Rect.fromLTWH(left, top.toDouble(), popupWidth, 56);
-    return calloutRect.contains(localPosition);
   }
 
   List<Path> _buildHitPaths(
@@ -917,9 +820,7 @@ class _GlobeWidgetState extends State<GlobeWidget>
     _stopInertia();
     _lastTapAt = null;
     _lastTapPosition = null;
-    setState(() {
-      _selectedCountry = null;
-    });
+    _setSelectedCountry(null);
     _animateCameraTo(
       rotation: 0,
       pitch: 0,
@@ -968,8 +869,8 @@ class _GlobeWidgetState extends State<GlobeWidget>
 
     _stopCameraAnimation();
     _stopInertia();
+    _setSelectedCountry(country);
     setState(() {
-      _selectedCountry = country;
       _lastTapAt = null;
       _lastTapPosition = null;
       _doubleTapEnabled = true;
@@ -986,107 +887,6 @@ class _GlobeWidgetState extends State<GlobeWidget>
       zoom: math.max(_zoom, _focusedZoom),
     );
     widget.onFocusRequestConsumed?.call(country.iso2, token);
-  }
-}
-
-class _CountryActionCallout extends StatelessWidget {
-  const _CountryActionCallout({
-    required this.anchor,
-    required this.size,
-    required this.countryCode,
-    required this.countryName,
-    required this.isVisited,
-    required this.isBusy,
-    required this.onSetVisited,
-  });
-
-  final Offset anchor;
-  final Size size;
-  final String countryCode;
-  final String countryName;
-  final bool isVisited;
-  final bool isBusy;
-  final Future<void> Function(bool visited) onSetVisited;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final popupWidth = math.min(252.0, size.width - 16);
-    final rawLeft = anchor.dx - (popupWidth / 2);
-    final left = rawLeft.clamp(8.0, size.width - popupWidth - 8.0).toDouble();
-    final topCandidate = anchor.dy - 104;
-    final top = topCandidate < 8
-        ? (anchor.dy + 20).clamp(8.0, size.height - 80)
-        : topCandidate;
-    final pinTop = (top - 20).clamp(4.0, size.height - 24).toDouble();
-
-    return Stack(
-      children: <Widget>[
-        Positioned(
-          left: (anchor.dx - 10).clamp(4.0, size.width - 24).toDouble(),
-          top: pinTop,
-          child: Icon(
-            Icons.location_pin,
-            color: scheme.primary,
-            size: 22,
-            semanticLabel: 'Selected country pin',
-          ),
-        ),
-        Positioned(
-          left: left,
-          top: top.toDouble(),
-          width: popupWidth,
-          child: Material(
-            elevation: 4,
-            color: scheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(14),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                children: <Widget>[
-                  CountryFlag(
-                    iso2: countryCode,
-                    width: 24,
-                    height: 18,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      countryName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Set visited',
-                    onPressed:
-                        isBusy || isVisited ? null : () => onSetVisited(true),
-                    icon: isBusy && !isVisited
-                        ? const SizedBox.square(
-                            dimension: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.check_circle),
-                  ),
-                  IconButton(
-                    tooltip: 'Unset visited',
-                    onPressed:
-                        isBusy || !isVisited ? null : () => onSetVisited(false),
-                    icon: isBusy && isVisited
-                        ? const SizedBox.square(
-                            dimension: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.cancel),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
   }
 }
 

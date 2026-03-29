@@ -24,17 +24,38 @@ class SocialProfileSnapshot {
 
   factory SocialProfileSnapshot.fromJson(dynamic raw) {
     final json = _asMap(raw);
+    final nested = _asMapOrNull(
+          json['profile'] ?? json['user'] ?? json['friend'],
+        ) ??
+        const <String, dynamic>{};
     return SocialProfileSnapshot(
       displayName: _firstNonEmptyString(<dynamic>[
             json['display_name'],
             json['displayName'],
+            json['username'],
+            json['user_name'],
+            json['userName'],
+            json['handle'],
             json['name'],
+            nested['display_name'],
+            nested['displayName'],
+            nested['username'],
+            nested['user_name'],
+            nested['userName'],
+            nested['handle'],
+            nested['name'],
             'Traveler',
           ]) ??
           'Traveler',
       photoUrl: _firstNonEmptyString(<dynamic>[
         json['photo_url'],
         json['photoUrl'],
+        json['avatar_url'],
+        json['avatarUrl'],
+        nested['photo_url'],
+        nested['photoUrl'],
+        nested['avatar_url'],
+        nested['avatarUrl'],
       ]),
       homeBase: _firstNonEmptyString(<dynamic>[
             json['home_base'],
@@ -414,27 +435,64 @@ class FriendSummary {
 
   factory FriendSummary.fromJson(dynamic raw) {
     final json = _asMap(raw);
+    final nested = _asMapOrNull(
+          json['friend'] ?? json['user'] ?? json['profile'],
+        ) ??
+        const <String, dynamic>{};
     return FriendSummary(
-      id: _firstNonEmptyString(<dynamic>[json['id'], json['user_id']]) ?? '',
+      id: _firstNonEmptyString(<dynamic>[
+            json['id'],
+            json['user_id'],
+            json['userId'],
+            json['uid'],
+            nested['id'],
+            nested['user_id'],
+            nested['userId'],
+            nested['uid'],
+          ]) ??
+          '',
       displayName: _firstNonEmptyString(<dynamic>[
             json['display_name'],
             json['displayName'],
+            json['username'],
+            json['user_name'],
+            json['userName'],
+            json['handle'],
             json['name'],
+            nested['display_name'],
+            nested['displayName'],
+            nested['username'],
+            nested['user_name'],
+            nested['userName'],
+            nested['handle'],
+            nested['name'],
             'Traveler',
           ]) ??
           'Traveler',
       photoUrl: _firstNonEmptyString(<dynamic>[
         json['photo_url'],
         json['photoUrl'],
+        json['avatar_url'],
+        json['avatarUrl'],
+        nested['photo_url'],
+        nested['photoUrl'],
+        nested['avatar_url'],
+        nested['avatarUrl'],
       ]),
       homeBase: _firstNonEmptyString(<dynamic>[
             json['home_base'],
             json['homeBase'],
+            json['location'],
+            nested['home_base'],
+            nested['homeBase'],
+            nested['location'],
           ]) ??
           '',
       addedAt: _readDateTime(<dynamic>[
         json['added_at'],
         json['addedAt'],
+        nested['added_at'],
+        nested['addedAt'],
       ]),
     );
   }
@@ -555,28 +613,70 @@ class FriendProfile {
 
   factory FriendProfile.fromJson(dynamic raw) {
     final json = _asMap(raw);
+    final nested = _asMapOrNull(
+          json['friend'] ?? json['user'] ?? json['profile'],
+        ) ??
+        const <String, dynamic>{};
     final statsRaw =
-        json['stats'] ?? json['counts'] ?? const <String, dynamic>{};
-    final visitedRaw = _asList(json['visited_countries']);
+        json['stats'] ?? json['counts'] ?? nested['stats'] ?? const <String, dynamic>{};
+    final visitedRaw =
+        _asList(json['visited_countries'] ?? nested['visited_countries']);
     return FriendProfile(
-      id: _firstNonEmptyString(<dynamic>[json['id'], json['user_id']]) ?? '',
+      id: _firstNonEmptyString(<dynamic>[
+            json['id'],
+            json['user_id'],
+            json['userId'],
+            json['uid'],
+            nested['id'],
+            nested['user_id'],
+            nested['userId'],
+            nested['uid'],
+          ]) ??
+          '',
       displayName: _firstNonEmptyString(<dynamic>[
             json['display_name'],
             json['displayName'],
+            json['username'],
+            json['user_name'],
+            json['userName'],
+            json['handle'],
             json['name'],
+            nested['display_name'],
+            nested['displayName'],
+            nested['username'],
+            nested['user_name'],
+            nested['userName'],
+            nested['handle'],
+            nested['name'],
             'Traveler',
           ]) ??
           'Traveler',
       photoUrl: _firstNonEmptyString(<dynamic>[
         json['photo_url'],
         json['photoUrl'],
+        json['avatar_url'],
+        json['avatarUrl'],
+        nested['photo_url'],
+        nested['photoUrl'],
+        nested['avatar_url'],
+        nested['avatarUrl'],
       ]),
       homeBase: _firstNonEmptyString(<dynamic>[
             json['home_base'],
             json['homeBase'],
+            json['location'],
+            nested['home_base'],
+            nested['homeBase'],
+            nested['location'],
           ]) ??
           '',
-      bio: _firstNonEmptyString(<dynamic>[json['bio']]) ?? '',
+      bio: _firstNonEmptyString(<dynamic>[
+            json['bio'],
+            json['about'],
+            nested['bio'],
+            nested['about'],
+          ]) ??
+          '',
       stats: SocialStats.fromJson(statsRaw),
       visitedCountries: <SocialVisitedCountry>[
         for (final entry in visitedRaw) SocialVisitedCountry.fromJson(entry),
