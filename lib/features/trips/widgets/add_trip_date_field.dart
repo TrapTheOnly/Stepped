@@ -5,19 +5,26 @@ class AddTripDateField extends StatelessWidget {
   const AddTripDateField({
     super.key,
     required this.label,
-    required this.value,
+    required this.startDate,
+    required this.endDate,
     required this.onTap,
   });
 
   final String label;
-  final DateTime? value;
+  final DateTime? startDate;
+  final DateTime? endDate;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final monthDay = value == null ? 'Not set' : DateFormat('MMM d').format(value!);
-    final year = value == null ? 'Pick a date' : DateFormat('y').format(value!);
+    final hasRange = startDate != null && endDate != null;
+    final monthDay = hasRange
+        ? '${DateFormat('MMM d').format(startDate!)} - ${DateFormat('MMM d').format(endDate!)}'
+        : 'Not set';
+    final year = hasRange
+        ? _yearAndDurationLabel(startDate!, endDate!)
+        : 'Pick travel dates';
 
     return InkWell(
       borderRadius: BorderRadius.circular(22),
@@ -71,6 +78,8 @@ class AddTripDateField extends StatelessWidget {
                     ),
                     Text(
                       year,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: colorScheme.onSurfaceVariant,
                           ),
@@ -84,4 +93,14 @@ class AddTripDateField extends StatelessWidget {
       ),
     );
   }
+}
+
+String _yearAndDurationLabel(DateTime startDate, DateTime endDate) {
+  final startYear = DateFormat('y').format(startDate);
+  final endYear = DateFormat('y').format(endDate);
+  final nights = endDate.difference(startDate).inDays;
+  final tripDays = nights <= 0 ? 1 : nights + 1;
+  final yearLabel =
+      startYear == endYear ? startYear : '$startYear - $endYear';
+  return '$yearLabel · $tripDays ${tripDays == 1 ? 'day' : 'days'}';
 }

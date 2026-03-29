@@ -347,6 +347,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return normalized;
   }
 
+  bool _isRemotePhotoUrl(String? value) {
+    final normalized = value?.trim();
+    if (normalized == null || normalized.isEmpty) {
+      return false;
+    }
+    final uri = Uri.tryParse(normalized);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+      return false;
+    }
+    return uri.scheme == 'http' || uri.scheme == 'https';
+  }
+
   void _enterEditMode() {
     if (_isSaving) {
       return;
@@ -438,31 +450,60 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     try {
       final preferencesNotifier = ref.read(appPreferencesProvider.notifier);
+      String? uploadedPhotoUrl = photoUrl;
+
+      if (photoUrl != null && !_isRemotePhotoUrl(photoUrl)) {
+        if (session == null) {
+          throw const SocialApiException(
+            'You need to sign in again before uploading a profile photo.',
+            statusCode: 401,
+          );
+        }
+
+        final accessToken =
+            await authController.getFreshAccessToken(forceRefresh: true);
+        uploadedPhotoUrl = await ref.read(socialApiClientProvider).uploadProfilePhoto(
+              accessToken: accessToken ?? session.accessToken,
+              filePath: photoUrl,
+            );
+      }
+
       await authController.updateAccountProfile(
         displayName: displayName,
-        photoUrl: photoUrl,
-      );
-      await preferencesNotifier.hydrateProfileCache(
-        displayName: displayName,
-        homeBase: homeBase,
-        bio: bio,
+        photoUrl: uploadedPhotoUrl,
       );
 
       if (session != null) {
         final accessToken =
             await authController.getFreshAccessToken(forceRefresh: true);
-        final profile = SocialProfileSnapshot(
+        final requestedProfile = SocialProfileSnapshot(
           displayName: displayName,
-          photoUrl: photoUrl ?? authController.currentUser?.photoUrl,
+          photoUrl: uploadedPhotoUrl ?? authController.currentUser?.photoUrl,
           homeBase: homeBase,
           bio: bio,
         );
-        await ref.read(socialApiClientProvider).syncProfile(
+        final syncedProfile = await ref.read(socialApiClientProvider).syncProfile(
               accessToken: accessToken ?? session.accessToken,
-              profile: profile,
+              profile: requestedProfile,
             );
+        await preferencesNotifier.hydrateProfileCache(
+          displayName: syncedProfile.displayName,
+          homeBase: syncedProfile.homeBase,
+          bio: syncedProfile.bio,
+        );
+        await authController.replaceLocalProfile(
+          displayName: syncedProfile.displayName,
+          photoUrl: syncedProfile.photoUrl,
+          overwritePhotoUrl: true,
+        );
         ref.invalidate(socialMeProvider);
         ref.invalidate(friendsHubProvider);
+      } else {
+        await preferencesNotifier.hydrateProfileCache(
+          displayName: displayName,
+          homeBase: homeBase,
+          bio: bio,
+        );
       }
 
       if (newPassword.isNotEmpty) {
@@ -481,7 +522,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _newPasswordController.clear();
         _confirmPasswordController.clear();
         _draftFingerprint = null;
-        _draftPhotoUrl = photoUrl;
+        _draftPhotoUrl = uploadedPhotoUrl;
       });
       messenger?.showSnackBar(
         SnackBar(

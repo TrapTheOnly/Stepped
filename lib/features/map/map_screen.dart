@@ -235,7 +235,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   : () => context.push(
                         '/trips/view/${selectedCountryEntry!.latestTripId}',
                       ),
-              onAddTrip: () => context.push('/trips/add'),
+              onAddTrip: () => context.push(
+                Uri(
+                  path: '/trips/add',
+                  queryParameters: <String, String>{
+                    if (selectedCountryEntry != null)
+                      'country': selectedCountryEntry.iso2,
+                    if (selectedCountryEntry != null)
+                      'countryName': selectedCountryEntry.name,
+                  },
+                ).toString(),
+              ),
             ),
           ),
         ],
@@ -558,33 +568,6 @@ class _CountryDock extends StatelessWidget {
     final infoText = country.tripCount == 0
         ? 'No trips logged yet.'
         : '${country.tripCount} trip${country.tripCount == 1 ? '' : 's'} logged for ${country.name}.';
-    final actions = <Widget>[
-      Expanded(
-        child: _CountryActionButton(
-          icon: Icons.public_rounded,
-          label: 'Show on Earth',
-          onTap: onShowOnGlobe,
-        ),
-      ),
-      if (onOpenLatestTrip != null) ...<Widget>[
-        const SizedBox(width: 8),
-        Expanded(
-          child: _CountryActionButton(
-            icon: Icons.flight_takeoff_rounded,
-            label: 'Latest trip',
-            onTap: onOpenLatestTrip,
-          ),
-        ),
-      ],
-      const SizedBox(width: 8),
-      Expanded(
-        child: _CountryActionButton(
-          icon: Icons.add_rounded,
-          label: 'Add trip',
-          onTap: onAddTrip,
-        ),
-      ),
-    ];
 
     return SizedBox(
       height: _bottomDockHeight,
@@ -666,7 +649,36 @@ class _CountryDock extends StatelessWidget {
                   ),
             ),
             const Spacer(),
-            Row(children: actions),
+            Row(
+              children: <Widget>[
+                _CountryIconButton(
+                  icon: onShowOnGlobe == null
+                      ? Icons.public_off_rounded
+                      : Icons.public_rounded,
+                  tooltip: onShowOnGlobe == null
+                      ? 'Not available on the globe'
+                      : 'Refocus on the globe',
+                  onTap: onShowOnGlobe,
+                ),
+                const SizedBox(width: 10),
+                if (onOpenLatestTrip != null)
+                  Expanded(
+                    child: _CountryActionButton(
+                      icon: Icons.flight_takeoff_rounded,
+                      label: 'Latest trip',
+                      onTap: onOpenLatestTrip,
+                    ),
+                  ),
+                if (onOpenLatestTrip != null) const SizedBox(width: 8),
+                Expanded(
+                  child: _CountryActionButton(
+                    icon: Icons.add_rounded,
+                    label: 'Add trip',
+                    onTap: onAddTrip,
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -987,6 +999,52 @@ class _ResultMetaChip extends StatelessWidget {
                   ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CountryIconButton extends StatelessWidget {
+  const _CountryIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: squircleShape(22),
+          child: DecoratedBox(
+            decoration: ShapeDecoration(
+              color: onTap == null
+                  ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.35)
+                  : colorScheme.surfaceContainerHighest.withValues(alpha: 0.58),
+              shape: squircleShape(22),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(11),
+              child: Icon(
+                icon,
+                size: 18,
+                color: onTap == null
+                    ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
+                    : colorScheme.primary,
+              ),
+            ),
+          ),
         ),
       ),
     );

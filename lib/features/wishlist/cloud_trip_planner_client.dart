@@ -32,6 +32,7 @@ class CloudTripPlannerClient {
     required String baseUrl,
     required String countryName,
     required String accessToken,
+    required int generationAttempt,
     String? wishlistTitle,
     String? tripPurpose,
     String? homeBase,
@@ -66,12 +67,18 @@ class CloudTripPlannerClient {
       'country': normalizedCountryName,
       'trip_purpose': tripPurpose?.trim(),
       'home_base': homeBase?.trim(),
+      'time_mode': preciseWindow != null
+          ? 'precise_dates'
+          : preferredMonth != null || durationPreference != null
+              ? 'month_and_duration'
+              : 'ai_recommended',
       'preferred_month': preferredMonth,
       'preferred_cities': (preferredCities ?? const <String>[])
           .map((city) => city.trim())
           .where((city) => city.isNotEmpty)
           .toList(growable: false),
       'allow_additional_cities': allowAdditionalCitiesIfTimeAllows,
+      'generation_attempt': generationAttempt,
       'max_output_tokens': maxOutputTokens,
       'duration_preference': durationPreference == null
           ? null

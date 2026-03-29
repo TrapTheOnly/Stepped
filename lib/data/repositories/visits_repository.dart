@@ -64,6 +64,10 @@ class VisitsRepository {
     return _database.deleteVisitByCountryCode(countryCode);
   }
 
+  Future<void> replaceVisits(List<CountryVisitRecord> visits) {
+    return _database.replaceVisitedCountries(visits);
+  }
+
   Future<void> setVisited({
     required String countryCode,
     required String countryName,

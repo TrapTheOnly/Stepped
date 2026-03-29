@@ -5,13 +5,14 @@ GeminiTripPlan mergeGeminiTripPlans({
   required GeminiTripPlan current,
   required GeminiTripPlan generated,
 }) {
-  final mergedCountry = readGeminiNonEmpty(current.country) ?? generated.country;
-  final mergedSummary = readGeminiNonEmpty(current.summary) ?? generated.summary;
-  final mergedDuration = isValidGeminiStayDuration(current.stayDuration)
-      ? current.stayDuration
-      : generated.stayDuration;
+  final mergedCountry = readGeminiNonEmpty(generated.country) ?? current.country;
+  final mergedSummary = readGeminiNonEmpty(generated.summary) ?? current.summary;
+  final mergedDuration = isValidGeminiStayDuration(generated.stayDuration)
+      ? generated.stayDuration
+      : current.stayDuration;
+  final mergedRecommendedDates = generated.recommendedDates;
   final mergedWindows =
-      current.timeWindows.isNotEmpty ? current.timeWindows : generated.timeWindows;
+      generated.timeWindows.isNotEmpty ? generated.timeWindows : current.timeWindows;
 
   final generatedCityByKey = <String, GeminiCityPlan>{
     for (final city in generated.cityPlan) geminiCityKey(city.city): city,
@@ -27,15 +28,15 @@ GeminiTripPlan mergeGeminiTripPlans({
       continue;
     }
     consumedGeneratedCityKeys.add(key);
-    mergedCityPlan.add(
-      GeminiCityPlan(
-        city: readGeminiNonEmpty(currentCity.city) ?? generatedCity.city,
-        days: currentCity.days > 0 ? currentCity.days : generatedCity.days,
-        reason: readGeminiNonEmpty(currentCity.reason) ?? generatedCity.reason,
-        isExtra: currentCity.isExtra,
-      ),
-    );
-  }
+      mergedCityPlan.add(
+        GeminiCityPlan(
+          city: readGeminiNonEmpty(generatedCity.city) ?? currentCity.city,
+          days: generatedCity.days > 0 ? generatedCity.days : currentCity.days,
+          reason: readGeminiNonEmpty(generatedCity.reason) ?? currentCity.reason,
+          isExtra: generatedCity.isExtra,
+        ),
+      );
+    }
 
   for (final generatedCity in generated.cityPlan) {
     final key = geminiCityKey(generatedCity.city);
@@ -52,50 +53,35 @@ GeminiTripPlan mergeGeminiTripPlans({
   };
 
   final mergedDetails = <GeminiCityDetail>[];
-  final mergedCityKeys = <String>[];
   for (final city in mergedCityPlan) {
     final key = geminiCityKey(city.city);
-    mergedCityKeys.add(key);
     final currentDetail = currentDetailByKey[key];
     final generatedDetail = generatedDetailByKey[key];
     if (currentDetail != null && generatedDetail != null) {
       mergedDetails.add(
         GeminiCityDetail(
-          city: readGeminiNonEmpty(currentDetail.city) ?? generatedDetail.city,
-          overview: readGeminiNonEmpty(currentDetail.overview) ??
-              generatedDetail.overview,
-          imageQuery: readGeminiNonEmpty(currentDetail.imageQuery) ??
-              generatedDetail.imageQuery,
-          timeline: currentDetail.timeline.isNotEmpty
-              ? currentDetail.timeline
-              : generatedDetail.timeline,
-          thingsToDo: currentDetail.thingsToDo.isNotEmpty
-              ? currentDetail.thingsToDo
-              : generatedDetail.thingsToDo,
-          image: currentDetail.image ?? generatedDetail.image,
+          city: readGeminiNonEmpty(generatedDetail.city) ?? currentDetail.city,
+          overview: readGeminiNonEmpty(generatedDetail.overview) ??
+              currentDetail.overview,
+          imageQuery: readGeminiNonEmpty(generatedDetail.imageQuery) ??
+              currentDetail.imageQuery,
+          timeline: generatedDetail.timeline.isNotEmpty
+              ? generatedDetail.timeline
+              : currentDetail.timeline,
+          thingsToDo: generatedDetail.thingsToDo.isNotEmpty
+              ? generatedDetail.thingsToDo
+              : currentDetail.thingsToDo,
+          image: generatedDetail.image ?? currentDetail.image,
         ),
       );
       continue;
     }
-    if (currentDetail != null) {
-      mergedDetails.add(currentDetail);
-      continue;
-    }
     if (generatedDetail != null) {
       mergedDetails.add(generatedDetail);
+      continue;
     }
-  }
-
-  for (final detail in current.cityDetails) {
-    final key = geminiCityKey(detail.city);
-    if (!mergedCityKeys.contains(key)) {
-      mergedDetails.add(detail);
-    }
-  }
-  for (final detail in generated.cityDetails) {
-    final key = geminiCityKey(detail.city);
-    if (!mergedCityKeys.contains(key)) {
-      mergedDetails.add(detail);
+    if (currentDetail != null) {
+      mergedDetails.add(currentDetail);
     }
   }
 
@@ -106,6 +92,7 @@ GeminiTripPlan mergeGeminiTripPlans({
     country: mergedCountry,
     summary: mergedSummary,
     stayDuration: mergedDuration,
+    recommendedDates: mergedRecommendedDates,
     timeWindows: mergedWindows,
     cityPlan: mergedCityPlan,
     cityDetails: alignedDetails,

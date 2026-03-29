@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -247,95 +248,110 @@ class WishlistStoryCard extends StatelessWidget {
           ? 'Long press for actions.'
           : 'Double tap to open the plan. Long press for actions.',
       button: onOpenPlan != null,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onOpenPlan,
-          onLongPress: onActions,
-          borderRadius: BorderRadius.circular(32),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 2),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: colorScheme.primary.withValues(alpha: 0.08),
+              blurRadius: 32,
+              offset: const Offset(0, 18),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onOpenPlan,
+            onLongPress: onActions,
+            splashFactory: NoSplash.splashFactory,
+            highlightColor: Colors.transparent,
+            overlayColor: WidgetStateProperty.resolveWith<Color?>(
+              (states) => states.contains(WidgetState.pressed)
+                  ? Colors.white.withValues(alpha: 0.06)
+                  : null,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(32),
-                    boxShadow: <BoxShadow>[
-                      BoxShadow(
-                        color: colorScheme.primary.withValues(alpha: 0.08),
-                        blurRadius: 32,
-                        offset: const Offset(0, 18),
+                ClipRRect(
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(30),
+                    topRight: Radius.circular(30),
+                  ),
+                  child: Stack(
+                    fit: StackFit.passthrough,
+                    children: <Widget>[
+                      SizedBox(
+                        height: 208,
+                        width: double.infinity,
+                        child: _WishlistHeroArtwork(
+                          item: item,
+                          countryCode: countryCode,
+                        ),
+                      ),
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: <Color>[
+                              Colors.black.withValues(alpha: 0.06),
+                              Colors.transparent,
+                              Colors.black.withValues(alpha: 0.6),
+                            ],
+                            stops: const <double>[0, 0.42, 1],
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: 14,
+                        left: 14,
+                        right: 14,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: <Widget>[
+                            _WishlistPinButton(
+                              isPinned: item.isPinned,
+                              onTap: onPinToggle,
+                            ),
+                            _WishlistCardMenuButton(
+                              onTap: onActions,
+                            ),
+                          ],
+                        ),
+                      ),
+                      Positioned(
+                        left: 18,
+                        right: 18,
+                        bottom: 18,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            if (item.isPinned) ...<Widget>[
+                              _WishlistFeaturedPill(
+                                colorScheme: colorScheme,
+                              ),
+                              const SizedBox(height: 10),
+                            ],
+                            Text(
+                              _wishlistHeroTitle(item),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .displaySmall
+                                  ?.copyWith(
+                                    color: Colors.white,
+                                    fontSize: 34,
+                                    height: 0.98,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(32),
-                    child: Stack(
-                      fit: StackFit.passthrough,
-                      children: <Widget>[
-                        AspectRatio(
-                          aspectRatio: 16 / 10,
-                          child: _WishlistHeroArtwork(
-                            item: item,
-                            countryCode: countryCode,
-                          ),
-                        ),
-                        DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: <Color>[
-                                Colors.black.withValues(alpha: 0.06),
-                                Colors.transparent,
-                                Colors.black.withValues(alpha: 0.6),
-                              ],
-                              stops: const <double>[0, 0.42, 1],
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          top: 16,
-                          right: 16,
-                          child: _WishlistPinButton(
-                            isPinned: item.isPinned,
-                            onTap: onPinToggle,
-                          ),
-                        ),
-                        Positioned(
-                          left: 18,
-                          right: 18,
-                          bottom: 18,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: <Widget>[
-                              if (item.isPinned) ...<Widget>[
-                                _WishlistFeaturedPill(
-                                  colorScheme: colorScheme,
-                                ),
-                                const SizedBox(height: 10),
-                              ],
-                              Text(
-                                _wishlistHeroTitle(item),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .displaySmall
-                                    ?.copyWith(
-                                      color: Colors.white,
-                                      fontSize: 34,
-                                      height: 0.98,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -469,6 +485,33 @@ class _WishlistPinButton extends StatelessWidget {
   }
 }
 
+class _WishlistCardMenuButton extends StatelessWidget {
+  const _WishlistCardMenuButton({
+    required this.onTap,
+  });
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.2),
+        shape: BoxShape.circle,
+      ),
+      child: IconButton(
+        tooltip: 'Wishlist actions',
+        onPressed: onTap,
+        icon: const Icon(
+          Icons.more_horiz_rounded,
+          color: Colors.white,
+          size: 18,
+        ),
+      ),
+    );
+  }
+}
+
 class _WishlistReadinessPill extends StatelessWidget {
   const _WishlistReadinessPill({required this.readiness});
 
@@ -515,9 +558,25 @@ class _WishlistHeroArtwork extends StatelessWidget {
       return const _WishlistHeroPlaceholder();
     }
 
+    if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
+      final localPath = imageUrl.startsWith('file://')
+          ? imageUrl.replaceFirst('file://', '')
+          : imageUrl;
+      final file = File(localPath);
+      if (file.existsSync()) {
+        return Image.file(
+          file,
+          fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
+        );
+      }
+      return const _WishlistHeroPlaceholder();
+    }
+
     return CachedNetworkImage(
       imageUrl: imageUrl,
       fit: BoxFit.cover,
+      alignment: Alignment.topCenter,
       placeholder: (_, __) => const _WishlistHeroPlaceholder(),
       errorWidget: (_, __, ___) => const _WishlistHeroPlaceholder(),
     );

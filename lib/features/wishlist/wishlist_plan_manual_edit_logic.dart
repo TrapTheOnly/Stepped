@@ -19,6 +19,7 @@ WishlistManualHydratedState hydrateWishlistManualState({
         country: item.countryName ?? '',
         summary: '',
         stayDuration: null,
+        recommendedDates: null,
         timeWindows: const <GeminiTimeWindow>[],
         cityPlan: const <GeminiCityPlan>[],
         cityDetails: const <GeminiCityDetail>[],
@@ -83,6 +84,7 @@ WishlistManualHydratedState hydrateWishlistManualState({
     durationSource: seedPlan.stayDuration?.source == 'user_selected'
         ? 'user_selected'
         : 'ai_recommended',
+    coverImage: _readWishlistCoverImage(item.aiPlan),
     timeWindows: timeWindows,
     cities: cities,
     requestPayload: readWishlistManualRequestPayload(item.aiPlan),
@@ -209,10 +211,11 @@ GeminiTripPlan? buildWishlistManualDraftPlan({
       continue;
     }
 
-    final keepExistingImage = city.originalCityKey != null &&
-        city.originalCityKey == manualCityKey(cityName) &&
-        city.image != null &&
-        city.originalImageQuery == city.imageQuery.trim();
+    final keepExistingImage = city.image != null &&
+        (city.image!.source == 'manual' ||
+            (city.originalCityKey != null &&
+                city.originalCityKey == manualCityKey(cityName) &&
+                city.originalImageQuery == city.imageQuery.trim()));
 
     cityPlan.add(
       GeminiCityPlan(
@@ -257,9 +260,43 @@ GeminiTripPlan? buildWishlistManualDraftPlan({
     country: trimmedCountry,
     summary: trimmedSummary,
     stayDuration: duration,
+    recommendedDates: null,
     timeWindows: windows,
     cityPlan: cityPlan,
     cityDetails: cityDetails,
     rawText: '',
   );
+}
+
+GeminiCityImage? _readWishlistCoverImage(String? rawPlan) {
+  final raw = rawPlan?.trim();
+  if (raw == null || raw.isEmpty) {
+    return null;
+  }
+
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map<String, dynamic>) {
+      return null;
+    }
+    final coverImage = decoded['cover_image'];
+    if (coverImage is! Map<String, dynamic>) {
+      return null;
+    }
+    final imageUrl = coverImage['image_url'];
+    if (imageUrl is! String || imageUrl.trim().isEmpty) {
+      return null;
+    }
+    return GeminiCityImage(
+      imageUrl: imageUrl.trim(),
+      sourcePageUrl: (coverImage['source_page_url'] as String?) ?? '',
+      title: (coverImage['title'] as String?) ?? 'Wishlist cover',
+      creator: (coverImage['creator'] as String?) ?? 'Unknown creator',
+      license: (coverImage['license'] as String?) ?? 'unknown',
+      licenseUrl: (coverImage['license_url'] as String?) ?? '',
+      source: (coverImage['source'] as String?) ?? 'openverse',
+    );
+  } catch (_) {
+    return null;
+  }
 }

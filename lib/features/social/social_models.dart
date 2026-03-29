@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import '../trips/trip_city_models.dart';
+import 'social_asset_urls.dart';
 
 class SocialProfileSnapshot {
   const SocialProfileSnapshot({
@@ -47,15 +50,37 @@ class SocialProfileSnapshot {
             'Traveler',
           ]) ??
           'Traveler',
-      photoUrl: _firstNonEmptyString(<dynamic>[
+      photoUrl: _firstResolvedUrlString(<dynamic>[
         json['photo_url'],
         json['photoUrl'],
+        json['photoURL'],
+        json['profile_photo_url'],
+        json['profilePhotoUrl'],
+        json['profile_picture_url'],
+        json['profilePictureUrl'],
         json['avatar_url'],
         json['avatarUrl'],
+        json['image_url'],
+        json['imageUrl'],
+        json['photo'],
+        json['avatar'],
+        json['profile_photo'],
+        json['profilePhoto'],
         nested['photo_url'],
         nested['photoUrl'],
+        nested['photoURL'],
+        nested['profile_photo_url'],
+        nested['profilePhotoUrl'],
+        nested['profile_picture_url'],
+        nested['profilePictureUrl'],
         nested['avatar_url'],
         nested['avatarUrl'],
+        nested['image_url'],
+        nested['imageUrl'],
+        nested['photo'],
+        nested['avatar'],
+        nested['profile_photo'],
+        nested['profilePhoto'],
       ]),
       homeBase: _firstNonEmptyString(<dynamic>[
             json['home_base'],
@@ -91,6 +116,22 @@ class SocialTravelSnapshot {
       ],
       'visited_countries': <Map<String, dynamic>>[
         for (final country in visitedCountries) country.toJson(),
+      ],
+    };
+  }
+}
+
+class SocialWishlistSnapshot {
+  const SocialWishlistSnapshot({
+    required this.items,
+  });
+
+  final List<SocialWishlistItem> items;
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'wishlist_items': <Map<String, dynamic>>[
+        for (final item in items) item.toJson(),
       ],
     };
   }
@@ -166,9 +207,11 @@ class SocialTripSummary {
           ]) ??
           '',
       cityEntries: cityEntries,
-      coverImageUrl: _firstNonEmptyString(<dynamic>[
+      coverImageUrl: _firstResolvedUrlString(<dynamic>[
         json['cover_image_url'],
         json['coverImageUrl'],
+        json['cover_image'],
+        json['coverImage'],
       ]),
       notes: _firstNonEmptyString(<dynamic>[json['notes']]),
     );
@@ -210,6 +253,123 @@ class SocialVisitedCountry {
       visitedAt: _readEpochMillis(<dynamic>[
             json['visited_at'],
             json['visitedAt'],
+          ]) ??
+          0,
+    );
+  }
+}
+
+class SocialWishlistItem {
+  const SocialWishlistItem({
+    required this.id,
+    required this.title,
+    this.countryCode,
+    required this.countryName,
+    required this.plannedCities,
+    this.plannedStartDate,
+    this.plannedEndDate,
+    this.imageUrl,
+    this.notes,
+    this.aiPlan,
+    this.isPinned = false,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String title;
+  final String? countryCode;
+  final String countryName;
+  final String plannedCities;
+  final int? plannedStartDate;
+  final int? plannedEndDate;
+  final String? imageUrl;
+  final String? notes;
+  final String? aiPlan;
+  final bool isPinned;
+  final int createdAt;
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'id': id,
+      'title': title,
+      'country_code': countryCode,
+      'country_name': countryName,
+      'planned_cities': plannedCities,
+      'planned_start_date': plannedStartDate,
+      'planned_end_date': plannedEndDate,
+      'image_url': imageUrl,
+      'notes': notes,
+      'ai_plan': aiPlan,
+      'is_pinned': isPinned,
+      'created_at': createdAt,
+    };
+  }
+
+  factory SocialWishlistItem.fromJson(dynamic raw) {
+    final json = _asMap(raw);
+    return SocialWishlistItem(
+      id: _firstNonEmptyString(<dynamic>[
+            json['id'],
+            json['wishlist_item_id'],
+            json['wishlistItemId'],
+          ]) ??
+          '',
+      title: _firstNonEmptyString(<dynamic>[
+            json['title'],
+            json['name'],
+            'Wishlist idea',
+          ]) ??
+          'Wishlist idea',
+      countryCode: _firstNonEmptyString(<dynamic>[
+        json['country_code'],
+        json['countryCode'],
+      ]),
+      countryName: _firstNonEmptyString(<dynamic>[
+            json['country_name'],
+            json['countryName'],
+          ]) ??
+          '',
+      plannedCities: _firstNonEmptyString(<dynamic>[
+            json['planned_cities'],
+            json['plannedCities'],
+            json['cities'],
+          ]) ??
+          '',
+      plannedStartDate: _readEpochMillis(<dynamic>[
+        json['planned_start_date'],
+        json['plannedStartDate'],
+      ]),
+      plannedEndDate: _readEpochMillis(<dynamic>[
+        json['planned_end_date'],
+        json['plannedEndDate'],
+      ]),
+      imageUrl: _firstResolvedUrlString(<dynamic>[
+        json['image_url'],
+        json['imageUrl'],
+        json['cover_image_url'],
+        json['coverImageUrl'],
+        json['image'],
+        json['cover_image'],
+        json['coverImage'],
+      ]),
+      notes: _firstNonEmptyString(<dynamic>[
+        json['notes'],
+        json['summary'],
+      ]),
+      aiPlan: _readStructuredJsonString(<dynamic>[
+        json['ai_plan'],
+        json['aiPlan'],
+      ]),
+      isPinned: _readBool(<dynamic>[
+            json['is_pinned'],
+            json['isPinned'],
+          ]) ??
+          false,
+      createdAt: _readEpochMillis(<dynamic>[
+            json['created_at'],
+            json['createdAt'],
+            json['updated_at'],
+            json['updatedAt'],
           ]) ??
           0,
     );
@@ -384,16 +544,29 @@ class SocialMeData {
     this.invite,
     this.stats,
     this.invites = const <SocialInviteLink>[],
+    this.trips = const <SocialTripSummary>[],
+    this.visitedCountries = const <SocialVisitedCountry>[],
+    this.wishlistItems = const <SocialWishlistItem>[],
+    this.hasTripsPayload = false,
+    this.hasVisitedCountriesPayload = false,
+    this.hasWishlistItemsPayload = false,
   });
 
   final SocialProfileSnapshot profile;
   final SocialInviteLink? invite;
   final SocialStats? stats;
   final List<SocialInviteLink> invites;
+  final List<SocialTripSummary> trips;
+  final List<SocialVisitedCountry> visitedCountries;
+  final List<SocialWishlistItem> wishlistItems;
+  final bool hasTripsPayload;
+  final bool hasVisitedCountriesPayload;
+  final bool hasWishlistItemsPayload;
 
   factory SocialMeData.fromJson(dynamic raw) {
     final json = _asMap(raw);
     final profileRaw = json['profile'] ?? json['me'] ?? json['user'] ?? json;
+    final profileMap = _asMapOrNull(profileRaw) ?? const <String, dynamic>{};
     final inviteRaw = json['invite'] ??
         json['active_invite'] ??
         json['friend_invite'] ??
@@ -402,6 +575,12 @@ class SocialMeData {
             : null);
     final statsRaw = json['stats'] ?? json['counts'];
     final inviteListRaw = json['invites'];
+    final tripsRaw = _asList(json['trips']);
+    final visitedCountriesRaw = _asList(
+      profileMap['visited_countries'] ?? json['visited_countries'],
+    );
+    final wishlistItemsRaw =
+        _asList(json['wishlist_items'] ?? json['wishlistItems']);
     final parsedInvites = <SocialInviteLink>[
       if (inviteListRaw is List)
         for (final entry in inviteListRaw) SocialInviteLink.fromJson(entry),
@@ -414,6 +593,22 @@ class SocialMeData {
       invite: _selectPrimaryInvite(invites),
       stats: statsRaw == null ? null : SocialStats.fromJson(statsRaw),
       invites: invites,
+      trips: <SocialTripSummary>[
+        for (final entry in tripsRaw) SocialTripSummary.fromJson(entry),
+      ],
+      visitedCountries: <SocialVisitedCountry>[
+        for (final entry in visitedCountriesRaw)
+          SocialVisitedCountry.fromJson(entry),
+      ],
+      wishlistItems: <SocialWishlistItem>[
+        for (final entry in wishlistItemsRaw)
+          SocialWishlistItem.fromJson(entry),
+      ],
+      hasTripsPayload: json.containsKey('trips'),
+      hasVisitedCountriesPayload: profileMap.containsKey('visited_countries') ||
+          json.containsKey('visited_countries'),
+      hasWishlistItemsPayload: json.containsKey('wishlist_items') ||
+          json.containsKey('wishlistItems'),
     );
   }
 }
@@ -469,15 +664,37 @@ class FriendSummary {
             'Traveler',
           ]) ??
           'Traveler',
-      photoUrl: _firstNonEmptyString(<dynamic>[
+      photoUrl: _firstResolvedUrlString(<dynamic>[
         json['photo_url'],
         json['photoUrl'],
+        json['photoURL'],
+        json['profile_photo_url'],
+        json['profilePhotoUrl'],
+        json['profile_picture_url'],
+        json['profilePictureUrl'],
         json['avatar_url'],
         json['avatarUrl'],
+        json['image_url'],
+        json['imageUrl'],
+        json['photo'],
+        json['avatar'],
+        json['profile_photo'],
+        json['profilePhoto'],
         nested['photo_url'],
         nested['photoUrl'],
+        nested['photoURL'],
+        nested['profile_photo_url'],
+        nested['profilePhotoUrl'],
+        nested['profile_picture_url'],
+        nested['profilePictureUrl'],
         nested['avatar_url'],
         nested['avatarUrl'],
+        nested['image_url'],
+        nested['imageUrl'],
+        nested['photo'],
+        nested['avatar'],
+        nested['profile_photo'],
+        nested['profilePhoto'],
       ]),
       homeBase: _firstNonEmptyString(<dynamic>[
             json['home_base'],
@@ -559,9 +776,22 @@ class FriendInvitePreview {
             json['email'],
           ]) ??
           '',
-      inviterPhotoUrl: _firstNonEmptyString(<dynamic>[
+      inviterPhotoUrl: _firstResolvedUrlString(<dynamic>[
         inviter['photo_url'],
         inviter['photoUrl'],
+        inviter['photoURL'],
+        inviter['profile_photo_url'],
+        inviter['profilePhotoUrl'],
+        inviter['profile_picture_url'],
+        inviter['profilePictureUrl'],
+        inviter['avatar_url'],
+        inviter['avatarUrl'],
+        inviter['image_url'],
+        inviter['imageUrl'],
+        inviter['photo'],
+        inviter['avatar'],
+        inviter['profile_photo'],
+        inviter['profilePhoto'],
       ]),
       inviterHomeBase: _firstNonEmptyString(<dynamic>[
             inviter['home_base'],
@@ -617,8 +847,10 @@ class FriendProfile {
           json['friend'] ?? json['user'] ?? json['profile'],
         ) ??
         const <String, dynamic>{};
-    final statsRaw =
-        json['stats'] ?? json['counts'] ?? nested['stats'] ?? const <String, dynamic>{};
+    final statsRaw = json['stats'] ??
+        json['counts'] ??
+        nested['stats'] ??
+        const <String, dynamic>{};
     final visitedRaw =
         _asList(json['visited_countries'] ?? nested['visited_countries']);
     return FriendProfile(
@@ -651,15 +883,37 @@ class FriendProfile {
             'Traveler',
           ]) ??
           'Traveler',
-      photoUrl: _firstNonEmptyString(<dynamic>[
+      photoUrl: _firstResolvedUrlString(<dynamic>[
         json['photo_url'],
         json['photoUrl'],
+        json['photoURL'],
+        json['profile_photo_url'],
+        json['profilePhotoUrl'],
+        json['profile_picture_url'],
+        json['profilePictureUrl'],
         json['avatar_url'],
         json['avatarUrl'],
+        json['image_url'],
+        json['imageUrl'],
+        json['photo'],
+        json['avatar'],
+        json['profile_photo'],
+        json['profilePhoto'],
         nested['photo_url'],
         nested['photoUrl'],
+        nested['photoURL'],
+        nested['profile_photo_url'],
+        nested['profilePhotoUrl'],
+        nested['profile_picture_url'],
+        nested['profilePictureUrl'],
         nested['avatar_url'],
         nested['avatarUrl'],
+        nested['image_url'],
+        nested['imageUrl'],
+        nested['photo'],
+        nested['avatar'],
+        nested['profile_photo'],
+        nested['profilePhoto'],
       ]),
       homeBase: _firstNonEmptyString(<dynamic>[
             json['home_base'],
@@ -791,11 +1045,14 @@ class SharedWishlistItem {
         json['planned_end_date'],
         json['plannedEndDate'],
       ]),
-      imageUrl: _firstNonEmptyString(<dynamic>[
+      imageUrl: _firstResolvedUrlString(<dynamic>[
         json['image_url'],
         json['imageUrl'],
         json['cover_image_url'],
         json['coverImageUrl'],
+        json['image'],
+        json['cover_image'],
+        json['coverImage'],
       ]),
       notes: _firstNonEmptyString(<dynamic>[
         json['notes'],
@@ -897,6 +1154,27 @@ Map<String, dynamic>? _asMapOrNull(dynamic raw) {
   return null;
 }
 
+String? _readStructuredJsonString(List<dynamic> values) {
+  for (final value in values) {
+    if (value is String) {
+      final normalized = value.trim();
+      if (normalized.isNotEmpty) {
+        return normalized;
+      }
+      continue;
+    }
+    if (value is Map || value is List) {
+      try {
+        final encoded = jsonEncode(value);
+        if (encoded.trim().isNotEmpty) {
+          return encoded;
+        }
+      } catch (_) {}
+    }
+  }
+  return null;
+}
+
 List<dynamic> _asList(dynamic raw) {
   if (raw is List) {
     return raw;
@@ -912,6 +1190,41 @@ String? _firstNonEmptyString(List<dynamic> values) {
     final normalized = value.trim();
     if (normalized.isNotEmpty) {
       return normalized;
+    }
+  }
+  return null;
+}
+
+String? _firstResolvedUrlString(List<dynamic> values) {
+  for (final value in values) {
+    if (value is String) {
+      final resolved = normalizeSocialAssetUrl(value);
+      if (resolved != null) {
+        return resolved;
+      }
+      continue;
+    }
+
+    final map = _asMapOrNull(value);
+    if (map == null) {
+      continue;
+    }
+
+    final nested = _firstResolvedUrlString(<dynamic>[
+      map['url'],
+      map['href'],
+      map['src'],
+      map['download_url'],
+      map['downloadUrl'],
+      map['public_url'],
+      map['publicUrl'],
+      map['photo_url'],
+      map['photoUrl'],
+      map['image_url'],
+      map['imageUrl'],
+    ]);
+    if (nested != null) {
+      return nested;
     }
   }
   return null;

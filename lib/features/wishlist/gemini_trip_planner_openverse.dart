@@ -65,16 +65,34 @@ String buildWishlistCoverImageQuery({
   required String title,
   required String countryName,
   String? purpose,
+  String? summary,
+  List<String> cityHints = const <String>[],
+  List<String> cityImageQueries = const <String>[],
 }) {
   final normalizedPurpose = _normalizeWishlistSearchSeed(purpose);
+  final normalizedSummary = _normalizeWishlistSearchSeed(summary);
   final normalizedTitle = _normalizeWishlistSearchSeed(title);
   final normalizedCountry = countryName.trim();
+  final primaryCityHint = cityImageQueries
+      .map(_normalizeWishlistSearchSeed)
+      .firstWhere(
+        (value) => value.isNotEmpty,
+        orElse: () => cityHints
+            .map(_normalizeWishlistSearchSeed)
+            .firstWhere((value) => value.isNotEmpty, orElse: () => ''),
+      );
 
   if (normalizedPurpose.isNotEmpty && normalizedCountry.isNotEmpty) {
     return '$normalizedPurpose $normalizedCountry';
   }
   if (normalizedPurpose.isNotEmpty) {
     return normalizedPurpose;
+  }
+  if (primaryCityHint.isNotEmpty && normalizedCountry.isNotEmpty) {
+    return '$primaryCityHint $normalizedCountry';
+  }
+  if (normalizedSummary.isNotEmpty && normalizedCountry.isNotEmpty) {
+    return '$normalizedSummary $normalizedCountry';
   }
   if (normalizedTitle.isNotEmpty && normalizedCountry.isNotEmpty) {
     return '$normalizedTitle $normalizedCountry';
@@ -92,17 +110,38 @@ Future<GeminiCityImage?> findOpenverseImageForWishlistCover({
   required String title,
   required String countryName,
   String? purpose,
+  String? summary,
+  List<String> cityHints = const <String>[],
+  List<String> cityImageQueries = const <String>[],
 }) async {
   final normalizedTitle = _normalizeWishlistSearchSeed(title);
   final normalizedPurpose = _normalizeWishlistSearchSeed(purpose);
+  final normalizedSummary = _normalizeWishlistSearchSeed(summary);
   final normalizedCountry = countryName.trim();
+  final normalizedCityHints = cityHints
+      .map(_normalizeWishlistSearchSeed)
+      .where((value) => value.isNotEmpty)
+      .toList(growable: false);
+  final normalizedCityQueries = cityImageQueries
+      .map(_normalizeWishlistSearchSeed)
+      .where((value) => value.isNotEmpty)
+      .toList(growable: false);
   final primaryQuery = buildWishlistCoverImageQuery(
     title: title,
     countryName: countryName,
     purpose: purpose,
+    summary: summary,
+    cityHints: cityHints,
+    cityImageQueries: cityImageQueries,
   );
   final queryQueue = <String>[
     primaryQuery,
+    ...normalizedCityQueries.take(2).map((query) => '$query $normalizedCountry'),
+    ...normalizedCityHints.take(2).map((query) => '$query $normalizedCountry'),
+    if (normalizedPurpose.isNotEmpty && normalizedCountry.isNotEmpty)
+      '$normalizedPurpose experience $normalizedCountry',
+    if (normalizedSummary.isNotEmpty && normalizedCountry.isNotEmpty)
+      '$normalizedSummary $normalizedCountry',
     if (normalizedTitle.isNotEmpty && normalizedCountry.isNotEmpty)
       '$normalizedTitle destination $normalizedCountry',
     if (normalizedPurpose.isNotEmpty) normalizedPurpose,
@@ -236,7 +275,15 @@ String _normalizeWishlistSearchSeed(String? raw) {
   if (raw == null) {
     return '';
   }
-  final parts = raw
+  final normalized = raw
+      .replaceAll(RegExp(r'[\r\n]+'), ' ')
+      .replaceAll(RegExp(r'[^A-Za-z0-9\\s\\-]'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  if (normalized.isEmpty) {
+    return '';
+  }
+  final parts = normalized
       .split(RegExp(r'\s+'))
       .map((part) => part.trim())
       .where((part) => part.isNotEmpty)

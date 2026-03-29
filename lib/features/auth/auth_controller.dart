@@ -115,26 +115,30 @@ class AuthController extends ChangeNotifier {
       throw const AuthException('Password should be at least 10 characters.');
     }
 
-    await _runBusy(() async {
-      final credentials = await _firebaseAuth.createUserWithEmailAndPassword(
-        email: normalizedEmail,
-        password: password,
-      );
-      final user = credentials.user;
-      if (user == null) {
-        throw const AuthException(
-            'Account was created, but no user session was returned.');
-      }
+    try {
+      await _runBusy(() async {
+        final credentials = await _firebaseAuth.createUserWithEmailAndPassword(
+          email: normalizedEmail,
+          password: password,
+        );
+        final user = credentials.user;
+        if (user == null) {
+          throw const AuthException(
+              'Account was created, but no user session was returned.');
+        }
 
-      if ((user.displayName ?? '').trim() != normalizedName) {
-        await user.updateDisplayName(normalizedName);
-      }
+        if ((user.displayName ?? '').trim() != normalizedName) {
+          await user.updateDisplayName(normalizedName);
+        }
 
-      await _syncSessionFromFirebaseUser(
-        user,
-        forceRefreshToken: true,
-      );
-    });
+        await _syncSessionFromFirebaseUser(
+          user,
+          forceRefreshToken: true,
+        );
+      });
+    } on firebase_auth.FirebaseAuthException catch (error) {
+      throw AuthException(_toUserMessageForEmailRegistrationException(error));
+    }
   }
 
   Future<void> signInWithEmail({
@@ -151,22 +155,26 @@ class AuthController extends ChangeNotifier {
       throw const AuthException('Enter your password.');
     }
 
-    await _runBusy(() async {
-      final credentials = await _firebaseAuth.signInWithEmailAndPassword(
-        email: normalizedEmail,
-        password: password,
-      );
-      final user = credentials.user;
-      if (user == null) {
-        throw const AuthException(
-            'Sign-in succeeded, but no user session was returned.');
-      }
+    try {
+      await _runBusy(() async {
+        final credentials = await _firebaseAuth.signInWithEmailAndPassword(
+          email: normalizedEmail,
+          password: password,
+        );
+        final user = credentials.user;
+        if (user == null) {
+          throw const AuthException(
+              'Sign-in succeeded, but no user session was returned.');
+        }
 
-      await _syncSessionFromFirebaseUser(
-        user,
-        forceRefreshToken: true,
-      );
-    });
+        await _syncSessionFromFirebaseUser(
+          user,
+          forceRefreshToken: true,
+        );
+      });
+    } on firebase_auth.FirebaseAuthException catch (error) {
+      throw AuthException(_toUserMessageForEmailSignInException(error));
+    }
   }
 
   Future<void> signInWithGoogle() async {
@@ -346,6 +354,7 @@ class AuthController extends ChangeNotifier {
   Future<void> replaceLocalProfile({
     String? displayName,
     String? photoUrl,
+    bool overwritePhotoUrl = false,
   }) async {
     await _ensureInitialized();
     final current = _currentUser;
@@ -353,13 +362,18 @@ class AuthController extends ChangeNotifier {
       return;
     }
 
+    final normalizedPhotoUrl = photoUrl?.trim();
     final nextUser = current.copyWith(
       displayName: displayName?.trim().isNotEmpty == true
           ? displayName!.trim()
           : current.displayName,
-      photoUrl: photoUrl?.trim().isNotEmpty == true
-          ? photoUrl!.trim()
-          : current.photoUrl,
+      photoUrl: overwritePhotoUrl
+          ? ((normalizedPhotoUrl != null && normalizedPhotoUrl.isNotEmpty)
+              ? normalizedPhotoUrl
+              : null)
+          : (normalizedPhotoUrl != null && normalizedPhotoUrl.isNotEmpty
+              ? normalizedPhotoUrl
+              : current.photoUrl),
     );
     await _setSession(
       accessToken: _accessToken!,
@@ -502,37 +516,27 @@ class AuthController extends ChangeNotifier {
     }
 
     try {
-      final lightweightAccount = await _attemptGoogleBottomSheetSignIn();
-      if (lightweightAccount != null) {
-        return lightweightAccount;
-      }
-
+      await _resetGoogleAuthenticationState();
       return await _googleSignIn.authenticate();
     } on PlatformException catch (error) {
       if (_isCredentialChannelError(error)) {
         _googleInitialized = false;
         await _initializeGoogleSignIn(force: true);
-        final lightweightAccount = await _attemptGoogleBottomSheetSignIn();
-        if (lightweightAccount != null) {
-          return lightweightAccount;
-        }
         return _googleSignIn.authenticate();
       }
       rethrow;
     }
   }
 
-  Future<GoogleSignInAccount?> _attemptGoogleBottomSheetSignIn() async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
-      return null;
-    }
-    final attempt = _googleSignIn.attemptLightweightAuthentication(
-      reportAllExceptions: true,
-    );
-    if (attempt == null) {
-      return null;
-    }
-    return attempt;
+  Future<void> _resetGoogleAuthenticationState() async {
+    try {
+      await _googleSignIn.disconnect();
+      return;
+    } catch (_) {}
+
+    try {
+      await _googleSignIn.signOut();
+    } catch (_) {}
   }
 
   String _toUserMessageForGoogleException(GoogleSignInException error) {
@@ -543,7 +547,7 @@ class AuthController extends ChangeNotifier {
 
     return switch (error.code) {
       GoogleSignInExceptionCode.canceled =>
-        'Google sign-in was canceled. If this happens right after choosing an account, it is usually a configuration issue (Firebase Android app, SHA fingerprints, or Google provider setup).',
+        '',
       GoogleSignInExceptionCode.interrupted =>
         'Google sign-in was interrupted. Please try again.',
       GoogleSignInExceptionCode.uiUnavailable =>
@@ -581,7 +585,7 @@ class AuthController extends ChangeNotifier {
         (message != null &&
             (message.contains('12501') ||
                 message.toLowerCase().contains('cancel')))) {
-      return 'Google sign-in was canceled.';
+      return '';
     }
     if (message != null) {
       return 'Google sign-in failed: $message';
@@ -596,7 +600,7 @@ class AuthController extends ChangeNotifier {
       'account-exists-with-different-credential' =>
         'This email is already linked to a different sign-in method.',
       'invalid-credential' =>
-        'Google returned an invalid credential. Please try again.',
+        'Those sign-in details were not accepted. Please try again.',
       'operation-not-allowed' =>
         'Google auth is not enabled in Firebase Authentication. Enable Google in Firebase Console > Authentication > Sign-in method.',
       'user-disabled' => 'This account has been disabled.',
@@ -605,12 +609,48 @@ class AuthController extends ChangeNotifier {
       'email-already-in-use' =>
         'This email is already registered. Try signing in instead.',
       'invalid-email' => 'Enter a valid email address.',
+      'invalid-login-credentials' =>
+        'Incorrect email or password. If this account was created with Google, use Continue with Google instead.',
       'wrong-password' => 'Incorrect email or password.',
       'user-not-found' => 'Incorrect email or password.',
+      'too-many-requests' =>
+        'Too many sign-in attempts right now. Please wait a moment and try again.',
       'weak-password' => 'Password should be at least 10 characters.',
       _ => error.message?.trim().isNotEmpty == true
           ? error.message!.trim()
           : 'Authentication failed.',
+    };
+  }
+
+  String _toUserMessageForEmailSignInException(
+    firebase_auth.FirebaseAuthException error,
+  ) {
+    return switch (error.code) {
+      'invalid-credential' || 'invalid-login-credentials' || 'wrong-password' || 'user-not-found' =>
+        'Incorrect email or password. If this account was created with Google, use Continue with Google instead.',
+      'invalid-email' => 'Enter a valid email address.',
+      'user-disabled' => 'This account has been disabled.',
+      'network-request-failed' =>
+        'We could not reach the sign-in service. Check your connection and try again.',
+      'too-many-requests' =>
+        'Too many sign-in attempts right now. Please wait a moment and try again.',
+      _ => 'We could not sign you in with that email and password.',
+    };
+  }
+
+  String _toUserMessageForEmailRegistrationException(
+    firebase_auth.FirebaseAuthException error,
+  ) {
+    return switch (error.code) {
+      'email-already-in-use' =>
+        'That email already has an account. Try signing in instead.',
+      'invalid-email' => 'Enter a valid email address.',
+      'weak-password' => 'Password should be at least 10 characters.',
+      'network-request-failed' =>
+        'We could not reach the sign-up service. Check your connection and try again.',
+      'too-many-requests' =>
+        'Too many sign-up attempts right now. Please wait a moment and try again.',
+      _ => 'We could not create your account right now. Please try again.',
     };
   }
 

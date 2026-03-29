@@ -44,6 +44,10 @@ bool _containsStoredPlanData(Map<String, dynamic> decoded) {
       _readCandidateStayDuration(decoded['duration']))) {
     return true;
   }
+  final recommendedDates = decoded['recommended_dates'];
+  if (recommendedDates is Map && recommendedDates.isNotEmpty) {
+    return true;
+  }
   final timeWindows = decoded['time_windows'];
   if (timeWindows is List && timeWindows.isNotEmpty) {
     return true;
@@ -93,6 +97,7 @@ GeminiTripPlan parseBaseGeminiPlanText({
       country: fallbackCountry,
       summary: normalized,
       stayDuration: null,
+      recommendedDates: null,
       timeWindows: const <GeminiTimeWindow>[],
       cityPlan: const <GeminiCityPlan>[],
       cityDetails: const <GeminiCityDetail>[],

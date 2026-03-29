@@ -10,6 +10,7 @@ import '../../data/db/app_db.dart';
 import '../../data/repositories/trips_repository.dart';
 import '../../widgets/frosted_squircle.dart';
 import '../../widgets/stepped_top_bar.dart';
+import '../settings/app_preferences.dart';
 
 const _bottomNavClearance = 112.0;
 const _fabOffset = 121.0;
@@ -21,6 +22,8 @@ class TripsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tripsAsync = ref.watch(tripsStreamProvider);
+    final preferences = ref.watch(appPreferencesProvider).valueOrNull ??
+        AppPreferences.defaults;
     final colorScheme = Theme.of(context).colorScheme;
 
     return ColoredBox(
@@ -99,7 +102,13 @@ class TripsScreen extends ConsumerWidget {
                           trip: trip,
                           onOpen: () => context.push('/trips/view/${trip.id}'),
                           onEdit: () => context.push('/trips/edit/${trip.id}'),
-                          onDelete: () => _confirmDelete(context, ref, trip),
+                          onDelete: () => _confirmDelete(
+                            context,
+                            ref,
+                            trip,
+                            requireConfirmation:
+                                preferences.confirmWishlistDelete,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 18),
@@ -139,31 +148,35 @@ class TripsScreen extends ConsumerWidget {
   Future<void> _confirmDelete(
     BuildContext context,
     WidgetRef ref,
-    TripRecord trip,
-  ) async {
-    final shouldDelete = await showDialog<bool>(
-          context: context,
-          builder: (dialogContext) {
-            return AlertDialog(
-              title: const Text('Delete trip?'),
-              content: Text('Remove ${trip.countryName} from your trips list.'),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(true),
-                  child: const Text('Delete'),
-                ),
-              ],
-            );
-          },
-        ) ??
-        false;
+    TripRecord trip, {
+    required bool requireConfirmation,
+  }) async {
+    if (requireConfirmation) {
+      final shouldDelete = await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) {
+              return AlertDialog(
+                title: const Text('Delete trip?'),
+                content:
+                    Text('Remove ${trip.countryName} from your trips list.'),
+                actions: <Widget>[
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                    child: const Text('Delete'),
+                  ),
+                ],
+              );
+            },
+          ) ??
+          false;
 
-    if (!shouldDelete) {
-      return;
+      if (!shouldDelete) {
+        return;
+      }
     }
 
     await ref.read(tripsRepositoryProvider).deleteTrip(trip.id!);
@@ -340,6 +353,7 @@ class _TripStoryCard extends StatelessWidget {
             color: Colors.transparent,
             child: InkWell(
               onTap: onOpen,
+              onLongPress: () => _showActionsSheet(context),
               splashFactory: NoSplash.splashFactory,
               highlightColor: Colors.transparent,
               overlayColor: WidgetStateProperty.resolveWith<Color?>(
@@ -373,6 +387,7 @@ class _TripStoryCard extends StatelessWidget {
                       top: 14,
                       right: 14,
                       child: _TripCardMenu(
+                        onOpen: onOpen,
                         onEdit: onEdit,
                         onDelete: onDelete,
                       ),
@@ -429,53 +444,166 @@ class _TripStoryCard extends StatelessWidget {
       ),
     );
   }
+
+  Future<void> _showActionsSheet(BuildContext context) {
+    return showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      showDragHandle: false,
+      builder: (sheetContext) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: _TripActionsSheet(
+              onOpen: () {
+                Navigator.of(sheetContext).pop();
+                onOpen();
+              },
+              onEdit: () {
+                Navigator.of(sheetContext).pop();
+                onEdit();
+              },
+              onDelete: () {
+                Navigator.of(sheetContext).pop();
+                onDelete();
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _TripCardMenu extends StatelessWidget {
   const _TripCardMenu({
+    required this.onOpen,
     required this.onEdit,
     required this.onDelete,
   });
 
+  final VoidCallback onOpen;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<String>(
-      tooltip: 'Trip actions',
-      color: Theme.of(context).colorScheme.surfaceContainerLow,
-      icon: Container(
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.2),
-          shape: BoxShape.circle,
-        ),
-        padding: const EdgeInsets.all(8),
-        child: const Icon(
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.2),
+        shape: BoxShape.circle,
+      ),
+      child: IconButton(
+        tooltip: 'Trip actions',
+        onPressed: () => _showActionsSheet(context),
+        icon: const Icon(
           Icons.more_horiz_rounded,
           color: Colors.white,
           size: 18,
         ),
       ),
-      onSelected: (value) {
-        if (value == 'edit') {
-          onEdit();
-          return;
-        }
-        if (value == 'delete') {
-          onDelete();
-        }
+    );
+  }
+
+  Future<void> _showActionsSheet(BuildContext context) {
+    return showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      showDragHandle: false,
+      builder: (sheetContext) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: _TripActionsSheet(
+              onOpen: () {
+                Navigator.of(sheetContext).pop();
+                onOpen();
+              },
+              onEdit: () {
+                Navigator.of(sheetContext).pop();
+                onEdit();
+              },
+              onDelete: () {
+                Navigator.of(sheetContext).pop();
+                onDelete();
+              },
+            ),
+          ),
+        );
       },
-      itemBuilder: (context) => const <PopupMenuEntry<String>>[
-        PopupMenuItem<String>(
-          value: 'edit',
-          child: Text('Edit trip'),
+    );
+  }
+}
+
+class _TripActionsSheet extends StatelessWidget {
+  const _TripActionsSheet({
+    required this.onOpen,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final VoidCallback onOpen;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return FrostedSquircle(
+      radius: 34,
+      blurSigma: 20,
+      color: colorScheme.surface.withValues(alpha: 0.66),
+      borderColor: colorScheme.outlineVariant.withValues(alpha: 0.16),
+      shadowColor: colorScheme.primary.withValues(alpha: 0.12),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      child: Material(
+        color: Colors.transparent,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            DecoratedBox(
+              decoration: ShapeDecoration(
+                color: colorScheme.outlineVariant.withValues(alpha: 0.55),
+                shape: squircleShape(8),
+              ),
+              child: const SizedBox(width: 36, height: 4),
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.visibility_outlined),
+              title: const Text('View trip'),
+              titleTextStyle: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: colorScheme.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+              onTap: onOpen,
+            ),
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('Edit trip'),
+              titleTextStyle: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: colorScheme.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+              onTap: onEdit,
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('Delete trip'),
+              titleTextStyle: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: colorScheme.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+              onTap: onDelete,
+            ),
+          ],
         ),
-        PopupMenuItem<String>(
-          value: 'delete',
-          child: Text('Delete trip'),
-        ),
-      ],
+      ),
     );
   }
 }

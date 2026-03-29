@@ -13,6 +13,7 @@ CREATE TABLE $countryVisitsTable (
 const createTripsTable = '''
 CREATE TABLE $tripsTable (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  remoteId TEXT,
   countryCode TEXT NOT NULL,
   countryName TEXT NOT NULL,
   startDate INTEGER NOT NULL,
@@ -28,6 +29,7 @@ CREATE TABLE $tripsTable (
 const createWishlistTable = '''
 CREATE TABLE $wishlistTable (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  remoteId TEXT,
   title TEXT NOT NULL,
   countryName TEXT,
   countryCode TEXT,
@@ -44,6 +46,14 @@ const createTripsStartDateIndex = '''
 CREATE INDEX idx_trips_start_date ON $tripsTable(startDate DESC)
 ''';
 
+const createTripsRemoteIdIndex = '''
+CREATE UNIQUE INDEX idx_trips_remote_id ON $tripsTable(remoteId) WHERE remoteId IS NOT NULL
+''';
+
 const createWishlistCreatedAtIndex = '''
 CREATE INDEX idx_wishlist_created_at ON $wishlistTable(createdAt DESC)
+''';
+
+const createWishlistRemoteIdIndex = '''
+CREATE UNIQUE INDEX idx_wishlist_remote_id ON $wishlistTable(remoteId) WHERE remoteId IS NOT NULL
 ''';

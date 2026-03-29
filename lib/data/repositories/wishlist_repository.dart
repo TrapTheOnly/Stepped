@@ -20,6 +20,10 @@ class WishlistRepository {
 
   final AppDatabase _database;
 
+  Future<List<WishlistItemRecord>> getWishlistItems() {
+    return _database.getWishlistOrderedByCreatedAtDesc();
+  }
+
   Stream<List<WishlistItemRecord>> watchWishlist() {
     return _database.watchWishlist();
   }
@@ -34,6 +38,10 @@ class WishlistRepository {
 
   Future<void> updateWishlistItem(WishlistItemRecord item) {
     return _database.updateWishlistItem(item);
+  }
+
+  Future<void> replaceWishlistItems(List<WishlistItemRecord> items) {
+    return _database.replaceWishlistItems(items);
   }
 
   Future<void> deleteWishlistItem(int id) {

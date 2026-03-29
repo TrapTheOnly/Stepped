@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -27,44 +25,16 @@ class WishlistScreen extends ConsumerStatefulWidget {
 
 class _WishlistScreenState extends ConsumerState<WishlistScreen> {
   final DateFormat _dateFormat = DateFormat.yMMMd();
-  PersistentBottomSheetController? _actionsSheetController;
 
   @override
   Widget build(BuildContext context) {
     return _buildScreenContent(context);
   }
-
-  @override
-  void dispose() {
-    _actionsSheetController?.close();
-    super.dispose();
-  }
-}
-
-class _WishlistEditorResult {
-  const _WishlistEditorResult({
-    required this.title,
-    required this.countryName,
-    required this.countryCode,
-    required this.plannedCities,
-    required this.plannedStartDate,
-    required this.plannedEndDate,
-    required this.openPlannerAfterSave,
-  });
-
-  final String title;
-  final String? countryName;
-  final String? countryCode;
-  final String? plannedCities;
-  final int? plannedStartDate;
-  final int? plannedEndDate;
-  final bool openPlannerAfterSave;
 }
 
 enum _WishlistAction {
   plan,
-  setDates,
-  edit,
+  addToTrips,
   delete,
 }
 
@@ -168,7 +138,6 @@ extension _WishlistScreenBuildMethods on _WishlistScreenState {
                           onPinToggle: () => _togglePinned(item),
                           onActions: () => _showActions(
                             item: item,
-                            countryCodeByName: countryCodeByName,
                             requireDeleteConfirmation:
                                 preferences.confirmWishlistDelete,
                           ),
@@ -252,61 +221,36 @@ extension _WishlistScreenBuildMethods on _WishlistScreenState {
 
   Future<void> _showActions({
     required WishlistItemRecord item,
-    required Map<String, String> countryCodeByName,
     required bool requireDeleteConfirmation,
   }) async {
-    _actionsSheetController?.close();
-    _actionsSheetController = null;
-
-    final scaffoldState = Scaffold.maybeOf(context);
-    if (scaffoldState == null) {
-      return;
-    }
-
-    final completer = Completer<_WishlistAction?>();
-    late PersistentBottomSheetController controller;
-
-    void completeWith(_WishlistAction? action) {
-      if (!completer.isCompleted) {
-        completer.complete(action);
-      }
-      controller.close();
-    }
-
-    controller = scaffoldState.showBottomSheet(
-      (sheetContext) {
-        return _WishlistActionsSheet(
-          item: item,
-          onOpenPlan:
-              item.id == null ? null : () => completeWith(_WishlistAction.plan),
-          onPinToggle: () {
-            if (!completer.isCompleted) {
-              completer.complete(null);
-            }
-            controller.close();
-            _togglePinned(item);
-          },
-          onSetDates: () => completeWith(_WishlistAction.setDates),
-          onEdit: () => completeWith(_WishlistAction.edit),
-          onDelete: () => completeWith(_WishlistAction.delete),
-        );
-      },
+    final action = await showModalBottomSheet<_WishlistAction>(
+      context: context,
       backgroundColor: Colors.transparent,
       elevation: 0,
-      enableDrag: true,
       showDragHandle: false,
+      builder: (sheetContext) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: _WishlistActionsSheet(
+              item: item,
+              onOpenPlan: item.id == null
+                  ? null
+                  : () => Navigator.of(sheetContext).pop(_WishlistAction.plan),
+              onPinToggle: () {
+                Navigator.of(sheetContext).pop();
+                _togglePinned(item);
+              },
+              onAddToTrips: () =>
+                  Navigator.of(sheetContext).pop(_WishlistAction.addToTrips),
+              onDelete: () =>
+                  Navigator.of(sheetContext).pop(_WishlistAction.delete),
+            ),
+          ),
+        );
+      },
     );
-    _actionsSheetController = controller;
-    controller.closed.whenComplete(() {
-      if (identical(_actionsSheetController, controller)) {
-        _actionsSheetController = null;
-      }
-      if (!completer.isCompleted) {
-        completer.complete(null);
-      }
-    });
-
-    final action = await completer.future;
 
     if (action == null) {
       return;
@@ -321,17 +265,19 @@ extension _WishlistScreenBuildMethods on _WishlistScreenState {
           context.push('/wishlist/plan/${item.id}');
         }
         return;
-      case _WishlistAction.setDates:
-        await _showEditor(
-          existing: item,
-          countryCodeByName: countryCodeByName,
-        );
-        return;
-      case _WishlistAction.edit:
-        await _showEditor(
-          existing: item,
-          countryCodeByName: countryCodeByName,
-        );
+      case _WishlistAction.addToTrips:
+        if (item.id != null) {
+          final query = <String, String>{
+            'wishlistId': '${item.id}',
+            if (item.countryCode != null && item.countryCode!.trim().isNotEmpty)
+              'country': item.countryCode!.trim().toUpperCase(),
+            if (item.countryName != null && item.countryName!.trim().isNotEmpty)
+              'countryName': item.countryName!.trim(),
+          };
+          context.push(
+            Uri(path: '/trips/add', queryParameters: query).toString(),
+          );
+        }
         return;
       case _WishlistAction.delete:
         await _deleteItem(
@@ -347,8 +293,7 @@ class _WishlistActionsSheet extends StatelessWidget {
   const _WishlistActionsSheet({
     required this.item,
     required this.onPinToggle,
-    required this.onSetDates,
-    required this.onEdit,
+    required this.onAddToTrips,
     required this.onDelete,
     this.onOpenPlan,
   });
@@ -356,25 +301,23 @@ class _WishlistActionsSheet extends StatelessWidget {
   final WishlistItemRecord item;
   final VoidCallback? onOpenPlan;
   final VoidCallback onPinToggle;
-  final VoidCallback onSetDates;
-  final VoidCallback onEdit;
+  final VoidCallback onAddToTrips;
   final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: FrostedSquircle(
-        radius: 34,
-        blurSigma: 20,
-        color: colorScheme.surface.withValues(alpha: 0.66),
-        borderColor: colorScheme.outlineVariant.withValues(alpha: 0.16),
-        shadowColor: colorScheme.primary.withValues(alpha: 0.12),
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-        child: Material(
-          color: Colors.transparent,
+    return FrostedSquircle(
+      radius: 34,
+      blurSigma: 20,
+      color: colorScheme.surface.withValues(alpha: 0.66),
+      borderColor: colorScheme.outlineVariant.withValues(alpha: 0.16),
+      shadowColor: colorScheme.primary.withValues(alpha: 0.12),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 14),
+      child: Material(
+        color: Colors.transparent,
+        child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
@@ -390,6 +333,15 @@ class _WishlistActionsSheet extends StatelessWidget {
                 leading: const Icon(Icons.auto_awesome_outlined),
                 title: const Text('Open plan'),
                 subtitle: const Text('Review, regenerate, or manually edit'),
+                titleTextStyle:
+                    Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: colorScheme.onSurface,
+                          fontWeight: FontWeight.w600,
+                        ),
+                subtitleTextStyle: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(color: colorScheme.onSurfaceVariant),
                 enabled: onOpenPlan != null,
                 onTap: onOpenPlan,
               ),
@@ -400,22 +352,36 @@ class _WishlistActionsSheet extends StatelessWidget {
                       : Icons.push_pin_outlined,
                 ),
                 title: Text(item.isPinned ? 'Unpin from top' : 'Pin to top'),
+                titleTextStyle:
+                    Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: colorScheme.onSurface,
+                          fontWeight: FontWeight.w600,
+                        ),
                 onTap: onPinToggle,
               ),
               ListTile(
-                leading: const Icon(Icons.date_range_outlined),
-                title: const Text('Set dates'),
-                subtitle: const Text('Add exact travel dates to this wishlist'),
-                onTap: onSetDates,
-              ),
-              ListTile(
-                leading: const Icon(Icons.edit_outlined),
-                title: const Text('Edit'),
-                onTap: onEdit,
+                leading: const Icon(Icons.flight_takeoff_rounded),
+                title: const Text('Add to Trips'),
+                subtitle: const Text('Use this idea to create a real trip'),
+                titleTextStyle:
+                    Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: colorScheme.onSurface,
+                          fontWeight: FontWeight.w600,
+                        ),
+                subtitleTextStyle: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(color: colorScheme.onSurfaceVariant),
+                onTap: onAddToTrips,
               ),
               ListTile(
                 leading: const Icon(Icons.delete_outline),
                 title: const Text('Delete'),
+                titleTextStyle:
+                    Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: colorScheme.onSurface,
+                          fontWeight: FontWeight.w600,
+                        ),
                 onTap: onDelete,
               ),
             ],
@@ -423,204 +389,6 @@ class _WishlistActionsSheet extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-extension _WishlistScreenActionMethods on _WishlistScreenState {
-  Future<void> _showEditor({
-    required Map<String, String> countryCodeByName,
-    WishlistItemRecord? existing,
-  }) async {
-    final titleController = TextEditingController(text: existing?.title ?? '');
-    final countryController =
-        TextEditingController(text: existing?.countryName ?? '');
-    final citiesController =
-        TextEditingController(text: existing?.plannedCities ?? '');
-    DateTimeRange? dateRange;
-    if (existing?.plannedStartDate != null &&
-        existing?.plannedEndDate != null) {
-      dateRange = DateTimeRange(
-        start: DateTime.fromMillisecondsSinceEpoch(existing!.plannedStartDate!),
-        end: DateTime.fromMillisecondsSinceEpoch(existing.plannedEndDate!),
-      );
-    }
-    var openPlannerAfterSave = false;
-
-    final result = await showDialog<_WishlistEditorResult>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            Future<void> pickDateRange() async {
-              final now = DateTime.now();
-              final picked = await showDateRangePicker(
-                context: context,
-                firstDate: DateTime(now.year - 1),
-                lastDate: DateTime(now.year + 5),
-                initialDateRange: dateRange ??
-                    DateTimeRange(
-                      start: now,
-                      end: now.add(const Duration(days: 6)),
-                    ),
-              );
-              if (picked == null) {
-                return;
-              }
-              setState(() {
-                dateRange = picked;
-              });
-            }
-
-            return AlertDialog(
-              title: Text(existing == null ? 'Add Wishlist Idea' : 'Edit Idea'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    TextField(
-                      controller: titleController,
-                      decoration: const InputDecoration(
-                        labelText: 'Title',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: countryController,
-                      decoration: const InputDecoration(
-                        labelText: 'Country',
-                        hintText: 'Optional but recommended for AI planning',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: citiesController,
-                      decoration: const InputDecoration(
-                        labelText: 'Potential cities',
-                        hintText: 'Tokyo, Kyoto',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.date_range_outlined),
-                      title: Text(
-                        dateRange == null
-                            ? 'No date window selected'
-                            : '${_dateFormat.format(dateRange!.start)} - ${_dateFormat.format(dateRange!.end)}',
-                      ),
-                      trailing: TextButton(
-                        onPressed: pickDateRange,
-                        child: Text(dateRange == null ? 'Select' : 'Change'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Cancel'),
-                ),
-                TextButton.icon(
-                  onPressed: () {
-                    openPlannerAfterSave = true;
-                    final title = titleController.text.trim();
-                    if (title.isEmpty) {
-                      return;
-                    }
-                    final country = _optional(countryController.text);
-                    Navigator.of(dialogContext).pop(
-                      _WishlistEditorResult(
-                        title: title,
-                        countryName: country,
-                        countryCode: country == null
-                            ? null
-                            : countryCodeByName[_normalizeCountryName(country)],
-                        plannedCities: _optional(citiesController.text),
-                        plannedStartDate:
-                            dateRange?.start.millisecondsSinceEpoch,
-                        plannedEndDate: dateRange?.end.millisecondsSinceEpoch,
-                        openPlannerAfterSave: true,
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.auto_awesome_outlined),
-                  label: const Text('Save + Open Plan'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    final title = titleController.text.trim();
-                    if (title.isEmpty) {
-                      return;
-                    }
-                    final country = _optional(countryController.text);
-                    Navigator.of(dialogContext).pop(
-                      _WishlistEditorResult(
-                        title: title,
-                        countryName: country,
-                        countryCode: country == null
-                            ? null
-                            : countryCodeByName[_normalizeCountryName(country)],
-                        plannedCities: _optional(citiesController.text),
-                        plannedStartDate:
-                            dateRange?.start.millisecondsSinceEpoch,
-                        plannedEndDate: dateRange?.end.millisecondsSinceEpoch,
-                        openPlannerAfterSave: openPlannerAfterSave,
-                      ),
-                    );
-                  },
-                  child: const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    titleController.dispose();
-    countryController.dispose();
-    citiesController.dispose();
-
-    if (result == null) {
-      return;
-    }
-
-    final repository = ref.read(wishlistRepositoryProvider);
-    if (existing == null) {
-      final insertedId = await repository.addWishlistItem(
-        WishlistItemRecord(
-          title: result.title,
-          countryName: result.countryName,
-          countryCode: result.countryCode,
-          createdAt: DateTime.now().millisecondsSinceEpoch,
-          plannedCities: result.plannedCities,
-          plannedStartDate: result.plannedStartDate,
-          plannedEndDate: result.plannedEndDate,
-        ),
-      );
-      if (result.openPlannerAfterSave && mounted) {
-        context.push('/wishlist/plan/$insertedId');
-      }
-      return;
-    }
-
-    await repository.updateWishlistItem(
-      existing.copyWith(
-        title: result.title,
-        countryName: result.countryName,
-        countryCode: result.countryCode,
-        plannedCities: result.plannedCities,
-        plannedStartDate: result.plannedStartDate,
-        plannedEndDate: result.plannedEndDate,
-      ),
-    );
-    if (result.openPlannerAfterSave && existing.id != null && mounted) {
-      context.push('/wishlist/plan/${existing.id}');
-    }
   }
 }
 
@@ -638,19 +406,64 @@ extension _WishlistScreenDialogMethods on _WishlistScreenState {
       final shouldDelete = await showDialog<bool>(
             context: context,
             builder: (dialogContext) {
-              return AlertDialog(
-                title: const Text('Delete wishlist item?'),
-                content: Text('Remove "${item.title}" from wishlist?'),
-                actions: <Widget>[
-                  TextButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(false),
-                    child: const Text('Cancel'),
+              final colorScheme = Theme.of(dialogContext).colorScheme;
+              return Dialog(
+                backgroundColor: Colors.transparent,
+                insetPadding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                child: FrostedSquircle(
+                  radius: 30,
+                  blurSigma: 20,
+                  color: colorScheme.surface.withValues(alpha: 0.78),
+                  borderColor: colorScheme.outlineVariant.withValues(alpha: 0.16),
+                  shadowColor: colorScheme.primary.withValues(alpha: 0.1),
+                  padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        'Delete wishlist item?',
+                        style: Theme.of(dialogContext)
+                            .textTheme
+                            .titleLarge
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Remove "${item.title}" from your wishlist?',
+                        style: Theme.of(dialogContext)
+                            .textTheme
+                            .bodyLarge
+                            ?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                      ),
+                      const SizedBox(height: 22),
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: _WishlistDialogButton(
+                              label: 'Cancel',
+                              highlighted: false,
+                              onTap: () =>
+                                  Navigator.of(dialogContext).pop(false),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _WishlistDialogButton(
+                              label: 'Delete',
+                              highlighted: true,
+                              onTap: () =>
+                                  Navigator.of(dialogContext).pop(true),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  FilledButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(true),
-                    child: const Text('Delete'),
-                  ),
-                ],
+                ),
               );
             },
           ) ??
@@ -662,12 +475,54 @@ extension _WishlistScreenDialogMethods on _WishlistScreenState {
 
     await ref.read(wishlistRepositoryProvider).deleteWishlistItem(id);
   }
+}
 
-  String? _optional(String raw) {
-    final trimmed = raw.trim();
-    if (trimmed.isEmpty) {
-      return null;
-    }
-    return trimmed;
+class _WishlistDialogButton extends StatelessWidget {
+  const _WishlistDialogButton({
+    required this.label,
+    required this.onTap,
+    required this.highlighted,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final fillColor = highlighted
+        ? scheme.primaryContainer.withValues(alpha: 0.82)
+        : scheme.surface.withValues(alpha: 0.72);
+
+    return FrostedSquircle(
+      radius: 22,
+      blurSigma: 14,
+      color: fillColor,
+      borderColor: scheme.outlineVariant.withValues(alpha: 0.14),
+      shadowColor: scheme.primary.withValues(alpha: 0.06),
+      padding: EdgeInsets.zero,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(22),
+          child: SizedBox(
+            height: 52,
+            child: Center(
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: highlighted
+                          ? scheme.onPrimaryContainer
+                          : scheme.onSurface,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

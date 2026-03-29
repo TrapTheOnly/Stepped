@@ -113,6 +113,7 @@ class WishlistManualHydratedState {
     required this.durationDays,
     required this.durationReason,
     required this.durationSource,
+    required this.coverImage,
     required this.timeWindows,
     required this.cities,
     required this.requestPayload,
@@ -123,9 +124,25 @@ class WishlistManualHydratedState {
   final String durationDays;
   final String durationReason;
   final String durationSource;
+  final GeminiCityImage? coverImage;
   final List<EditableTimeWindow> timeWindows;
   final List<EditableCity> cities;
   final Map<String, dynamic>? requestPayload;
 }
 
 String manualCityKey(String value) => value.trim().toLowerCase();
+
+GeminiCityImage buildManualWishlistImage(
+  String uri, {
+  String title = 'Manual image',
+}) {
+  return GeminiCityImage(
+    imageUrl: uri.trim(),
+    sourcePageUrl: '',
+    title: title,
+    creator: 'You',
+    license: 'private',
+    licenseUrl: '',
+    source: 'manual',
+  );
+}

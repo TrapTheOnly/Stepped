@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -564,12 +566,14 @@ class _WishlistCityHero extends StatelessWidget {
             fit: StackFit.expand,
             children: <Widget>[
               if (imageUrl != null && imageUrl.isNotEmpty)
-                CachedNetworkImage(
-                  imageUrl: imageUrl,
-                  fit: BoxFit.cover,
-                  errorWidget: (_, __, ___) =>
-                      const _WishlistCityHeroFallback(),
-                )
+                imageUrl.startsWith('http://') || imageUrl.startsWith('https://')
+                    ? CachedNetworkImage(
+                        imageUrl: imageUrl,
+                        fit: BoxFit.cover,
+                        errorWidget: (_, __, ___) =>
+                            const _WishlistCityHeroFallback(),
+                      )
+                    : _LocalWishlistCityImage(imageUrl: imageUrl)
               else
                 const _WishlistCityHeroFallback(),
               DecoratedBox(
@@ -645,6 +649,24 @@ class _WishlistCityHero extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _LocalWishlistCityImage extends StatelessWidget {
+  const _LocalWishlistCityImage({required this.imageUrl});
+
+  final String imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final localPath = imageUrl.startsWith('file://')
+        ? imageUrl.replaceFirst('file://', '')
+        : imageUrl;
+    final file = File(localPath);
+    if (!file.existsSync()) {
+      return const _WishlistCityHeroFallback();
+    }
+    return Image.file(file, fit: BoxFit.cover);
   }
 }
 
