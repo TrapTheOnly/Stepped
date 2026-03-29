@@ -5,12 +5,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/db/app_db.dart';
+import '../../data/repositories/trips_repository.dart';
+import '../../data/repositories/visits_repository.dart';
 import '../../domain/models/trip_ui.dart';
+import '../../widgets/country_flag.dart';
+import '../search/search_logic.dart';
+import '../search/search_models.dart';
 import '../../widgets/frosted_squircle.dart';
 import '../../widgets/stepped_top_bar.dart';
 import 'globe/globe_country_data.dart';
 import 'globe/globe_widget.dart';
 import 'map_viewmodel.dart';
+import 'widgets/map_search_dock.dart';
+import 'widgets/map_search_results_list.dart';
 
 const _bottomDockHeight = 187.0;
 const _bottomDockOffset = 110.0;
@@ -25,6 +33,53 @@ class MapScreen extends ConsumerStatefulWidget {
 
 class _MapScreenState extends ConsumerState<MapScreen> {
   bool _isLocatingCurrentCountry = false;
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  String _searchQuery = '';
+  String? _selectedCountryCode;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchFocusNode.addListener(_handleSearchFocusChange);
+  }
+
+  @override
+  void dispose() {
+    _searchFocusNode.removeListener(_handleSearchFocusChange);
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _handleSearchFocusChange() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _handleSearchChanged(String value) {
+    final cleared = value.trim().isEmpty;
+    setState(() {
+      _searchQuery = value;
+      if (cleared) {
+        _selectedCountryCode = null;
+      }
+    });
+    if (cleared) {
+      _resetGlobeSelection();
+    }
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    setState(() {
+      _searchQuery = '';
+      _selectedCountryCode = null;
+    });
+    _resetGlobeSelection();
+    _searchFocusNode.requestFocus();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -44,9 +99,40 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     });
 
     final dashboardAsync = ref.watch(mapDashboardProvider);
+    final datasetAsync = ref.watch(globeCountryDatasetProvider);
+    final tripsAsync = ref.watch(tripsStreamProvider);
+    final visitsAsync = ref.watch(visitedCountriesProvider);
     final focusRequest = ref.watch(globeFocusRequestProvider);
     final resetToken = ref.watch(globeResetRequestProvider);
     final colorScheme = Theme.of(context).colorScheme;
+    final dataset = datasetAsync.valueOrNull;
+    final trips = tripsAsync.valueOrNull ?? const <TripRecord>[];
+    final visits = visitsAsync.valueOrNull ?? const <CountryVisitRecord>[];
+    final countryCatalog = dataset == null
+        ? const <CountrySearchEntry>[]
+        : buildCountrySearchCatalog(
+            datasetCountries: dataset.countries,
+            trips: trips,
+            visits: visits,
+          );
+    final searchCatalogByIso2 = <String, CountrySearchEntry>{
+      for (final entry in countryCatalog) entry.iso2.toUpperCase(): entry,
+    };
+    final selectedCountryEntry = _selectedCountryCode == null
+        ? null
+        : searchCatalogByIso2[_selectedCountryCode!.toUpperCase()];
+    final searchResults = dataset == null
+        ? const <CountrySearchEntry>[]
+        : buildCountrySearchResults(
+            query: _searchQuery,
+            datasetCountries: dataset.countries,
+            trips: trips,
+            visits: visits,
+          );
+    final visibleSearchResults =
+        _searchFocusNode.hasFocus && _searchQuery.trim().isNotEmpty
+            ? searchResults.take(3).toList(growable: false)
+            : const <CountrySearchEntry>[];
 
     return ColoredBox(
       color: colorScheme.surface,
@@ -64,6 +150,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   focusCountryCode: focusRequest?.countryCode,
                   focusRequestToken: focusRequest?.token,
                   resetViewRequestToken: resetToken,
+                  onSelectedCountryChanged: _handleGlobeSelectedCountryChanged,
                   onFocusRequestConsumed: (countryCode, token) {
                     final activeRequest = ref.read(globeFocusRequestProvider);
                     if (activeRequest == null) {
@@ -80,15 +167,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     }
 
                     ref.read(globeFocusRequestProvider.notifier).state = null;
-                  },
-                  onSetVisited: (countryCode, countryName, visited) {
-                    return ref
-                        .read(mapVisitToggleControllerProvider.notifier)
-                        .setVisited(
-                          countryCode: countryCode,
-                          countryName: countryName,
-                          visited: visited,
-                        );
                   },
                 ),
               ),
@@ -112,8 +190,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     onOpenProfile: () => context.push('/profile'),
                   ),
                   const SizedBox(height: 14),
-                  _SearchDock(
-                    onTap: () => context.push('/search'),
+                  MapSearchDock(
+                    controller: _searchController,
+                    focusNode: _searchFocusNode,
+                    onChanged: _handleSearchChanged,
+                    onClear: _clearSearch,
+                  ),
+                  MapSearchResultsList(
+                    results: visibleSearchResults,
+                    onSelect: _handleSearchSelection,
                   ),
                 ],
               ),
@@ -135,7 +220,23 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             left: 16,
             right: 16,
             bottom: _bottomDockOffset,
-            child: _DashboardDock(dashboardAsync: dashboardAsync),
+            child: _DashboardDock(
+              dashboardAsync: dashboardAsync,
+              selectedCountry: selectedCountryEntry,
+              onToggleVisited: selectedCountryEntry == null
+                  ? null
+                  : () => _toggleSelectedCountryVisited(selectedCountryEntry),
+              onShowOnGlobe: selectedCountryEntry == null ||
+                      !selectedCountryEntry.focusableOnGlobe
+                  ? null
+                  : () => _requestGlobeFocus(selectedCountryEntry.iso2),
+              onOpenLatestTrip: selectedCountryEntry?.latestTripId == null
+                  ? null
+                  : () => context.push(
+                        '/trips/view/${selectedCountryEntry!.latestTripId}',
+                      ),
+              onAddTrip: () => context.push('/trips/add'),
+            ),
           ),
         ],
       ),
@@ -193,10 +294,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         return;
       }
 
-      ref.read(globeFocusRequestProvider.notifier).state = GlobeFocusRequest(
-        countryCode: countryCode,
-        token: DateTime.now().microsecondsSinceEpoch,
-      );
+      setState(() {
+        _selectedCountryCode = countryCode;
+      });
+      _requestGlobeFocus(countryCode);
     } on MissingPluginException {
       _showMapMessage(
         'Location services are not loaded in this app instance yet. Fully stop and relaunch the app once.',
@@ -210,6 +311,49 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         });
       }
     }
+  }
+
+  void _handleSearchSelection(CountrySearchEntry entry) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      _selectedCountryCode = entry.iso2.toUpperCase();
+    });
+    if (!entry.focusableOnGlobe) {
+      _showMapMessage('${entry.name} is not available on the globe yet.');
+      return;
+    }
+    _requestGlobeFocus(entry.iso2);
+  }
+
+  void _handleGlobeSelectedCountryChanged(GlobeCountryShape? country) {
+    final nextCountryCode = country?.iso2.toUpperCase();
+    if (_selectedCountryCode == nextCountryCode) {
+      return;
+    }
+    setState(() {
+      _selectedCountryCode = nextCountryCode;
+    });
+  }
+
+  void _requestGlobeFocus(String countryCode) {
+    ref.read(globeFocusRequestProvider.notifier).state = GlobeFocusRequest(
+      countryCode: countryCode,
+      token: DateTime.now().microsecondsSinceEpoch,
+    );
+  }
+
+  void _resetGlobeSelection() {
+    ref.read(globeResetRequestProvider.notifier).state =
+        DateTime.now().microsecondsSinceEpoch;
+    ref.read(globeFocusRequestProvider.notifier).state = null;
+  }
+
+  Future<void> _toggleSelectedCountryVisited(CountrySearchEntry entry) {
+    return ref.read(mapVisitToggleControllerProvider.notifier).setVisited(
+          countryCode: entry.iso2,
+          countryName: entry.name,
+          visited: !entry.visited,
+        );
   }
 
   String? _resolveCurrentCountryCode({
@@ -288,61 +432,6 @@ class _MapAtmosphere extends StatelessWidget {
   }
 }
 
-class _SearchDock extends StatelessWidget {
-  const _SearchDock({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        customBorder: squircleShape(30),
-        child: FrostedSquircle(
-          radius: 30,
-          blurSigma: 16,
-          color: colorScheme.surface.withValues(alpha: 0.52),
-          borderColor: colorScheme.outlineVariant.withValues(alpha: 0.12),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          child: Row(
-            children: <Widget>[
-              Expanded(
-                child: Text(
-                  'Search destinations...',
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withValues(
-                          alpha: 0.92,
-                        ),
-                      ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              DecoratedBox(
-                decoration: ShapeDecoration(
-                  color: colorScheme.primaryContainer.withValues(alpha: 0.24),
-                  shape: squircleShape(18),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Icon(
-                    Icons.search_rounded,
-                    size: 18,
-                    color: colorScheme.primaryContainer,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _MapActionButton extends StatelessWidget {
   const _MapActionButton({
     required this.icon,
@@ -396,9 +485,21 @@ class _MapActionButton extends StatelessWidget {
 }
 
 class _DashboardDock extends StatelessWidget {
-  const _DashboardDock({required this.dashboardAsync});
+  const _DashboardDock({
+    required this.dashboardAsync,
+    required this.onAddTrip,
+    this.selectedCountry,
+    this.onToggleVisited,
+    this.onShowOnGlobe,
+    this.onOpenLatestTrip,
+  });
 
   final AsyncValue<MapDashboardState> dashboardAsync;
+  final CountrySearchEntry? selectedCountry;
+  final VoidCallback? onToggleVisited;
+  final VoidCallback? onShowOnGlobe;
+  final VoidCallback? onOpenLatestTrip;
+  final VoidCallback onAddTrip;
 
   @override
   Widget build(BuildContext context) {
@@ -406,20 +507,167 @@ class _DashboardDock extends StatelessWidget {
       duration: const Duration(milliseconds: 260),
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
-      child: dashboardAsync.when(
-        loading: () => const _StatusDock(
-          key: ValueKey<String>('loading'),
-          title: 'Syncing field journal',
-          subtitle: 'Loading your latest travel stats...',
+      child: selectedCountry == null
+          ? dashboardAsync.when(
+              loading: () => const _StatusDock(
+                key: ValueKey<String>('loading'),
+                title: 'Syncing field journal',
+                subtitle: 'Loading your latest travel stats...',
+              ),
+              error: (error, _) => const _StatusDock(
+                key: ValueKey<String>('error'),
+                title: 'Field journal unavailable',
+                subtitle: 'Unable to load your latest travel stats right now.',
+              ),
+              data: (dashboard) => _JourneyDock(
+                key: const ValueKey<String>('journey'),
+                dashboard: dashboard,
+              ),
+            )
+          : _CountryDock(
+              key: ValueKey<String>('country-${selectedCountry!.iso2}'),
+              country: selectedCountry!,
+              onToggleVisited: onToggleVisited,
+              onShowOnGlobe: onShowOnGlobe,
+              onOpenLatestTrip: onOpenLatestTrip,
+              onAddTrip: onAddTrip,
+            ),
+    );
+  }
+}
+
+class _CountryDock extends StatelessWidget {
+  const _CountryDock({
+    super.key,
+    required this.country,
+    required this.onAddTrip,
+    this.onToggleVisited,
+    this.onShowOnGlobe,
+    this.onOpenLatestTrip,
+  });
+
+  final CountrySearchEntry country;
+  final VoidCallback? onToggleVisited;
+  final VoidCallback? onShowOnGlobe;
+  final VoidCallback? onOpenLatestTrip;
+  final VoidCallback onAddTrip;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final infoText = country.tripCount == 0
+        ? 'No trips logged yet.'
+        : '${country.tripCount} trip${country.tripCount == 1 ? '' : 's'} logged for ${country.name}.';
+    final actions = <Widget>[
+      Expanded(
+        child: _CountryActionButton(
+          icon: Icons.public_rounded,
+          label: 'Show on Earth',
+          onTap: onShowOnGlobe,
         ),
-        error: (error, _) => const _StatusDock(
-          key: ValueKey<String>('error'),
-          title: 'Field journal unavailable',
-          subtitle: 'Unable to load your latest travel stats right now.',
+      ),
+      if (onOpenLatestTrip != null) ...<Widget>[
+        const SizedBox(width: 8),
+        Expanded(
+          child: _CountryActionButton(
+            icon: Icons.flight_takeoff_rounded,
+            label: 'Latest trip',
+            onTap: onOpenLatestTrip,
+          ),
         ),
-        data: (dashboard) => _JourneyDock(
-          key: const ValueKey<String>('journey'),
-          dashboard: dashboard,
+      ],
+      const SizedBox(width: 8),
+      Expanded(
+        child: _CountryActionButton(
+          icon: Icons.add_rounded,
+          label: 'Add trip',
+          onTap: onAddTrip,
+        ),
+      ),
+    ];
+
+    return SizedBox(
+      height: _bottomDockHeight,
+      child: FrostedSquircle(
+        radius: 38,
+        blurSigma: 22,
+        color: colorScheme.surface.withValues(alpha: 0.82),
+        borderColor: colorScheme.primaryContainer.withValues(alpha: 0.18),
+        shadowColor: colorScheme.secondary.withValues(alpha: 0.12),
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                CountryFlag(
+                  iso2: country.iso2,
+                  width: 36,
+                  height: 26,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        country.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontSize: 23,
+                            ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${country.iso2} · ${country.continent ?? 'Unknown continent'}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                _VisitedToggleChip(
+                  visited: country.visited,
+                  onTap: onToggleVisited,
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: <Widget>[
+                if (country.visited)
+                  const _ResultMetaChip(
+                    icon: Icons.check_circle_rounded,
+                    label: 'Visited',
+                  ),
+                if (country.tripCount > 0)
+                  _ResultMetaChip(
+                    icon: Icons.flight_takeoff_rounded,
+                    label:
+                        '${country.tripCount} trip${country.tripCount == 1 ? '' : 's'}',
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              infoText,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    letterSpacing: 0.2,
+                  ),
+            ),
+            const Spacer(),
+            Row(children: actions),
+          ],
         ),
       ),
     );
@@ -647,6 +895,161 @@ class _VisitedCounter extends StatelessWidget {
                 ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _VisitedToggleChip extends StatelessWidget {
+  const _VisitedToggleChip({
+    required this.visited,
+    required this.onTap,
+  });
+
+  final bool visited;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: squircleShape(18),
+        child: DecoratedBox(
+          decoration: ShapeDecoration(
+            color: visited
+                ? colorScheme.primary.withValues(alpha: 0.16)
+                : colorScheme.surfaceContainerHighest.withValues(alpha: 0.72),
+            shape: squircleShape(18),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Icon(
+                  visited ? Icons.check_circle_rounded : Icons.add_task_rounded,
+                  size: 16,
+                  color: visited
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  visited ? 'Visited' : 'Mark visited',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: visited
+                            ? colorScheme.primary
+                            : colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ResultMetaChip extends StatelessWidget {
+  const _ResultMetaChip({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(icon, size: 14, color: colorScheme.primary),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CountryActionButton extends StatelessWidget {
+  const _CountryActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: squircleShape(22),
+        child: DecoratedBox(
+          decoration: ShapeDecoration(
+            color: onTap == null
+                ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.35)
+                : colorScheme.surfaceContainerHighest.withValues(alpha: 0.58),
+            shape: squircleShape(22),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Icon(
+                  icon,
+                  size: 16,
+                  color: onTap == null
+                      ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
+                      : colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: onTap == null
+                              ? colorScheme.onSurfaceVariant
+                                  .withValues(alpha: 0.6)
+                              : colorScheme.onSurface,
+                        ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -10,7 +10,6 @@ import '../features/friends/friend_trip_detail_screen.dart';
 import '../features/friends/friends_screen.dart';
 import '../features/map/map_screen.dart';
 import '../features/profile/profile_screen.dart';
-import '../features/search/search_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/stats/stats_screen.dart';
 import '../features/trips/add_trip_screen.dart';
@@ -309,11 +308,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(
-        path: '/search',
-        parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const SearchScreen(),
-      ),
-      GoRoute(
         path: '/stats',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const StatsScreen(),
@@ -398,6 +392,7 @@ class _AppShell extends StatelessWidget {
 
     return Scaffold(
       extendBody: isFloatingNavRoute,
+      resizeToAvoidBottomInset: location != '/',
       body: child,
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(16, 0, 16, 16),

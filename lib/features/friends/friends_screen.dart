@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -319,7 +321,7 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
     }
     _lastRefreshAt = now;
     ref.invalidate(socialMeProvider);
-    ref.invalidate(friendsHubProvider);
+    unawaited(ref.read(friendsHubProvider.notifier).refresh());
   }
 
   List<SocialInviteLink> _mergedInvites(List<SocialInviteLink> invites) {

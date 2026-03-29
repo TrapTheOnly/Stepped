@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 class PersonAvatar extends StatelessWidget {
@@ -21,14 +23,14 @@ class PersonAvatar extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final initials = _initialsFor(displayName);
     final normalizedPhotoUrl = photoUrl?.trim();
-    final hasPhoto = normalizedPhotoUrl != null && normalizedPhotoUrl.isNotEmpty;
+    final imageProvider = _imageProviderFor(normalizedPhotoUrl);
 
     return CircleAvatar(
       radius: radius,
       backgroundColor: backgroundColor ?? colorScheme.primaryContainer,
       foregroundColor: foregroundColor ?? colorScheme.onPrimaryContainer,
-      backgroundImage: hasPhoto ? NetworkImage(normalizedPhotoUrl) : null,
-      child: hasPhoto
+      backgroundImage: imageProvider,
+      child: imageProvider != null
           ? null
           : Text(
               initials,
@@ -38,6 +40,28 @@ class PersonAvatar extends StatelessWidget {
                   ),
             ),
     );
+  }
+
+  ImageProvider<Object>? _imageProviderFor(String? rawPhotoUrl) {
+    if (rawPhotoUrl == null || rawPhotoUrl.isEmpty) {
+      return null;
+    }
+
+    final parsed = Uri.tryParse(rawPhotoUrl);
+    final scheme = parsed?.scheme.toLowerCase();
+    if (scheme == 'http' || scheme == 'https') {
+      return NetworkImage(rawPhotoUrl);
+    }
+    if (scheme == 'file') {
+      final file = File.fromUri(parsed!);
+      return file.existsSync() ? FileImage(file) : null;
+    }
+
+    final file = File(rawPhotoUrl);
+    if (file.existsSync()) {
+      return FileImage(file);
+    }
+    return null;
   }
 
   static String _initialsFor(String rawDisplayName) {

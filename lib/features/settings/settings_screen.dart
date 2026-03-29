@@ -24,9 +24,6 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _homeBaseController = TextEditingController();
-  final TextEditingController _bioController = TextEditingController();
   final TextEditingController _geminiApiKeyController = TextEditingController();
   final TextEditingController _cloudApiBaseUrlController =
       TextEditingController();
@@ -42,23 +39,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _nameController.addListener(_onDraftChanged);
-    _homeBaseController.addListener(_onDraftChanged);
-    _bioController.addListener(_onDraftChanged);
     _geminiApiKeyController.addListener(_onDraftChanged);
     _cloudApiBaseUrlController.addListener(_onDraftChanged);
   }
 
   @override
   void dispose() {
-    _nameController.removeListener(_onDraftChanged);
-    _homeBaseController.removeListener(_onDraftChanged);
-    _bioController.removeListener(_onDraftChanged);
     _geminiApiKeyController.removeListener(_onDraftChanged);
     _cloudApiBaseUrlController.removeListener(_onDraftChanged);
-    _nameController.dispose();
-    _homeBaseController.dispose();
-    _bioController.dispose();
     _geminiApiKeyController.dispose();
     _cloudApiBaseUrlController.dispose();
     super.dispose();
@@ -95,10 +83,7 @@ extension _SettingsScreenBuildMethods on _SettingsScreenState {
 
     final hasUnsavedChanges = currentPrefs != null &&
         _didHydrate &&
-        (_nameController.text.trim() != currentPrefs.displayName ||
-            _homeBaseController.text.trim() != currentPrefs.homeBase ||
-            _bioController.text.trim() != currentPrefs.bio ||
-            _geminiApiKeyController.text.trim() != currentPrefs.geminiApiKey ||
+        (_geminiApiKeyController.text.trim() != currentPrefs.geminiApiKey ||
             _cloudApiBaseUrlController.text.trim() !=
                 currentPrefs.cloudAiBaseUrl ||
             plannerSourceFromChoice(_aiSourceChoice) !=
@@ -147,14 +132,6 @@ extension _SettingsScreenBuildMethods on _SettingsScreenState {
                   return _SettingsScrollView(
                     children: <Widget>[
                       const SizedBox(height: _settingsTopOverlayClearance),
-                      _SettingsHorizontalPadding(
-                        child: ProfileSettingsSection(
-                          nameController: _nameController,
-                          homeBaseController: _homeBaseController,
-                          bioController: _bioController,
-                        ),
-                      ),
-                      const SizedBox(height: 34),
                       _SettingsHorizontalPadding(
                         child: AppearanceSettingsSection(
                           currentThemeMode: prefs.themeMode,
@@ -245,9 +222,6 @@ extension _SettingsScreenBuildMethods on _SettingsScreenState {
 extension _SettingsScreenActionMethods on _SettingsScreenState {
   void _hydrate(AppPreferences prefs) {
     _isHydrating = true;
-    _nameController.text = prefs.displayName;
-    _homeBaseController.text = prefs.homeBase;
-    _bioController.text = prefs.bio;
     _geminiApiKeyController.text = prefs.geminiApiKey;
     _cloudApiBaseUrlController.text = prefs.cloudAiBaseUrl;
     _aiSourceChoice = toAiSourceChoice(prefs.aiPlannerSource);
@@ -262,14 +236,6 @@ extension _SettingsScreenActionMethods on _SettingsScreenState {
 
   Future<void> _saveProfileFields(AppPreferences current) async {
     final messenger = ScaffoldMessenger.maybeOf(context);
-    final name = _nameController.text.trim();
-    final homeBase = _homeBaseController.text.trim();
-    final bio = _bioController.text.trim();
-    final normalizedName =
-        name.isEmpty ? AppPreferences.defaults.displayName : name;
-    final hasNameChange = normalizedName != current.displayName;
-    final hasHomeBaseChange = homeBase != current.homeBase;
-    final hasBioChange = bio != current.bio;
     final geminiApiKey = _geminiApiKeyController.text.trim();
     final hasGeminiApiKeyChange = geminiApiKey != current.geminiApiKey;
     final cloudApiBaseUrl = _cloudApiBaseUrlController.text.trim();
@@ -280,10 +246,7 @@ extension _SettingsScreenActionMethods on _SettingsScreenState {
         normalizedCloudApiBaseUrl != current.cloudAiBaseUrl;
     final aiPlannerSource = plannerSourceFromChoice(_aiSourceChoice);
     final hasAiPlannerSourceChange = aiPlannerSource != current.aiPlannerSource;
-    if (!hasNameChange &&
-        !hasHomeBaseChange &&
-        !hasBioChange &&
-        !hasGeminiApiKeyChange &&
+    if (!hasGeminiApiKeyChange &&
         !hasCloudApiBaseUrlChange &&
         !hasAiPlannerSourceChange) {
       return;
@@ -295,24 +258,6 @@ extension _SettingsScreenActionMethods on _SettingsScreenState {
 
     final notifier = ref.read(appPreferencesProvider.notifier);
     try {
-      if (hasNameChange) {
-        await notifier.updateDisplayName(normalizedName);
-        if (!mounted) {
-          return;
-        }
-      }
-      if (hasHomeBaseChange) {
-        await notifier.updateHomeBase(homeBase);
-        if (!mounted) {
-          return;
-        }
-      }
-      if (hasBioChange) {
-        await notifier.updateBio(bio);
-        if (!mounted) {
-          return;
-        }
-      }
       if (hasGeminiApiKeyChange) {
         await notifier.updateGeminiApiKey(geminiApiKey);
         if (!mounted) {
@@ -453,9 +398,6 @@ extension _SettingsScreenActionMethods on _SettingsScreenState {
     }
     final resetState = ref.read(appPreferencesProvider).valueOrNull;
     if (resetState != null) {
-      _nameController.text = resetState.displayName;
-      _homeBaseController.text = resetState.homeBase;
-      _bioController.text = resetState.bio;
       _geminiApiKeyController.text = resetState.geminiApiKey;
       _cloudApiBaseUrlController.text = resetState.cloudAiBaseUrl;
       _aiSourceChoice = toAiSourceChoice(resetState.aiPlannerSource);

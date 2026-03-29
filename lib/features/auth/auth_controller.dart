@@ -47,6 +47,14 @@ class AuthController extends ChangeNotifier {
   bool get isAuthenticated => _currentUser != null && _accessToken != null;
   bool get isInitialized => _initialized;
   bool get isBusy => _isBusy;
+  bool get hasPasswordProvider => _firebaseAuth.currentUser?.providerData.any(
+            (entry) => entry.providerId == 'password',
+          ) ??
+          (_currentUser?.provider == AuthProvider.password);
+  bool get hasGoogleProvider => _firebaseAuth.currentUser?.providerData.any(
+            (entry) => entry.providerId == 'google.com',
+          ) ??
+          (_currentUser?.provider == AuthProvider.google);
 
   Future<String?> getFreshAccessToken({bool forceRefresh = false}) async {
     await _ensureInitialized();
@@ -226,6 +234,137 @@ class AuthController extends ChangeNotifier {
       await _firebaseAuth.signOut();
     });
     notifyListeners();
+  }
+
+  Future<void> updateAccountProfile({
+    required String displayName,
+    String? photoUrl,
+  }) async {
+    await _ensureInitialized();
+    final firebaseUser = _firebaseAuth.currentUser;
+    if (firebaseUser == null) {
+      throw const AuthException('You need to sign in again to edit profile.');
+    }
+
+    final normalizedName = displayName.trim();
+    if (normalizedName.length < 2) {
+      throw const AuthException(
+        'Use at least 2 characters for your display name.',
+      );
+    }
+
+    final normalizedPhotoUrl = photoUrl?.trim();
+    try {
+      await _runBusy(() async {
+        final currentName = firebaseUser.displayName?.trim() ?? '';
+        if (currentName != normalizedName) {
+          await firebaseUser.updateDisplayName(normalizedName);
+        }
+
+        if (normalizedPhotoUrl != null) {
+          final currentPhotoUrl = firebaseUser.photoURL?.trim();
+          final nextPhotoUrl =
+              normalizedPhotoUrl.isEmpty ? null : normalizedPhotoUrl;
+          if (currentPhotoUrl != nextPhotoUrl) {
+            await firebaseUser.updatePhotoURL(nextPhotoUrl);
+          }
+        }
+
+        await _syncSessionFromFirebaseUser(
+          firebaseUser,
+          forceRefreshToken: true,
+        );
+      });
+    } on firebase_auth.FirebaseAuthException catch (error) {
+      throw AuthException(_toUserMessageForFirebaseAuthException(error));
+    }
+  }
+
+  Future<void> setOrChangePassword({
+    String? currentPassword,
+    required String newPassword,
+  }) async {
+    await _ensureInitialized();
+    final firebaseUser = _firebaseAuth.currentUser;
+    if (firebaseUser == null) {
+      throw const AuthException('You need to sign in again to change password.');
+    }
+
+    final normalizedNewPassword = newPassword.trim();
+    if (normalizedNewPassword.length < 10) {
+      throw const AuthException('Password should be at least 10 characters.');
+    }
+
+    final email = firebaseUser.email?.trim();
+    if (email == null || email.isEmpty) {
+      throw const AuthException(
+        'This account does not have an email address available.',
+      );
+    }
+
+    try {
+      await _runBusy(() async {
+        if (hasPasswordProvider) {
+          final normalizedCurrentPassword = currentPassword?.trim();
+          if (normalizedCurrentPassword != null &&
+              normalizedCurrentPassword.isNotEmpty) {
+            final credential = firebase_auth.EmailAuthProvider.credential(
+              email: email,
+              password: normalizedCurrentPassword,
+            );
+            await firebaseUser.reauthenticateWithCredential(credential);
+          }
+          await firebaseUser.updatePassword(normalizedNewPassword);
+        } else {
+          final credential = firebase_auth.EmailAuthProvider.credential(
+            email: email,
+            password: normalizedNewPassword,
+          );
+          await firebaseUser.linkWithCredential(credential);
+        }
+
+        await _syncSessionFromFirebaseUser(
+          firebaseUser,
+          forceRefreshToken: true,
+        );
+      });
+    } on firebase_auth.FirebaseAuthException catch (error) {
+      if (error.code == 'requires-recent-login') {
+        if (hasPasswordProvider) {
+          throw const AuthException(
+            'Enter your current password to change it.',
+          );
+        }
+        throw const AuthException(
+          'Sign in again before setting a password for this account.',
+        );
+      }
+      throw AuthException(_toUserMessageForFirebaseAuthException(error));
+    }
+  }
+
+  Future<void> replaceLocalProfile({
+    String? displayName,
+    String? photoUrl,
+  }) async {
+    await _ensureInitialized();
+    final current = _currentUser;
+    if (current == null || _accessToken == null) {
+      return;
+    }
+
+    final nextUser = current.copyWith(
+      displayName: displayName?.trim().isNotEmpty == true
+          ? displayName!.trim()
+          : current.displayName,
+      photoUrl: photoUrl?.trim().isNotEmpty == true
+          ? photoUrl!.trim()
+          : current.photoUrl,
+    );
+    await _setSession(
+      accessToken: _accessToken!,
+      user: nextUser,
+    );
   }
 
   Future<void> _ensureInitialized() async {
