@@ -8,6 +8,7 @@ import '../../data/db/app_db.dart';
 import '../../data/repositories/trips_repository.dart';
 import '../../data/repositories/wishlist_repository.dart';
 import '../../widgets/frosted_squircle.dart';
+import '../social/social_state.dart';
 import '../wishlist/gemini_trip_planner.dart';
 import '../wishlist/widgets/wishlist_editorial_widgets.dart';
 import 'trip_city_detail_screen.dart';
@@ -15,7 +16,6 @@ import 'trip_city_models.dart';
 import 'widgets/add_trip_destination_preview.dart';
 import 'widgets/add_trip_form_sections.dart';
 
-const _tripDetailTopClearance = 114.0;
 const _tripDetailBottomClearance = 44.0;
 
 class TripDetailScreen extends ConsumerStatefulWidget {
@@ -50,7 +50,6 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
         body: WishlistScrollView(
           bottomPadding: _tripDetailBottomClearance,
           children: <Widget>[
-            SizedBox(height: _tripDetailTopClearance),
             WishlistHorizontalPadding(
               child: WishlistStatusCard(
                 title: 'Loading trip',
@@ -66,7 +65,6 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
         body: WishlistScrollView(
           bottomPadding: _tripDetailBottomClearance,
           children: <Widget>[
-            const SizedBox(height: _tripDetailTopClearance),
             WishlistHorizontalPadding(
               child: WishlistStatusCard(
                 title: 'Trip unavailable',
@@ -83,7 +81,6 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
             body: WishlistScrollView(
               bottomPadding: _tripDetailBottomClearance,
               children: <Widget>[
-                SizedBox(height: _tripDetailTopClearance),
                 WishlistHorizontalPadding(
                   child: WishlistStatusCard(
                     title: 'Trip unavailable',
@@ -102,8 +99,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
           item: wishlistItemAsync.valueOrNull,
           planner: planner,
         );
-        final startDate =
-            DateTime.fromMillisecondsSinceEpoch(_trip!.startDate);
+        final startDate = DateTime.fromMillisecondsSinceEpoch(_trip!.startDate);
         final endDate = DateTime.fromMillisecondsSinceEpoch(_trip!.endDate);
 
         return _TripDetailShell(
@@ -112,7 +108,6 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
           body: WishlistScrollView(
             bottomPadding: _tripDetailBottomClearance,
             children: <Widget>[
-              const SizedBox(height: _tripDetailTopClearance),
               WishlistHorizontalPadding(
                 child: AddTripDestinationPreview(
                   countryCode: _trip!.countryCode,
@@ -182,8 +177,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                                 index += 1) ...<Widget>[
                               TripCityRouteCard(
                                 city: _tripCities[index],
-                                inheritedPlan:
-                                    inheritance?.cityPlanFor(_tripCities[index].name),
+                                inheritedPlan: inheritance
+                                    ?.cityPlanFor(_tripCities[index].name),
                                 inheritedDetail: inheritance
                                     ?.cityDetailFor(_tripCities[index].name),
                                 showRemoveAction: false,
@@ -217,14 +212,16 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                           ),
                           const SizedBox(width: 8),
                           TextButton(
-                            onPressed: (_trip!.coverImageUri?.trim().isEmpty ?? true)
-                                ? null
-                                : _clearTripCoverImage,
+                            onPressed:
+                                (_trip!.coverImageUri?.trim().isEmpty ?? true)
+                                    ? null
+                                    : _clearTripCoverImage,
                             child: const Text('Clear'),
                           ),
                         ],
                       ),
-                      if ((_trip!.notes?.trim().isNotEmpty ?? false)) ...<Widget>[
+                      if ((_trip!.notes?.trim().isNotEmpty ??
+                          false)) ...<Widget>[
                         const SizedBox(height: 16),
                         Text(
                           _trip!.notes!.trim(),
@@ -349,6 +346,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
 
   Future<void> _persistTrip(TripRecord nextTrip) async {
     await ref.read(tripsRepositoryProvider).updateTrip(nextTrip);
+    await ref.read(socialSyncControllerProvider).flushTravelNow();
     if (!mounted) {
       return;
     }
@@ -400,22 +398,22 @@ class _TripDetailShell extends StatelessWidget {
                 child: WishlistAtmosphere(),
               ),
             ),
-            Positioned.fill(child: body),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: _TripDetailTopBar(
-                    title: title,
-                    onBack: () => Navigator.of(context).maybePop(),
-                    onEdit: onEdit,
+            Column(
+              children: <Widget>[
+                SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: _TripDetailTopBar(
+                      title: title,
+                      onBack: () => Navigator.of(context).maybePop(),
+                      onEdit: onEdit,
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(height: 16),
+                Expanded(child: body),
+              ],
             ),
           ],
         ),

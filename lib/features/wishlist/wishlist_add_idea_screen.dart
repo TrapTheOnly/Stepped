@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/db/app_db.dart';
 import '../../data/repositories/wishlist_repository.dart';
+import '../social/social_state.dart';
 import 'widgets/wishlist_editor_shell.dart';
 
 class WishlistAddIdeaScreen extends ConsumerStatefulWidget {
@@ -159,6 +160,7 @@ class _WishlistAddIdeaScreenState extends ConsumerState<WishlistAddIdeaScreen> {
                   createdAt: DateTime.now().millisecondsSinceEpoch,
                 ),
               );
+      await ref.read(socialSyncControllerProvider).flushWishlistNow();
 
       if (!mounted) {
         return;

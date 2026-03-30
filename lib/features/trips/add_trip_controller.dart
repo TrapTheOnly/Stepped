@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/db/app_db.dart';
 import '../../data/repositories/trips_repository.dart';
+import '../social/social_state.dart';
 
 final addTripControllerProvider =
     AutoDisposeAsyncNotifierProvider<AddTripController, void>(
@@ -68,6 +69,7 @@ class AddTripController extends AutoDisposeAsyncNotifier<void> {
       } else {
         await _repository.updateTrip(trip);
       }
+      await ref.read(socialSyncControllerProvider).flushTravelNow();
       state = const AsyncData(null);
       return true;
     } catch (error, stackTrace) {

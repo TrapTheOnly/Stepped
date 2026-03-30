@@ -9,6 +9,7 @@ import '../../data/repositories/wishlist_repository.dart';
 import '../../widgets/frosted_squircle.dart';
 import '../auth/auth_controller.dart';
 import '../map/map_viewmodel.dart';
+import '../social/social_state.dart';
 import '../settings/app_preferences.dart';
 import 'cloud_trip_planner_client.dart';
 import 'gemini_trip_planner.dart';
@@ -426,6 +427,7 @@ class _WishlistPlanScreenState extends ConsumerState<WishlistPlanScreen> {
       if (!mounted) {
         return;
       }
+      await ref.read(socialSyncControllerProvider).flushWishlistNow();
       setState(() {
         _plan = finalizedPlan;
       });
@@ -489,6 +491,7 @@ class _WishlistPlanScreenState extends ConsumerState<WishlistPlanScreen> {
         plannedCities: _noCities ? null : _citiesController.text.trim(),
         plan: _plan,
       );
+      await ref.read(socialSyncControllerProvider).flushWishlistNow();
       ref.invalidate(wishlistItemProvider(widget.itemId));
       ref.invalidate(wishlistStreamProvider);
 
@@ -631,8 +634,8 @@ class _WishlistAiGenerationOverlay extends StatelessWidget {
                         CircularProgressIndicator(
                           value: progress.clamp(0, 1),
                           strokeWidth: 4,
-                          backgroundColor:
-                              scheme.surfaceContainerHighest.withValues(alpha: 0.72),
+                          backgroundColor: scheme.surfaceContainerHighest
+                              .withValues(alpha: 0.72),
                         ),
                         Center(
                           child: Text(

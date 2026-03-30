@@ -13,6 +13,7 @@ import '../../widgets/country_flag.dart';
 import '../search/search_logic.dart';
 import '../search/search_models.dart';
 import '../../widgets/frosted_squircle.dart';
+import '../../widgets/shell_scaffold_inset.dart';
 import '../../widgets/stepped_top_bar.dart';
 import 'globe/globe_country_data.dart';
 import 'globe/globe_widget.dart';
@@ -21,7 +22,6 @@ import 'widgets/map_search_dock.dart';
 import 'widgets/map_search_results_list.dart';
 
 const _bottomDockHeight = 187.0;
-const _bottomDockOffset = 110.0;
 const _floatingControlGap = 10.0;
 
 class MapScreen extends ConsumerStatefulWidget {
@@ -108,6 +108,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final dataset = datasetAsync.valueOrNull;
     final trips = tripsAsync.valueOrNull ?? const <TripRecord>[];
     final visits = visitsAsync.valueOrNull ?? const <CountryVisitRecord>[];
+    final bottomBarHeight = ShellScaffoldInset.bottomBarHeightOf(context);
     final countryCatalog = dataset == null
         ? const <CountrySearchEntry>[]
         : buildCountrySearchCatalog(
@@ -204,47 +205,67 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               ),
             ),
           ),
-          Positioned(
-            right: 16,
-            bottom: _bottomDockOffset + _bottomDockHeight + _floatingControlGap,
-            child: _MapActionButton(
-              icon: Icons.my_location_rounded,
-              tooltip: _isLocatingCurrentCountry
-                  ? 'Locating current country'
-                  : 'Focus current country',
-              isBusy: _isLocatingCurrentCountry,
-              onTap: _focusCurrentCountry,
-            ),
-          ),
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: _bottomDockOffset,
-            child: _DashboardDock(
-              dashboardAsync: dashboardAsync,
-              selectedCountry: selectedCountryEntry,
-              onToggleVisited: selectedCountryEntry == null
-                  ? null
-                  : () => _toggleSelectedCountryVisited(selectedCountryEntry),
-              onShowOnGlobe: selectedCountryEntry == null ||
-                      !selectedCountryEntry.focusableOnGlobe
-                  ? null
-                  : () => _requestGlobeFocus(selectedCountryEntry.iso2),
-              onOpenLatestTrip: selectedCountryEntry?.latestTripId == null
-                  ? null
-                  : () => context.push(
-                        '/trips/view/${selectedCountryEntry!.latestTripId}',
+          Positioned.fill(
+            child: SafeArea(
+              top: false,
+              bottom: false,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  0,
+                  16,
+                  bottomBarHeight + 12,
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: <Widget>[
+                    _MapActionButton(
+                      icon: Icons.my_location_rounded,
+                      tooltip: _isLocatingCurrentCountry
+                          ? 'Locating current country'
+                          : 'Focus current country',
+                      isBusy: _isLocatingCurrentCountry,
+                      onTap: _focusCurrentCountry,
+                    ),
+                    const SizedBox(height: _floatingControlGap),
+                    SizedBox(
+                      width: double.infinity,
+                      child: _DashboardDock(
+                        dashboardAsync: dashboardAsync,
+                        selectedCountry: selectedCountryEntry,
+                        onToggleVisited: selectedCountryEntry == null
+                            ? null
+                            : () => _toggleSelectedCountryVisited(
+                                  selectedCountryEntry,
+                                ),
+                        onShowOnGlobe: selectedCountryEntry == null ||
+                                !selectedCountryEntry.focusableOnGlobe
+                            ? null
+                            : () => _requestGlobeFocus(
+                                  selectedCountryEntry.iso2,
+                                ),
+                        onOpenLatestTrip:
+                            selectedCountryEntry?.latestTripId == null
+                                ? null
+                                : () => context.push(
+                                      '/trips/view/${selectedCountryEntry!.latestTripId}',
+                                    ),
+                        onAddTrip: () => context.push(
+                          Uri(
+                            path: '/trips/add',
+                            queryParameters: <String, String>{
+                              if (selectedCountryEntry != null)
+                                'country': selectedCountryEntry.iso2,
+                              if (selectedCountryEntry != null)
+                                'countryName': selectedCountryEntry.name,
+                            },
+                          ).toString(),
+                        ),
                       ),
-              onAddTrip: () => context.push(
-                Uri(
-                  path: '/trips/add',
-                  queryParameters: <String, String>{
-                    if (selectedCountryEntry != null)
-                      'country': selectedCountryEntry.iso2,
-                    if (selectedCountryEntry != null)
-                      'countryName': selectedCountryEntry.name,
-                  },
-                ).toString(),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

@@ -147,6 +147,7 @@ class SocialTripSummary {
     required this.cities,
     this.cityEntries = const <TripCityEntry>[],
     this.coverImageUrl,
+    this.sourceWishlistItemId,
     this.notes,
   });
 
@@ -158,6 +159,7 @@ class SocialTripSummary {
   final String cities;
   final List<TripCityEntry> cityEntries;
   final String? coverImageUrl;
+  final String? sourceWishlistItemId;
   final String? notes;
 
   Map<String, dynamic> toJson() {
@@ -171,6 +173,7 @@ class SocialTripSummary {
       'city_entries':
           cityEntries.map((entry) => entry.toJson()).toList(growable: false),
       'cover_image_url': coverImageUrl,
+      'source_wishlist_item_id': sourceWishlistItemId,
       'notes': notes,
     };
   }
@@ -212,6 +215,10 @@ class SocialTripSummary {
         json['coverImageUrl'],
         json['cover_image'],
         json['coverImage'],
+      ]),
+      sourceWishlistItemId: _firstNonEmptyString(<dynamic>[
+        json['source_wishlist_item_id'],
+        json['sourceWishlistItemId'],
       ]),
       notes: _firstNonEmptyString(<dynamic>[json['notes']]),
     );

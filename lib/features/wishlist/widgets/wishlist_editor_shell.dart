@@ -4,8 +4,8 @@ import 'dart:io';
 import '../../../widgets/frosted_squircle.dart';
 import 'wishlist_editorial_widgets.dart';
 
-const wishlistEditorTopOverlayClearance = 118.0;
-const wishlistEditorBottomDockClearance = 148.0;
+const wishlistEditorTopOverlayClearance = 0.0;
+const wishlistEditorBottomDockClearance = 0.0;
 
 InputDecorationTheme wishlistEditorInputDecorationTheme(BuildContext context) {
   final scheme = Theme.of(context).colorScheme;
@@ -80,33 +80,31 @@ class WishlistEditorShell extends StatelessWidget {
                 child: WishlistAtmosphere(),
               ),
             ),
-            Positioned.fill(child: body),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: _WishlistEditorTopBar(
-                    title: title,
-                    onBack: onBack,
-                    actions: topActions,
+            Column(
+              children: <Widget>[
+                SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: _WishlistEditorTopBar(
+                      title: title,
+                      onBack: onBack,
+                      actions: topActions,
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(height: 16),
+                Expanded(child: body),
+                if (shouldShowBottomDock)
+                  SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                      child: bottomDock!,
+                    ),
+                  ),
+              ],
             ),
-            if (shouldShowBottomDock)
-              Positioned(
-                left: 16,
-                right: 16,
-                bottom: 20,
-                child: SafeArea(
-                  top: false,
-                  child: bottomDock!,
-                ),
-              ),
             if (overlay != null) Positioned.fill(child: overlay!),
           ],
         ),

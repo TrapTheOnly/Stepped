@@ -10,7 +10,6 @@ import '../social/social_models.dart';
 import '../social/social_state.dart';
 import '../wishlist/widgets/wishlist_editorial_widgets.dart';
 
-const _topClearance = 114.0;
 const _bottomClearance = 36.0;
 
 class FriendWishlistDetailScreen extends ConsumerWidget {
@@ -34,7 +33,6 @@ class FriendWishlistDetailScreen extends ConsumerWidget {
         body: WishlistScrollView(
           bottomPadding: _bottomClearance,
           children: <Widget>[
-            SizedBox(height: _topClearance),
             WishlistHorizontalPadding(
               child: WishlistStatusCard(
                 title: 'Loading wishlist idea',
@@ -49,7 +47,6 @@ class FriendWishlistDetailScreen extends ConsumerWidget {
         body: WishlistScrollView(
           bottomPadding: _bottomClearance,
           children: <Widget>[
-            const SizedBox(height: _topClearance),
             WishlistHorizontalPadding(
               child: WishlistStatusCard(
                 title: 'Wishlist unavailable',
@@ -75,11 +72,11 @@ class FriendWishlistDetailScreen extends ConsumerWidget {
             body: WishlistScrollView(
               bottomPadding: _bottomClearance,
               children: <Widget>[
-                SizedBox(height: _topClearance),
                 WishlistHorizontalPadding(
                   child: WishlistStatusCard(
                     title: 'Wishlist idea not found',
-                    message: 'This shared wishlist item is no longer available.',
+                    message:
+                        'This shared wishlist item is no longer available.',
                   ),
                 ),
               ],
@@ -91,7 +88,6 @@ class FriendWishlistDetailScreen extends ConsumerWidget {
           body: WishlistScrollView(
             bottomPadding: _bottomClearance,
             children: <Widget>[
-              const SizedBox(height: _topClearance),
               WishlistHorizontalPadding(
                 child: _HeroCard(
                   item: item,
@@ -149,26 +145,26 @@ class _Shell extends StatelessWidget {
             const Positioned.fill(
               child: IgnorePointer(child: WishlistAtmosphere()),
             ),
-            Positioned.fill(child: body),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: _TopBar(
-                    onBack: () {
-                      if (context.canPop()) {
-                        context.pop();
-                        return;
-                      }
-                      context.go('/friends');
-                    },
+            Column(
+              children: <Widget>[
+                SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: _TopBar(
+                      onBack: () {
+                        if (context.canPop()) {
+                          context.pop();
+                          return;
+                        }
+                        context.go('/friends');
+                      },
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(height: 16),
+                Expanded(child: body),
+              ],
             ),
           ],
         ),
@@ -506,7 +502,9 @@ class _CitiesCard extends StatelessWidget {
             )
           : Column(
               children: <Widget>[
-                for (var index = 0; index < cities.length; index += 1) ...<Widget>[
+                for (var index = 0;
+                    index < cities.length;
+                    index += 1) ...<Widget>[
                   _CityStopCard(
                     index: index,
                     city: cities[index],

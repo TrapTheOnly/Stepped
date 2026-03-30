@@ -15,7 +15,6 @@ import '../social/social_models.dart';
 import '../social/social_state.dart';
 import 'widgets/profile_summary_widgets.dart';
 
-const _profileTopOverlayClearance = 114.0;
 const _profileBottomPadding = 56.0;
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -115,132 +114,145 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             const Positioned.fill(
               child: IgnorePointer(child: _ProfileAtmosphere()),
             ),
-            Positioned.fill(
-              child: _ProfileScrollView(
-                children: <Widget>[
-                  const SizedBox(height: _profileTopOverlayClearance),
-                  _ProfileHorizontalPadding(
-                    child: ProfileIdentityCard(
-                      displayName: _isEditing
-                          ? _normalizedDisplayName()
-                          : resolvedDisplayName,
-                      email: email,
-                      homeBase: _isEditing
-                          ? _homeBaseController.text.trim()
-                          : resolvedHomeBase,
-                      bio: _isEditing ? _bioController.text.trim() : resolvedBio,
-                      photoUrl: _isEditing ? _draftPhotoUrl : resolvedPhotoUrl,
+            Column(
+              children: <Widget>[
+                SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: _ProfileTopBar(
                       isEditing: _isEditing,
-                      nameController: _nameController,
-                      homeBaseController: _homeBaseController,
-                      bioController: _bioController,
-                      onPhotoTap: _pickProfilePhoto,
-                      photoUploadLabel: 'Upload photo',
-                      onProfileChanged: _handleDraftUpdated,
+                      isSaving: _isSaving,
+                      canSave: hasUnsavedChanges,
+                      onBack: () => _handleBack(context),
+                      onEditOrSave: _isEditing ? _saveProfile : _enterEditMode,
                     ),
-                  ),
-                  if (!_isEditing) ...<Widget>[
-                    const SizedBox(height: 18),
-                    _ProfileHorizontalPadding(
-                      child: Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: ProfileStatCard(
-                              label: 'Countries',
-                              value: visitedAsync.isLoading ? '...' : '$visited',
-                              icon: Icons.public_rounded,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: ProfileStatCard(
-                              label: 'Trips',
-                              value: tripsAsync.isLoading
-                                  ? '...'
-                                  : '${trips.length}',
-                              icon: Icons.flight_takeoff_rounded,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: ProfileStatCard(
-                              label: 'Wishlist',
-                              value: wishlistAsync.isLoading
-                                  ? '...'
-                                  : '${wishlistItems.length}',
-                              icon: Icons.favorite_outline_rounded,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                  if (_isEditing) ...<Widget>[
-                    const SizedBox(height: 18),
-                    _ProfileHorizontalPadding(
-                      child: _PasswordCard(
-                        hasPasswordProvider: hasPasswordProvider,
-                        currentPasswordController: _currentPasswordController,
-                        newPasswordController: _newPasswordController,
-                        confirmPasswordController: _confirmPasswordController,
-                        onChanged: _handleDraftUpdated,
-                      ),
-                    ),
-                  ],
-                  if (!_isEditing) ...<Widget>[
-                    const SizedBox(height: 18),
-                    _ProfileHorizontalPadding(
-                      child: ProfileActionTile(
-                        icon: Icons.tune_rounded,
-                        title: 'Settings',
-                        subtitle: 'Appearance, privacy, and planner behavior.',
-                        onTap: () => context.push('/profile/settings'),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _ProfileHorizontalPadding(
-                      child: ProfileActionTile(
-                        icon: Icons.logout_rounded,
-                        title: authController.isBusy ? 'Signing out' : 'Sign out',
-                        subtitle: 'Return to the auth screen for this device.',
-                        emphasis: true,
-                        onTap: authController.isBusy
-                            ? null
-                            : () async {
-                                try {
-                                  await ref.read(authControllerProvider).signOut();
-                                } on AuthException catch (error) {
-                                  if (!context.mounted) {
-                                    return;
-                                  }
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text(error.message)),
-                                  );
-                                }
-                              },
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: _ProfileTopBar(
-                    isEditing: _isEditing,
-                    isSaving: _isSaving,
-                    canSave: hasUnsavedChanges,
-                    onBack: () => _handleBack(context),
-                    onEditOrSave: _isEditing ? _saveProfile : _enterEditMode,
                   ),
                 ),
-              ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: _ProfileScrollView(
+                    children: <Widget>[
+                      _ProfileHorizontalPadding(
+                        child: ProfileIdentityCard(
+                          displayName: _isEditing
+                              ? _normalizedDisplayName()
+                              : resolvedDisplayName,
+                          email: email,
+                          homeBase: _isEditing
+                              ? _homeBaseController.text.trim()
+                              : resolvedHomeBase,
+                          bio: _isEditing
+                              ? _bioController.text.trim()
+                              : resolvedBio,
+                          photoUrl:
+                              _isEditing ? _draftPhotoUrl : resolvedPhotoUrl,
+                          isEditing: _isEditing,
+                          nameController: _nameController,
+                          homeBaseController: _homeBaseController,
+                          bioController: _bioController,
+                          onPhotoTap: _pickProfilePhoto,
+                          photoUploadLabel: 'Upload photo',
+                          onProfileChanged: _handleDraftUpdated,
+                        ),
+                      ),
+                      if (!_isEditing) ...<Widget>[
+                        const SizedBox(height: 18),
+                        _ProfileHorizontalPadding(
+                          child: Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: ProfileStatCard(
+                                  label: 'Countries',
+                                  value: visitedAsync.isLoading
+                                      ? '...'
+                                      : '$visited',
+                                  icon: Icons.public_rounded,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: ProfileStatCard(
+                                  label: 'Trips',
+                                  value: tripsAsync.isLoading
+                                      ? '...'
+                                      : '${trips.length}',
+                                  icon: Icons.flight_takeoff_rounded,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: ProfileStatCard(
+                                  label: 'Wishlist',
+                                  value: wishlistAsync.isLoading
+                                      ? '...'
+                                      : '${wishlistItems.length}',
+                                  icon: Icons.favorite_outline_rounded,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      if (_isEditing) ...<Widget>[
+                        const SizedBox(height: 18),
+                        _ProfileHorizontalPadding(
+                          child: _PasswordCard(
+                            hasPasswordProvider: hasPasswordProvider,
+                            currentPasswordController:
+                                _currentPasswordController,
+                            newPasswordController: _newPasswordController,
+                            confirmPasswordController:
+                                _confirmPasswordController,
+                            onChanged: _handleDraftUpdated,
+                          ),
+                        ),
+                      ],
+                      if (!_isEditing) ...<Widget>[
+                        const SizedBox(height: 18),
+                        _ProfileHorizontalPadding(
+                          child: ProfileActionTile(
+                            icon: Icons.tune_rounded,
+                            title: 'Settings',
+                            subtitle:
+                                'Appearance, privacy, and planner behavior.',
+                            onTap: () => context.push('/profile/settings'),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _ProfileHorizontalPadding(
+                          child: ProfileActionTile(
+                            icon: Icons.logout_rounded,
+                            title: authController.isBusy
+                                ? 'Signing out'
+                                : 'Sign out',
+                            subtitle:
+                                'Return to the auth screen for this device.',
+                            emphasis: true,
+                            onTap: authController.isBusy
+                                ? null
+                                : () async {
+                                    try {
+                                      await ref
+                                          .read(authControllerProvider)
+                                          .signOut();
+                                    } on AuthException catch (error) {
+                                      if (!context.mounted) {
+                                        return;
+                                      }
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(content: Text(error.message)),
+                                      );
+                                    }
+                                  },
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -325,7 +337,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return _normalizedDisplayName() != displayName ||
         _homeBaseController.text.trim() != homeBase ||
         _bioController.text.trim() != bio ||
-        _normalizedPhotoUrl() != (photoUrl?.trim().isNotEmpty == true ? photoUrl!.trim() : null);
+        _normalizedPhotoUrl() !=
+            (photoUrl?.trim().isNotEmpty == true ? photoUrl!.trim() : null);
   }
 
   bool _hasPasswordDraftChanges() {
@@ -336,7 +349,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   String _normalizedDisplayName() {
     final normalized = _nameController.text.trim();
-    return normalized.isEmpty ? AppPreferences.defaults.displayName : normalized;
+    return normalized.isEmpty
+        ? AppPreferences.defaults.displayName
+        : normalized;
   }
 
   String? _normalizedPhotoUrl() {
@@ -422,7 +437,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (newPassword.isNotEmpty || confirmPassword.isNotEmpty) {
       if (newPassword != confirmPassword) {
         messenger?.showSnackBar(
-          const SnackBar(content: Text('New password and confirmation must match.')),
+          const SnackBar(
+              content: Text('New password and confirmation must match.')),
         );
         return;
       }
@@ -462,10 +478,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
         final accessToken =
             await authController.getFreshAccessToken(forceRefresh: true);
-        uploadedPhotoUrl = await ref.read(socialApiClientProvider).uploadProfilePhoto(
-              accessToken: accessToken ?? session.accessToken,
-              filePath: photoUrl,
-            );
+        uploadedPhotoUrl =
+            await ref.read(socialApiClientProvider).uploadProfilePhoto(
+                  accessToken: accessToken ?? session.accessToken,
+                  filePath: photoUrl,
+                );
       }
 
       await authController.updateAccountProfile(
@@ -482,10 +499,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           homeBase: homeBase,
           bio: bio,
         );
-        final syncedProfile = await ref.read(socialApiClientProvider).syncProfile(
-              accessToken: accessToken ?? session.accessToken,
-              profile: requestedProfile,
-            );
+        final syncedProfile =
+            await ref.read(socialApiClientProvider).syncProfile(
+                  accessToken: accessToken ?? session.accessToken,
+                  profile: requestedProfile,
+                );
         await preferencesNotifier.hydrateProfileCache(
           displayName: syncedProfile.displayName,
           homeBase: syncedProfile.homeBase,
@@ -527,7 +545,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       messenger?.showSnackBar(
         SnackBar(
           content: Text(
-            newPassword.isEmpty ? 'Profile saved' : 'Profile and password saved',
+            newPassword.isEmpty
+                ? 'Profile saved'
+                : 'Profile and password saved',
           ),
         ),
       );
@@ -675,7 +695,8 @@ class _ProfileTopBar extends StatelessWidget {
                 child: IconButton(
                   onPressed: onBack,
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                  constraints:
+                      const BoxConstraints(minWidth: 30, minHeight: 30),
                   visualDensity: VisualDensity.compact,
                   icon: Icon(
                     Icons.arrow_back_ios_new_rounded,
@@ -705,7 +726,8 @@ class _ProfileTopBar extends StatelessWidget {
                 child: IconButton(
                   onPressed: !isEditing || canSave ? onEditOrSave : null,
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                  constraints:
+                      const BoxConstraints(minWidth: 30, minHeight: 30),
                   visualDensity: VisualDensity.compact,
                   icon: isSaving
                       ? SizedBox(
@@ -753,11 +775,11 @@ class _PasswordCard extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return FrostedSquircle(
-        radius: 32,
-        blurSigma: 18,
-        color: colorScheme.surface.withValues(alpha: 0.72),
-        borderColor: colorScheme.primaryContainer.withValues(alpha: 0.14),
-        shadowColor: colorScheme.primary.withValues(alpha: 0.08),
+      radius: 32,
+      blurSigma: 18,
+      color: colorScheme.surface.withValues(alpha: 0.72),
+      borderColor: colorScheme.primaryContainer.withValues(alpha: 0.14),
+      shadowColor: colorScheme.primary.withValues(alpha: 0.08),
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

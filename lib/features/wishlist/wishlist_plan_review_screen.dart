@@ -12,9 +12,7 @@ import 'gemini_trip_planner.dart';
 import 'wishlist_plan_parsing.dart';
 import 'widgets/wishlist_editorial_widgets.dart';
 
-const _topClearance = 114.0;
 const _bottomClearance = 36.0;
-const _emptyDockClearance = 188.0;
 
 class WishlistPlanReviewScreen extends ConsumerWidget {
   const WishlistPlanReviewScreen({
@@ -34,7 +32,6 @@ class WishlistPlanReviewScreen extends ConsumerWidget {
         body: WishlistScrollView(
           bottomPadding: _bottomClearance,
           children: <Widget>[
-            SizedBox(height: _topClearance),
             WishlistHorizontalPadding(
               child: WishlistStatusCard(
                 title: 'Loading itinerary',
@@ -49,7 +46,6 @@ class WishlistPlanReviewScreen extends ConsumerWidget {
         body: WishlistScrollView(
           bottomPadding: _bottomClearance,
           children: <Widget>[
-            const SizedBox(height: _topClearance),
             WishlistHorizontalPadding(
               child: WishlistStatusCard(
                 title: 'Plan unavailable',
@@ -65,7 +61,6 @@ class WishlistPlanReviewScreen extends ConsumerWidget {
             body: WishlistScrollView(
               bottomPadding: _bottomClearance,
               children: <Widget>[
-                SizedBox(height: _topClearance),
                 WishlistHorizontalPadding(
                   child: WishlistStatusCard(
                     title: 'Wishlist item not found',
@@ -93,11 +88,8 @@ class WishlistPlanReviewScreen extends ConsumerWidget {
           onEdit: () => _openEditActions(context, item.id),
           bottomDock: plan == null ? _EmptyPlanDock(itemId: item.id) : null,
           body: WishlistScrollView(
-            bottomPadding: plan == null
-                ? _bottomClearance + _emptyDockClearance
-                : _bottomClearance,
+            bottomPadding: _bottomClearance,
             children: <Widget>[
-              const SizedBox(height: _topClearance),
               WishlistHorizontalPadding(
                 child: _HeroCard(item: item, plan: plan),
               ),
@@ -251,33 +243,31 @@ class _ReviewShell extends StatelessWidget {
                 child: WishlistAtmosphere(),
               ),
             ),
-            Positioned.fill(child: body),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: _TopBar(
-                    onBack: () => Navigator.of(context).maybePop(),
-                    onStartTrip: onStartTrip,
-                    onEdit: onEdit,
+            Column(
+              children: <Widget>[
+                SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: _TopBar(
+                      onBack: () => Navigator.of(context).maybePop(),
+                      onStartTrip: onStartTrip,
+                      onEdit: onEdit,
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(height: 16),
+                Expanded(child: body),
+                if (bottomDock != null)
+                  SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                      child: bottomDock!,
+                    ),
+                  ),
+              ],
             ),
-            if (bottomDock != null)
-              Positioned(
-                left: 16,
-                right: 16,
-                bottom: 20,
-                child: SafeArea(
-                  top: false,
-                  child: bottomDock!,
-                ),
-              ),
           ],
         ),
       ),
@@ -425,7 +415,8 @@ class _HeroCard extends StatelessWidget {
             fit: StackFit.expand,
             children: <Widget>[
               if (imageUrl != null && imageUrl.isNotEmpty)
-                imageUrl.startsWith('http://') || imageUrl.startsWith('https://')
+                imageUrl.startsWith('http://') ||
+                        imageUrl.startsWith('https://')
                     ? CachedNetworkImage(
                         imageUrl: imageUrl,
                         fit: BoxFit.cover,

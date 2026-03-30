@@ -18,8 +18,8 @@ import 'trip_city_models.dart';
 import 'widgets/add_trip_destination_preview.dart';
 import 'widgets/add_trip_form_sections.dart';
 
-const _editorTopOverlayClearance = 114.0;
-const _editorBottomDockClearance = 140.0;
+const _editorContentTopPadding = 0.0;
+const _editorContentBottomPadding = 48.0;
 
 class AddTripScreen extends ConsumerStatefulWidget {
   const AddTripScreen({
@@ -115,44 +115,42 @@ class _AddTripScreenState extends ConsumerState<AddTripScreen> {
                   child: _TripEditorAtmosphere(),
                 ),
               ),
-              Positioned.fill(
-                child: _buildBody(
-                  context: context,
-                  existingTripAsync: existingTripAsync,
-                  countriesAsync: countriesAsync,
-                  wishlistItemAsync: wishlistItemAsync,
-                  submitState: submitState,
-                ),
-              ),
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: SafeArea(
-                  bottom: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    child: _EditorTopBar(
-                      title: _isEditing ? 'Edit Trip' : 'Add Trip',
-                      onBack: () => context.pop(),
+              Column(
+                children: <Widget>[
+                  SafeArea(
+                    bottom: false,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: _EditorTopBar(
+                        title: _isEditing ? 'Edit Trip' : 'Add Trip',
+                        onBack: () => context.pop(),
+                      ),
                     ),
                   ),
-                ),
-              ),
-              if (canRenderForm)
-                Positioned(
-                  left: 16,
-                  right: 16,
-                  bottom: 20,
-                  child: SafeArea(
-                    top: false,
-                    child: _EditorDockButton(
-                      label: _isEditing ? 'Update Trip' : 'Save Trip',
-                      isLoading: submitState.isLoading,
-                      onTap: submitState.isLoading ? null : _submit,
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: _buildBody(
+                      context: context,
+                      existingTripAsync: existingTripAsync,
+                      countriesAsync: countriesAsync,
+                      wishlistItemAsync: wishlistItemAsync,
+                      submitState: submitState,
                     ),
                   ),
-                ),
+                  if (canRenderForm)
+                    SafeArea(
+                      top: false,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                        child: _EditorDockButton(
+                          label: _isEditing ? 'Update Trip' : 'Save Trip',
+                          isLoading: submitState.isLoading,
+                          onTap: submitState.isLoading ? null : _submit,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ],
           ),
         ),
@@ -280,9 +278,9 @@ class _AddTripScreenState extends ConsumerState<AddTripScreen> {
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.fromLTRB(
           16,
-          _editorTopOverlayClearance,
+          _editorContentTopPadding,
           16,
-          _editorBottomDockClearance,
+          _editorContentBottomPadding,
         ),
         children: <Widget>[
           AddTripDestinationPreview(

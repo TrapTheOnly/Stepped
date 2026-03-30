@@ -91,6 +91,7 @@ class AppPreferencesController extends AsyncNotifier<AppPreferences> {
   @override
   Future<AppPreferences> build() async {
     _preferences = await SharedPreferences.getInstance();
+    await _purgeLegacyProfileCache(_preferences!);
     return _readFromPreferences();
   }
 
@@ -104,30 +105,16 @@ class AppPreferencesController extends AsyncNotifier<AppPreferences> {
     final normalized = displayName.trim();
     final fallback = AppPreferences.defaults.displayName;
     final nextValue = normalized.isEmpty ? fallback : normalized;
-    final prefs = await _ensurePreferences();
-    await prefs.setString(_displayNameKey, nextValue);
     _emitUpdated((current) => current.copyWith(displayName: nextValue));
   }
 
   Future<void> updateHomeBase(String homeBase) async {
     final normalized = homeBase.trim();
-    final prefs = await _ensurePreferences();
-    if (normalized.isEmpty) {
-      await prefs.remove(_homeBaseKey);
-    } else {
-      await prefs.setString(_homeBaseKey, normalized);
-    }
     _emitUpdated((current) => current.copyWith(homeBase: normalized));
   }
 
   Future<void> updateBio(String bio) async {
     final normalized = bio.trim();
-    final prefs = await _ensurePreferences();
-    if (normalized.isEmpty) {
-      await prefs.remove(_bioKey);
-    } else {
-      await prefs.setString(_bioKey, normalized);
-    }
     _emitUpdated((current) => current.copyWith(bio: normalized));
   }
 
@@ -136,30 +123,27 @@ class AppPreferencesController extends AsyncNotifier<AppPreferences> {
     required String homeBase,
     required String bio,
   }) async {
-    final prefs = await _ensurePreferences();
     final normalizedDisplayName = displayName.trim().isEmpty
         ? AppPreferences.defaults.displayName
         : displayName.trim();
     final normalizedHomeBase = homeBase.trim();
     final normalizedBio = bio.trim();
 
-    await prefs.setString(_displayNameKey, normalizedDisplayName);
-    if (normalizedHomeBase.isEmpty) {
-      await prefs.remove(_homeBaseKey);
-    } else {
-      await prefs.setString(_homeBaseKey, normalizedHomeBase);
-    }
-    if (normalizedBio.isEmpty) {
-      await prefs.remove(_bioKey);
-    } else {
-      await prefs.setString(_bioKey, normalizedBio);
-    }
-
     _emitUpdated(
       (current) => current.copyWith(
         displayName: normalizedDisplayName,
         homeBase: normalizedHomeBase,
         bio: normalizedBio,
+      ),
+    );
+  }
+
+  Future<void> clearProfileCache() async {
+    _emitUpdated(
+      (current) => current.copyWith(
+        displayName: AppPreferences.defaults.displayName,
+        homeBase: '',
+        bio: '',
       ),
     );
   }
@@ -209,7 +193,7 @@ class AppPreferencesController extends AsyncNotifier<AppPreferences> {
       _themeModeKey,
       _encodeThemeMode(AppPreferences.defaults.themeMode),
     );
-    await prefs.setString(_displayNameKey, AppPreferences.defaults.displayName);
+    await prefs.remove(_displayNameKey);
     await prefs.remove(_homeBaseKey);
     await prefs.remove(_bioKey);
     await prefs.setBool(
@@ -254,10 +238,9 @@ class AppPreferencesController extends AsyncNotifier<AppPreferences> {
             prefs.getString(_themeModeKey),
           ) ??
           AppPreferences.defaults.themeMode,
-      displayName: prefs.getString(_displayNameKey) ??
-          AppPreferences.defaults.displayName,
-      homeBase: prefs.getString(_homeBaseKey) ?? '',
-      bio: prefs.getString(_bioKey) ?? '',
+      displayName: AppPreferences.defaults.displayName,
+      homeBase: '',
+      bio: '',
       confirmWishlistDelete: prefs.getBool(_confirmWishlistDeleteKey) ??
           AppPreferences.defaults.confirmWishlistDelete,
       showWishlistDates: prefs.getBool(_showWishlistDatesKey) ??
@@ -275,6 +258,12 @@ class AppPreferencesController extends AsyncNotifier<AppPreferences> {
   void _emitUpdated(AppPreferences Function(AppPreferences current) update) {
     final current = state.valueOrNull ?? _readFromPreferences();
     state = AsyncData(update(current));
+  }
+
+  Future<void> _purgeLegacyProfileCache(SharedPreferences prefs) async {
+    await prefs.remove(_displayNameKey);
+    await prefs.remove(_homeBaseKey);
+    await prefs.remove(_bioKey);
   }
 
   static ThemeMode? _decodeThemeMode(String? raw) {

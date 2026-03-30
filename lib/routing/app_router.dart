@@ -23,6 +23,7 @@ import '../features/wishlist/wishlist_plan_review_screen.dart';
 import '../features/wishlist/wishlist_plan_screen.dart';
 import '../features/wishlist/wishlist_screen.dart';
 import '../widgets/frosted_squircle.dart';
+import '../widgets/shell_scaffold_inset.dart';
 
 final _rootNavigatorKey =
     GlobalKey<NavigatorState>(debugLabel: 'rootNavigator');
@@ -379,7 +380,7 @@ String? _normalizedInviteRoute(Uri uri) {
   return normalized.toString();
 }
 
-class _AppShell extends StatelessWidget {
+class _AppShell extends StatefulWidget {
   const _AppShell({required this.location, required this.child});
 
   static const List<_ShellDestination> _destinations = <_ShellDestination>[
@@ -413,37 +414,69 @@ class _AppShell extends StatelessWidget {
   final Widget child;
 
   @override
+  State<_AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<_AppShell> {
+  late final ValueNotifier<double> _bottomBarHeight;
+
+  @override
+  void initState() {
+    super.initState();
+    _bottomBarHeight = ValueNotifier<double>(0);
+  }
+
+  @override
+  void dispose() {
+    _bottomBarHeight.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final selectedIndex = _indexForLocation(location);
+    final selectedIndex = _indexForLocation(widget.location);
     final isFloatingNavRoute = selectedIndex >= 0;
 
-    return Scaffold(
-      extendBody: isFloatingNavRoute,
-      resizeToAvoidBottomInset: location != '/',
-      body: child,
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        child: FrostedSquircle(
-          radius: 34,
-          blurSigma: 20,
-          color: colorScheme.surface.withValues(
-            alpha: isFloatingNavRoute ? 0.66 : 0.92,
-          ),
-          borderColor: colorScheme.outlineVariant.withValues(alpha: 0.16),
-          shadowColor: colorScheme.primary.withValues(alpha: 0.12),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
-            children: List<Widget>.generate(_destinations.length, (index) {
-              final destination = _destinations[index];
-              return Expanded(
-                child: _ShellNavItem(
-                  destination: destination,
-                  selected: selectedIndex == index,
-                  onTap: () => _onDestinationSelected(context, index),
+    return ShellScaffoldInset(
+      bottomBarHeight: _bottomBarHeight,
+      child: Scaffold(
+        extendBody: isFloatingNavRoute,
+        resizeToAvoidBottomInset: widget.location != '/',
+        body: widget.child,
+        bottomNavigationBar: MeasureSize(
+          onChange: (size) {
+            if ((_bottomBarHeight.value - size.height).abs() > 0.5) {
+              _bottomBarHeight.value = size.height;
+            }
+          },
+          child: SafeArea(
+            minimum: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: FrostedSquircle(
+              radius: 34,
+              blurSigma: 20,
+              color: colorScheme.surface.withValues(
+                alpha: isFloatingNavRoute ? 0.66 : 0.92,
+              ),
+              borderColor: colorScheme.outlineVariant.withValues(alpha: 0.16),
+              shadowColor: colorScheme.primary.withValues(alpha: 0.12),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              child: Row(
+                children: List<Widget>.generate(
+                  _AppShell._destinations.length,
+                  (index) {
+                    final destination = _AppShell._destinations[index];
+                    return Expanded(
+                      child: _ShellNavItem(
+                        destination: destination,
+                        selected: selectedIndex == index,
+                        onTap: () => _onDestinationSelected(context, index),
+                      ),
+                    );
+                  },
                 ),
-              );
-            }),
+              ),
+            ),
           ),
         ),
       ),

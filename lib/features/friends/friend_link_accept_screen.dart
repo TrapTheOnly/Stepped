@@ -10,8 +10,7 @@ import '../social/social_api_client.dart';
 import '../social/social_models.dart';
 import '../social/social_state.dart';
 
-const _inviteTopOverlayClearance = 110.0;
-const _inviteBottomActionClearance = 190.0;
+const _inviteBottomContentPadding = 24.0;
 
 class FriendLinkAcceptScreen extends ConsumerStatefulWidget {
   const FriendLinkAcceptScreen({
@@ -51,46 +50,41 @@ class _FriendLinkAcceptScreenState
             const Positioned.fill(
               child: IgnorePointer(child: _InviteAtmosphere()),
             ),
-            Positioned.fill(
-              child: _buildScrollLayer(
-                previewAsync,
-                ownInvite: ownInvite,
-                localProfile: localProfile,
-                currentEmail: authController.currentUser?.email ?? '',
-                currentPhotoUrl: authController.currentUser?.photoUrl,
-              ),
-            ),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: _InviteTopBar(onBack: _goBack),
+            Column(
+              children: <Widget>[
+                SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: _InviteTopBar(onBack: _goBack),
+                  ),
                 ),
-              ),
-            ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: SafeArea(
-                top: false,
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 520),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      child: _buildActionArea(
-                        previewAsync,
-                        ownInvite: ownInvite,
+                const SizedBox(height: 16),
+                Expanded(
+                  child: _buildScrollLayer(
+                    previewAsync,
+                    ownInvite: ownInvite,
+                    localProfile: localProfile,
+                    currentEmail: authController.currentUser?.email ?? '',
+                    currentPhotoUrl: authController.currentUser?.photoUrl,
+                  ),
+                ),
+                SafeArea(
+                  top: false,
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 520),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                        child: _buildActionArea(
+                          previewAsync,
+                          ownInvite: ownInvite,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
           ],
         ),
@@ -111,7 +105,7 @@ class _FriendLinkAcceptScreenState
         16,
         0,
         16,
-        _inviteBottomActionClearance + 24,
+        _inviteBottomContentPadding,
       ),
       child: Center(
         child: ConstrainedBox(
@@ -119,7 +113,6 @@ class _FriendLinkAcceptScreenState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              const SizedBox(height: _inviteTopOverlayClearance),
               if (ownInvite != null)
                 _OwnInviteCard(
                   invite: ownInvite,
@@ -205,7 +198,8 @@ class _FriendLinkAcceptScreenState
     }
 
     final normalizedStatus = preview.status.toLowerCase();
-    if (normalizedStatus == 'already_friends' || normalizedStatus == 'accepted') {
+    if (normalizedStatus == 'already_friends' ||
+        normalizedStatus == 'accepted') {
       return const _InviteState(
         primaryLabel: 'Already friends',
         primaryTone: _InviteActionTone.success,
@@ -549,7 +543,8 @@ class _OwnInviteCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                 child: Text(
                   homeBase,
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
@@ -598,7 +593,8 @@ class _InviteProfileCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final displayName = acceptedResult?.friend.displayName ?? preview.inviterName;
+    final displayName =
+        acceptedResult?.friend.displayName ?? preview.inviterName;
     final photoUrl = acceptedResult?.friend.photoUrl ?? preview.inviterPhotoUrl;
     final homeBase = acceptedResult?.friend.homeBase ?? preview.inviterHomeBase;
     final email = preview.inviterEmail.trim().isEmpty
@@ -686,7 +682,8 @@ class _InviteProfileCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                 child: Text(
                   homeBase,
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
@@ -899,7 +896,8 @@ class _InviteDockButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final resolvedFillColor = fillColor ?? scheme.surface.withValues(alpha: 0.72);
+    final resolvedFillColor =
+        fillColor ?? scheme.surface.withValues(alpha: 0.72);
     final resolvedForegroundColor = foregroundColor ?? scheme.onSurface;
 
     return FrostedSquircle(
