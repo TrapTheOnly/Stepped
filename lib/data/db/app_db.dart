@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
@@ -20,6 +21,7 @@ class AppDatabase {
   static const _databaseVersion = 5;
 
   Database? _database;
+  bool _didDeleteLegacyOnDiskDatabase = false;
 
   final StreamController<void> _tripChanges =
       StreamController<void>.broadcast(sync: true);
@@ -321,6 +323,23 @@ class AppDatabase {
     await _visitChanges.close();
     await _wishlistChanges.close();
   }
+
+  Future<void> clearSocialData() async {
+    final db = _database;
+    if (db == null) {
+      return;
+    }
+
+    await db.transaction((txn) async {
+      await txn.delete(tripsTable);
+      await txn.delete(countryVisitsTable);
+      await txn.delete(wishlistTable);
+    });
+
+    _tripChanges.add(null);
+    _visitChanges.add(null);
+    _wishlistChanges.add(null);
+  }
 }
 
 extension _AppDatabaseInternalMethods on AppDatabase {
@@ -330,9 +349,9 @@ extension _AppDatabaseInternalMethods on AppDatabase {
       return existing;
     }
 
-    final path = p.join(await getDatabasesPath(), AppDatabase._databaseName);
+    await _deleteLegacyOnDiskDatabaseIfPresent();
     final created = await openDatabase(
-      path,
+      inMemoryDatabasePath,
       version: AppDatabase._databaseVersion,
       onCreate: (db, _) async {
         await db.execute(createCountryVisitsTable);
@@ -408,6 +427,25 @@ extension _AppDatabaseInternalMethods on AppDatabase {
 
     _database = created;
     return created;
+  }
+
+  Future<void> _deleteLegacyOnDiskDatabaseIfPresent() async {
+    if (_didDeleteLegacyOnDiskDatabase) {
+      return;
+    }
+    _didDeleteLegacyOnDiskDatabase = true;
+
+    try {
+      final legacyPath =
+          p.join(await getDatabasesPath(), AppDatabase._databaseName);
+      if (await databaseExists(legacyPath)) {
+        await deleteDatabase(legacyPath);
+      }
+    } on FileSystemException {
+      // Ignore cleanup failures; in-memory storage is already the source used.
+    } on DatabaseException {
+      // Ignore cleanup failures; in-memory storage is already the source used.
+    }
   }
 
   Stream<T> _watch<T>(

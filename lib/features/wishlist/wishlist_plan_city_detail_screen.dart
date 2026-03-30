@@ -9,10 +9,10 @@ import '../../data/db/app_db.dart';
 import '../../data/repositories/wishlist_repository.dart';
 import '../../widgets/frosted_squircle.dart';
 import 'gemini_trip_planner.dart';
+import '../social/social_state.dart';
 import 'wishlist_plan_ui_state.dart';
 import 'widgets/wishlist_editorial_widgets.dart';
 
-const _cityTopClearance = 114.0;
 const _cityBottomClearance = 40.0;
 
 class WishlistPlanCityDetailScreen extends ConsumerStatefulWidget {
@@ -46,7 +46,6 @@ class _WishlistPlanCityDetailScreenState
         body: WishlistScrollView(
           bottomPadding: _cityBottomClearance,
           children: <Widget>[
-            SizedBox(height: _cityTopClearance),
             WishlistHorizontalPadding(
               child: WishlistStatusCard(
                 title: 'Loading city guide',
@@ -62,7 +61,6 @@ class _WishlistPlanCityDetailScreenState
         body: WishlistScrollView(
           bottomPadding: _cityBottomClearance,
           children: <Widget>[
-            const SizedBox(height: _cityTopClearance),
             WishlistHorizontalPadding(
               child: WishlistStatusCard(
                 title: 'City unavailable',
@@ -79,7 +77,6 @@ class _WishlistPlanCityDetailScreenState
             body: WishlistScrollView(
               bottomPadding: _cityBottomClearance,
               children: <Widget>[
-                SizedBox(height: _cityTopClearance),
                 WishlistHorizontalPadding(
                   child: WishlistStatusCard(
                     title: 'City unavailable',
@@ -102,7 +99,6 @@ class _WishlistPlanCityDetailScreenState
             body: const WishlistScrollView(
               bottomPadding: _cityBottomClearance,
               children: <Widget>[
-                SizedBox(height: _cityTopClearance),
                 WishlistHorizontalPadding(
                   child: WishlistStatusCard(
                     title: 'No route saved yet',
@@ -121,7 +117,6 @@ class _WishlistPlanCityDetailScreenState
             body: const WishlistScrollView(
               bottomPadding: _cityBottomClearance,
               children: <Widget>[
-                SizedBox(height: _cityTopClearance),
                 WishlistHorizontalPadding(
                   child: WishlistStatusCard(
                     title: 'City not found',
@@ -150,7 +145,6 @@ class _WishlistPlanCityDetailScreenState
           body: WishlistScrollView(
             bottomPadding: _cityBottomClearance,
             children: <Widget>[
-              const SizedBox(height: _cityTopClearance),
               WishlistHorizontalPadding(
                 child: _WishlistCityHero(
                   city: city,
@@ -371,6 +365,7 @@ class _WishlistPlanCityDetailScreenState
       await ref.read(wishlistRepositoryProvider).updateWishlistItem(
             item.copyWith(aiPlan: updatedRawPlan),
           );
+      await ref.read(socialSyncControllerProvider).flushWishlistNow();
       ref.invalidate(wishlistItemProvider(widget.itemId));
       ref.invalidate(wishlistStreamProvider);
     } catch (error) {
@@ -414,22 +409,22 @@ class _WishlistCityShell extends StatelessWidget {
                 child: WishlistAtmosphere(),
               ),
             ),
-            Positioned.fill(child: body),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: _WishlistCityTopBar(
-                    title: title,
-                    onBack: () => Navigator.of(context).maybePop(),
-                    onEdit: onEdit,
+            Column(
+              children: <Widget>[
+                SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: _WishlistCityTopBar(
+                      title: title,
+                      onBack: () => Navigator.of(context).maybePop(),
+                      onEdit: onEdit,
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(height: 16),
+                Expanded(child: body),
+              ],
             ),
           ],
         ),
@@ -566,7 +561,8 @@ class _WishlistCityHero extends StatelessWidget {
             fit: StackFit.expand,
             children: <Widget>[
               if (imageUrl != null && imageUrl.isNotEmpty)
-                imageUrl.startsWith('http://') || imageUrl.startsWith('https://')
+                imageUrl.startsWith('http://') ||
+                        imageUrl.startsWith('https://')
                     ? CachedNetworkImage(
                         imageUrl: imageUrl,
                         fit: BoxFit.cover,

@@ -6,15 +6,16 @@ import 'package:intl/intl.dart';
 import '../../data/db/app_db.dart';
 import '../../data/repositories/wishlist_repository.dart';
 import '../../widgets/frosted_squircle.dart';
+import '../../widgets/shell_scaffold_inset.dart';
 import '../../widgets/stepped_top_bar.dart';
 import '../map/globe/globe_country_data.dart';
 import '../map/map_viewmodel.dart';
+import '../social/social_state.dart';
 import '../settings/app_preferences.dart';
 import 'widgets/wishlist_editorial_widgets.dart';
 
-const _wishlistBottomNavClearance = 112.0;
-const _wishlistFabOffset = 121.0;
-const _wishlistTopOverlayClearance = 114.0;
+const _wishlistAddIdeaButtonSize = 58.0;
+const _wishlistFloatingButtonGap = 16.0;
 
 class WishlistScreen extends ConsumerStatefulWidget {
   const WishlistScreen({super.key});
@@ -50,6 +51,11 @@ extension _WishlistScreenBuildMethods on _WishlistScreenState {
     final dataset = ref.watch(globeCountryDatasetProvider).valueOrNull;
     final countryCodeByName = _countryCodeByName(dataset);
     final colorScheme = Theme.of(context).colorScheme;
+    final bottomBarHeight = ShellScaffoldInset.bottomBarHeightOf(context);
+    final scrollBottomPadding = bottomBarHeight +
+        _wishlistAddIdeaButtonSize +
+        _wishlistFloatingButtonGap +
+        20;
 
     return ColoredBox(
       color: colorScheme.surface,
@@ -61,115 +67,123 @@ extension _WishlistScreenBuildMethods on _WishlistScreenState {
               child: WishlistAtmosphere(),
             ),
           ),
-          Positioned.fill(
-            child: wishlistAsync.when(
-              loading: () => const WishlistScrollView(
-                bottomPadding: _wishlistBottomNavClearance + 44,
-                children: <Widget>[
-                  SizedBox(height: _wishlistTopOverlayClearance),
-                  WishlistHorizontalPadding(
-                    child: WishlistHeader(),
+          SafeArea(
+            bottom: false,
+            child: Column(
+              children: <Widget>[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: SteppedTopBar(
+                    onOpenSettings: () => context.push('/profile/settings'),
+                    onOpenProfile: () => context.push('/profile'),
                   ),
-                  SizedBox(height: 28),
-                  WishlistHorizontalPadding(
-                    child: WishlistStatusCard(
-                      title: 'Loading your saved horizons',
-                      message:
-                          'Gathering the destinations you want to turn into trips.',
-                      showProgress: true,
-                    ),
-                  ),
-                ],
-              ),
-              error: (error, _) => WishlistScrollView(
-                bottomPadding: _wishlistBottomNavClearance + 44,
-                children: <Widget>[
-                  const SizedBox(height: _wishlistTopOverlayClearance),
-                  const WishlistHorizontalPadding(
-                    child: WishlistHeader(),
-                  ),
-                  const SizedBox(height: 28),
-                  WishlistHorizontalPadding(
-                    child: WishlistStatusCard(
-                      title: 'Wishlist unavailable',
-                      message: 'Failed to load wishlist: $error',
-                    ),
-                  ),
-                ],
-              ),
-              data: (items) {
-                if (items.isEmpty) {
-                  return const WishlistScrollView(
-                    bottomPadding: _wishlistBottomNavClearance + 44,
-                    children: <Widget>[
-                      SizedBox(height: _wishlistTopOverlayClearance),
-                      WishlistHorizontalPadding(
-                        child: WishlistHeader(),
-                      ),
-                      SizedBox(height: 28),
-                      WishlistHorizontalPadding(
-                        child: WishlistEmptyState(),
-                      ),
-                    ],
-                  );
-                }
-
-                return WishlistScrollView(
-                  bottomPadding: _wishlistBottomNavClearance + 44,
-                  children: <Widget>[
-                    const SizedBox(height: _wishlistTopOverlayClearance),
-                    const WishlistHorizontalPadding(
-                      child: WishlistHeader(),
-                    ),
-                    const SizedBox(height: 28),
-                    for (final item in items) ...<Widget>[
-                      WishlistHorizontalPadding(
-                        child: WishlistStoryCard(
-                          item: item,
-                          countryCode: _countryCodeFor(
-                            item,
-                            countryCodeByName,
-                          ),
-                          showDate: preferences.showWishlistDates,
-                          dateFormat: _dateFormat,
-                          onOpenPlan: item.id == null
-                              ? null
-                              : () => context.push('/wishlist/plan/${item.id}'),
-                          onPinToggle: () => _togglePinned(item),
-                          onActions: () => _showActions(
-                            item: item,
-                            requireDeleteConfirmation:
-                                preferences.confirmWishlistDelete,
+                ),
+                const SizedBox(height: 20),
+                Expanded(
+                  child: wishlistAsync.when(
+                    loading: () => WishlistScrollView(
+                      bottomPadding: scrollBottomPadding,
+                      children: const <Widget>[
+                        WishlistHorizontalPadding(
+                          child: WishlistHeader(),
+                        ),
+                        SizedBox(height: 28),
+                        WishlistHorizontalPadding(
+                          child: WishlistStatusCard(
+                            title: 'Loading your saved horizons',
+                            message:
+                                'Gathering the destinations you want to turn into trips.',
+                            showProgress: true,
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                  ],
-                );
-              },
+                      ],
+                    ),
+                    error: (error, _) => WishlistScrollView(
+                      bottomPadding: scrollBottomPadding,
+                      children: <Widget>[
+                        const WishlistHorizontalPadding(
+                          child: WishlistHeader(),
+                        ),
+                        const SizedBox(height: 28),
+                        WishlistHorizontalPadding(
+                          child: WishlistStatusCard(
+                            title: 'Wishlist unavailable',
+                            message: 'Failed to load wishlist: $error',
+                          ),
+                        ),
+                      ],
+                    ),
+                    data: (items) {
+                      if (items.isEmpty) {
+                        return WishlistScrollView(
+                          bottomPadding: scrollBottomPadding,
+                          children: const <Widget>[
+                            WishlistHorizontalPadding(
+                              child: WishlistHeader(),
+                            ),
+                            SizedBox(height: 28),
+                            WishlistHorizontalPadding(
+                              child: WishlistEmptyState(),
+                            ),
+                          ],
+                        );
+                      }
+
+                      return WishlistScrollView(
+                        bottomPadding: scrollBottomPadding,
+                        children: <Widget>[
+                          const WishlistHorizontalPadding(
+                            child: WishlistHeader(),
+                          ),
+                          const SizedBox(height: 28),
+                          for (final item in items) ...<Widget>[
+                            WishlistHorizontalPadding(
+                              child: WishlistStoryCard(
+                                item: item,
+                                countryCode: _countryCodeFor(
+                                  item,
+                                  countryCodeByName,
+                                ),
+                                showDate: preferences.showWishlistDates,
+                                dateFormat: _dateFormat,
+                                onOpenPlan: item.id == null
+                                    ? null
+                                    : () => context
+                                        .push('/wishlist/plan/${item.id}'),
+                                onPinToggle: () => _togglePinned(item),
+                                onActions: () => _showActions(
+                                  item: item,
+                                  requireDeleteConfirmation:
+                                      preferences.confirmWishlistDelete,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                          ],
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
+          Positioned.fill(
             child: SafeArea(
+              top: false,
               bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: SteppedTopBar(
-                  onOpenSettings: () => context.push('/profile/settings'),
-                  onOpenProfile: () => context.push('/profile'),
+              child: Align(
+                alignment: Alignment.bottomRight,
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    right: 24,
+                    bottom: bottomBarHeight + _wishlistFloatingButtonGap,
+                  ),
+                  child: WishlistAddIdeaButton(
+                    onTap: () => context.push('/wishlist/add'),
+                  ),
                 ),
               ),
-            ),
-          ),
-          Positioned(
-            right: 24,
-            bottom: _wishlistFabOffset,
-            child: WishlistAddIdeaButton(
-              onTap: () => context.push('/wishlist/add'),
             ),
           ),
         ],
@@ -213,6 +227,7 @@ extension _WishlistScreenBuildMethods on _WishlistScreenState {
           id: id,
           isPinned: willPin,
         );
+    await ref.read(socialSyncControllerProvider).flushWishlistNow();
 
     if (!mounted) {
       return;
@@ -415,7 +430,8 @@ extension _WishlistScreenDialogMethods on _WishlistScreenState {
                   radius: 30,
                   blurSigma: 20,
                   color: colorScheme.surface.withValues(alpha: 0.78),
-                  borderColor: colorScheme.outlineVariant.withValues(alpha: 0.16),
+                  borderColor:
+                      colorScheme.outlineVariant.withValues(alpha: 0.16),
                   shadowColor: colorScheme.primary.withValues(alpha: 0.1),
                   padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
                   child: Column(
@@ -474,6 +490,7 @@ extension _WishlistScreenDialogMethods on _WishlistScreenState {
     }
 
     await ref.read(wishlistRepositoryProvider).deleteWishlistItem(id);
+    await ref.read(socialSyncControllerProvider).flushWishlistNow();
   }
 }
 

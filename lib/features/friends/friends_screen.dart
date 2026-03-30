@@ -8,13 +8,11 @@ import 'package:intl/intl.dart';
 
 import '../../widgets/frosted_squircle.dart';
 import '../../widgets/person_avatar.dart';
+import '../../widgets/shell_scaffold_inset.dart';
 import '../../widgets/stepped_top_bar.dart';
 import '../social/social_api_client.dart';
 import '../social/social_models.dart';
 import '../social/social_state.dart';
-
-const _friendsBottomNavClearance = 112.0;
-const _friendsTopOverlayClearance = 114.0;
 
 class FriendsScreen extends ConsumerStatefulWidget {
   const FriendsScreen({super.key});
@@ -53,6 +51,8 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
   Widget build(BuildContext context) {
     final hubAsync = ref.watch(friendsHubProvider);
     final colorScheme = Theme.of(context).colorScheme;
+    final bottomBarHeight = ShellScaffoldInset.bottomBarHeightOf(context);
+    final scrollBottomPadding = bottomBarHeight + 36;
 
     return ColoredBox(
       color: colorScheme.surface,
@@ -64,149 +64,156 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen>
               child: _FriendsAtmosphere(),
             ),
           ),
-          Positioned.fill(
-            child: hubAsync.when(
-              skipLoadingOnRefresh: true,
-              skipLoadingOnReload: true,
-              loading: () => const _FriendsScrollView(
-                children: <Widget>[
-                  SizedBox(height: _friendsTopOverlayClearance),
-                  _FriendsHorizontalPadding(child: _FriendsHeader()),
-                  SizedBox(height: 28),
-                  _FriendsHorizontalPadding(
-                    child: _FriendsStatusCard(
-                      title: 'Loading your circle',
-                      message:
-                          'Checking your invite link and loading confirmed friends.',
-                      showProgress: true,
-                    ),
+          SafeArea(
+            bottom: false,
+            child: Column(
+              children: <Widget>[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: SteppedTopBar(
+                    onOpenSettings: () => context.push('/profile/settings'),
+                    onOpenProfile: () => context.push('/profile'),
                   ),
-                ],
-              ),
-              error: (error, _) => _FriendsScrollView(
-                children: <Widget>[
-                  const SizedBox(height: _friendsTopOverlayClearance),
-                  const _FriendsHorizontalPadding(child: _FriendsHeader()),
-                  const SizedBox(height: 28),
-                  _FriendsHorizontalPadding(
-                    child: _FriendsStatusCard(
-                      title: 'Friends unavailable',
-                      message: _messageForError(error),
-                    ),
-                  ),
-                ],
-              ),
-              data: (hub) {
-                final invites = _mergedInvites(hub.me.invites);
-                SocialInviteLink? activeInvite;
-                for (final invite in invites) {
-                  if (invite.isActive) {
-                    activeInvite = invite;
-                    break;
-                  }
-                }
-                final archivedInvites = invites
-                    .where((invite) => invite.token != activeInvite?.token)
-                    .toList();
-                final activeInviteForActions = activeInvite;
-
-                return _FriendsScrollView(
-                  children: <Widget>[
-                    const SizedBox(height: _friendsTopOverlayClearance),
-                    const _FriendsHorizontalPadding(child: _FriendsHeader()),
-                    const SizedBox(height: 32),
-                    const _FriendsHorizontalPadding(
-                      child: _SectionHeading(
-                        eyebrow: 'Your circle',
-                        title: 'Friends',
-                        subtitle: '',
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    if (hub.friends.isEmpty)
-                      const _FriendsHorizontalPadding(
-                        child: _FriendsStatusCard(
-                          title: 'No friends yet',
-                          message:
-                              'Generate a link and share it to start building your travel circle.',
-                        ),
-                      )
-                    else
-                      for (final friend in hub.friends) ...<Widget>[
-                        _FriendsHorizontalPadding(
-                          child: _FriendListCard(
-                            friend: friend,
-                            onTap: () =>
-                                context.push('/friends/profile/${friend.id}'),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                      ],
-                    const SizedBox(height: 28),
-                    const _FriendsHorizontalPadding(
-                      child: _SectionHeading(
-                        eyebrow: 'Invite',
-                        title: 'Share your path',
-                        subtitle:
-                            'Generate a fresh link when you want someone new to join your circle.',
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    _FriendsHorizontalPadding(
-                      child: _InviteCard(
-                        invite: activeInvite,
-                        isGenerating: _isGeneratingInvite,
-                        onCopy: activeInviteForActions == null
-                            ? null
-                            : () => _copyInvite(activeInviteForActions.shareUrl),
-                        onDelete: activeInviteForActions == null
-                            ? null
-                            : () => _deleteInvite(activeInviteForActions),
-                        onGenerate: _generateInvite,
-                      ),
-                    ),
-                    if (archivedInvites.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 18),
-                      const _FriendsHorizontalPadding(
-                        child: Text(
-                          'Saved links',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      for (final invite in archivedInvites) ...<Widget>[
-                        _FriendsHorizontalPadding(
-                          child: _InviteHistoryCard(
-                            invite: invite,
-                            isDeleting: _deletingInviteToken == invite.token,
-                            onCopy: () => _copyInvite(invite.shareUrl),
-                            onDelete: () => _deleteInvite(invite),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                    ],
-                  ],
-                );
-              },
-            ),
-          ),
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: SteppedTopBar(
-                  onOpenSettings: () => context.push('/profile/settings'),
-                  onOpenProfile: () => context.push('/profile'),
                 ),
-              ),
+                const SizedBox(height: 20),
+                Expanded(
+                  child: hubAsync.when(
+                    skipLoadingOnRefresh: true,
+                    skipLoadingOnReload: true,
+                    loading: () => _FriendsScrollView(
+                      bottomPadding: scrollBottomPadding,
+                      children: const <Widget>[
+                        _FriendsHorizontalPadding(child: _FriendsHeader()),
+                        SizedBox(height: 28),
+                        _FriendsHorizontalPadding(
+                          child: _FriendsStatusCard(
+                            title: 'Loading your circle',
+                            message:
+                                'Checking your invite link and loading confirmed friends.',
+                            showProgress: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                    error: (error, _) => _FriendsScrollView(
+                      bottomPadding: scrollBottomPadding,
+                      children: <Widget>[
+                        const _FriendsHorizontalPadding(
+                            child: _FriendsHeader()),
+                        const SizedBox(height: 28),
+                        _FriendsHorizontalPadding(
+                          child: _FriendsStatusCard(
+                            title: 'Friends unavailable',
+                            message: _messageForError(error),
+                          ),
+                        ),
+                      ],
+                    ),
+                    data: (hub) {
+                      final invites = _mergedInvites(hub.me.invites);
+                      SocialInviteLink? activeInvite;
+                      for (final invite in invites) {
+                        if (invite.isActive) {
+                          activeInvite = invite;
+                          break;
+                        }
+                      }
+                      final archivedInvites = invites
+                          .where(
+                              (invite) => invite.token != activeInvite?.token)
+                          .toList();
+                      final activeInviteForActions = activeInvite;
+
+                      return _FriendsScrollView(
+                        bottomPadding: scrollBottomPadding,
+                        children: <Widget>[
+                          const _FriendsHorizontalPadding(
+                              child: _FriendsHeader()),
+                          const SizedBox(height: 32),
+                          const _FriendsHorizontalPadding(
+                            child: _SectionHeading(
+                              eyebrow: 'Your circle',
+                              title: 'Friends',
+                              subtitle: '',
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          if (hub.friends.isEmpty)
+                            const _FriendsHorizontalPadding(
+                              child: _FriendsStatusCard(
+                                title: 'No friends yet',
+                                message:
+                                    'Generate a link and share it to start building your travel circle.',
+                              ),
+                            )
+                          else
+                            for (final friend in hub.friends) ...<Widget>[
+                              _FriendsHorizontalPadding(
+                                child: _FriendListCard(
+                                  friend: friend,
+                                  onTap: () => context.push(
+                                    '/friends/profile/${friend.id}',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                            ],
+                          const SizedBox(height: 28),
+                          const _FriendsHorizontalPadding(
+                            child: _SectionHeading(
+                              eyebrow: 'Invite',
+                              title: 'Share your path',
+                              subtitle:
+                                  'Generate a fresh link when you want someone new to join your circle.',
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          _FriendsHorizontalPadding(
+                            child: _InviteCard(
+                              invite: activeInvite,
+                              isGenerating: _isGeneratingInvite,
+                              onCopy: activeInviteForActions == null
+                                  ? null
+                                  : () => _copyInvite(
+                                        activeInviteForActions.shareUrl,
+                                      ),
+                              onDelete: activeInviteForActions == null
+                                  ? null
+                                  : () => _deleteInvite(activeInviteForActions),
+                              onGenerate: _generateInvite,
+                            ),
+                          ),
+                          if (archivedInvites.isNotEmpty) ...<Widget>[
+                            const SizedBox(height: 18),
+                            const _FriendsHorizontalPadding(
+                              child: Text(
+                                'Saved links',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            for (final invite in archivedInvites) ...<Widget>[
+                              _FriendsHorizontalPadding(
+                                child: _InviteHistoryCard(
+                                  invite: invite,
+                                  isDeleting:
+                                      _deletingInviteToken == invite.token,
+                                  onCopy: () => _copyInvite(invite.shareUrl),
+                                  onDelete: () => _deleteInvite(invite),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                          ],
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -398,9 +405,13 @@ class _FriendsAtmosphere extends StatelessWidget {
 }
 
 class _FriendsScrollView extends StatelessWidget {
-  const _FriendsScrollView({required this.children});
+  const _FriendsScrollView({
+    required this.children,
+    required this.bottomPadding,
+  });
 
   final List<Widget> children;
+  final double bottomPadding;
 
   @override
   Widget build(BuildContext context) {
@@ -408,8 +419,7 @@ class _FriendsScrollView extends StatelessWidget {
       builder: (context, constraints) {
         return SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
-          padding:
-              const EdgeInsets.fromLTRB(0, 0, 0, _friendsBottomNavClearance + 36),
+          padding: EdgeInsets.fromLTRB(0, 0, 0, bottomPadding),
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: constraints.maxHeight),
             child: Column(
@@ -814,9 +824,10 @@ class _FriendListCard extends StatelessWidget {
                       const SizedBox(height: 6),
                       Text(
                         'Added $addedLabel',
-                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                              color: colorScheme.primary,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.labelMedium?.copyWith(
+                                  color: colorScheme.primary,
+                                ),
                       ),
                     ],
                   ],

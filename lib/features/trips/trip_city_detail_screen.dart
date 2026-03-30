@@ -9,8 +9,7 @@ import '../wishlist/gemini_trip_planner.dart';
 import '../wishlist/widgets/wishlist_editorial_widgets.dart';
 import 'trip_city_models.dart';
 
-const _tripCityTopClearance = 114.0;
-const _tripCityEditBottomClearance = 156.0;
+const _tripCityEditBottomClearance = 48.0;
 const _tripCityViewBottomClearance = 40.0;
 
 enum TripCityScreenMode {
@@ -120,7 +119,6 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
       body: WishlistScrollView(
         bottomPadding: _tripCityViewBottomClearance,
         children: <Widget>[
-          const SizedBox(height: _tripCityTopClearance),
           WishlistHorizontalPadding(
             child: _TripCityHero(
               cityName: widget.city.name,
@@ -160,7 +158,8 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
                         ),
                   ),
                   if (_overviewText.isNotEmpty &&
-                      _overviewText.toLowerCase() != _reasonText.toLowerCase()) ...<Widget>[
+                      _overviewText.toLowerCase() !=
+                          _reasonText.toLowerCase()) ...<Widget>[
                     const SizedBox(height: 10),
                     Text(
                       _overviewText,
@@ -207,7 +206,9 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
                     )
                   : Column(
                       children: <Widget>[
-                        for (var i = 0; i < _itineraryStops.length; i += 1) ...<Widget>[
+                        for (var i = 0;
+                            i < _itineraryStops.length;
+                            i += 1) ...<Widget>[
                           _TripTimelineCard(stop: _itineraryStops[i]),
                           if (i != _itineraryStops.length - 1)
                             const SizedBox(height: 12),
@@ -233,17 +234,23 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
                       children: <Widget>[
                         Text(
                           '${_completedSuggestedPlaceKeys.length}/${_suggestedPlaces.length} checked',
-                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelLarge
+                              ?.copyWith(
                                 color: Theme.of(context).colorScheme.secondary,
                                 letterSpacing: 0.3,
                               ),
                         ),
                         const SizedBox(height: 12),
-                        for (var i = 0; i < _suggestedPlaces.length; i += 1) ...<Widget>[
+                        for (var i = 0;
+                            i < _suggestedPlaces.length;
+                            i += 1) ...<Widget>[
                           _TripThingChecklistTile(
                             label: _suggestedPlaces[i],
                             checked: _completedSuggestedPlaceKeys.contains(
-                              normalizeTripSuggestedPlaceKey(_suggestedPlaces[i]),
+                              normalizeTripSuggestedPlaceKey(
+                                  _suggestedPlaces[i]),
                             ),
                             onTap: isReadOnly
                                 ? null
@@ -369,7 +376,6 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
       body: WishlistScrollView(
         bottomPadding: _tripCityEditBottomClearance,
         children: <Widget>[
-          const SizedBox(height: _tripCityTopClearance),
           WishlistHorizontalPadding(
             child: _TripCityHero(
               cityName: widget.city.name,
@@ -387,7 +393,8 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  if (widget.inheritedPlan != null || widget.inheritedDetail != null) ...<Widget>[
+                  if (widget.inheritedPlan != null ||
+                      widget.inheritedDetail != null) ...<Widget>[
                     Text(
                       'Wishlist itinerary available for this stop.',
                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
@@ -467,7 +474,8 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
                           _TripTimelineCard(
                             stop: _itineraryStops[index],
                             onRemove: () => setState(() {
-                              _itineraryStops = List<TripCityItineraryStop>.from(
+                              _itineraryStops =
+                                  List<TripCityItineraryStop>.from(
                                 _itineraryStops,
                               )..removeAt(index);
                             }),
@@ -908,8 +916,9 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
     return widget.city.copyWith(
       rating: _rating,
       visitedPlaces: sanitizeTripVisitedPlaces(_visitedPlaces),
-      notes:
-          _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+      notes: _notesController.text.trim().isEmpty
+          ? null
+          : _notesController.text.trim(),
       imageUri: (_imageUri?.trim().isEmpty ?? true) ? null : _imageUri!.trim(),
       itineraryOverview: _overviewController.text.trim().isEmpty
           ? null
@@ -959,33 +968,31 @@ class _TripCityShell extends StatelessWidget {
                 child: WishlistAtmosphere(),
               ),
             ),
-            Positioned.fill(child: body),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: _TripCityTopBar(
-                    title: title,
-                    onBack: onBack,
-                    onEdit: onEdit,
+            Column(
+              children: <Widget>[
+                SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: _TripCityTopBar(
+                      title: title,
+                      onBack: onBack,
+                      onEdit: onEdit,
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(height: 16),
+                Expanded(child: body),
+                if (bottomChild != null)
+                  SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                      child: bottomChild!,
+                    ),
+                  ),
+              ],
             ),
-            if (bottomChild != null)
-              Positioned(
-                left: 16,
-                right: 16,
-                bottom: 20,
-                child: SafeArea(
-                  top: false,
-                  child: bottomChild!,
-                ),
-              ),
           ],
         ),
       ),
@@ -1026,7 +1033,8 @@ class _TripCityTopBar extends StatelessWidget {
                 child: IconButton(
                   onPressed: onBack,
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                  constraints:
+                      const BoxConstraints(minWidth: 30, minHeight: 30),
                   visualDensity: VisualDensity.compact,
                   icon: Icon(
                     Icons.arrow_back_ios_new_rounded,
@@ -1146,7 +1154,9 @@ class _TripCityHero extends StatelessWidget {
                 left: 18,
                 top: 18,
                 child: _TripCityMetaChip(
-                  label: inheritedPlan?.isExtra ?? false ? 'Extra city' : 'City guide',
+                  label: inheritedPlan?.isExtra ?? false
+                      ? 'Extra city'
+                      : 'City guide',
                   emphasized: true,
                 ),
               ),
@@ -1369,9 +1379,10 @@ class _TripTimelineCard extends StatelessWidget {
                     children: <Widget>[
                       Text(
                         stop.place,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
                       ),
                       if (stop.note.trim().isNotEmpty) ...<Widget>[
                         const SizedBox(height: 6),

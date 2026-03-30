@@ -13,7 +13,6 @@ import 'widgets/ai_planner_settings_section.dart';
 import 'widgets/settings_dialogs.dart';
 import 'widgets/settings_form_sections.dart';
 
-const _settingsTopOverlayClearance = 114.0;
 const _settingsBottomPadding = 56.0;
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -104,118 +103,120 @@ extension _SettingsScreenBuildMethods on _SettingsScreenState {
                 child: _SettingsAtmosphere(),
               ),
             ),
-            Positioned.fill(
-              child: preferencesAsync.when(
-                loading: () => const _SettingsScrollView(
-                  children: <Widget>[
-                    SizedBox(height: _settingsTopOverlayClearance),
-                    _SettingsHorizontalPadding(
-                      child: SettingsStatusCard(
-                        title: 'Loading settings',
-                        showProgress: true,
-                      ),
+            Column(
+              children: <Widget>[
+                SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: _SettingsTopBar(
+                      canSave: currentPrefs != null && hasUnsavedChanges,
+                      isSaving: _isSaving,
+                      onBack: () => _popToProfile(context),
+                      onSave: currentPrefs == null || _isSaving
+                          ? null
+                          : () => _saveProfileFields(currentPrefs),
                     ),
-                  ],
-                ),
-                error: (error, _) => _SettingsScrollView(
-                  children: <Widget>[
-                    const SizedBox(height: _settingsTopOverlayClearance),
-                    _SettingsHorizontalPadding(
-                      child: SettingsStatusCard(
-                        title: 'Failed to load settings: $error',
-                      ),
-                    ),
-                  ],
-                ),
-                data: (prefs) {
-                  final notifier = ref.read(appPreferencesProvider.notifier);
-                  return _SettingsScrollView(
-                    children: <Widget>[
-                      const SizedBox(height: _settingsTopOverlayClearance),
-                      _SettingsHorizontalPadding(
-                        child: AppearanceSettingsSection(
-                          currentThemeMode: prefs.themeMode,
-                          onThemeChoiceChanged: (choice) {
-                            notifier
-                                .updateThemeMode(themeModeFromChoice(choice));
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 34),
-                      _SettingsHorizontalPadding(
-                        child: GeneralSettingsSection(
-                          confirmWishlistDelete: prefs.confirmWishlistDelete,
-                          onConfirmWishlistDeleteChanged:
-                              notifier.updateConfirmWishlistDelete,
-                        ),
-                      ),
-                      const SizedBox(height: 34),
-                      _SettingsHorizontalPadding(
-                        child: WishlistSettingsSection(
-                          showWishlistDates: prefs.showWishlistDates,
-                          shareWishlistWithFriends:
-                              _privacySettings?.shareWishlistWithFriends,
-                          isSavingPrivacy:
-                              socialPrivacyAsync.isLoading || _isSavingPrivacy,
-                          privacyErrorMessage: privacyError,
-                          onShowWishlistDatesChanged:
-                              notifier.updateShowWishlistDates,
-                          onShareWishlistChanged: _handleWishlistPrivacyChanged,
-                        ),
-                      ),
-                      const SizedBox(height: 34),
-                      _SettingsHorizontalPadding(
-                        child: AiPlannerSettingsSection(
-                          colorScheme: colorScheme,
-                          aiSourceChoice: _aiSourceChoice,
-                          cloudApiBaseUrlController: _cloudApiBaseUrlController,
-                          geminiApiKeyController: _geminiApiKeyController,
-                          showGeminiApiKey: _showGeminiApiKey,
-                          onAiSourceChanged: (value) {
-                            _applyState(() {
-                              _aiSourceChoice = value;
-                            });
-                          },
-                          onToggleGeminiApiKeyVisibility: () {
-                            _applyState(() {
-                              _showGeminiApiKey = !_showGeminiApiKey;
-                            });
-                          },
-                          onClearGeminiApiKey: () {
-                            _geminiApiKeyController.clear();
-                            _applyState(() {});
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 34),
-                      _SettingsHorizontalPadding(
-                        child: DataSettingsSection(
-                          onResetSettings: _confirmResetDefaults,
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: _SettingsTopBar(
-                    canSave: currentPrefs != null && hasUnsavedChanges,
-                    isSaving: _isSaving,
-                    onBack: () => _popToProfile(context),
-                    onSave: currentPrefs == null || _isSaving
-                        ? null
-                        : () => _saveProfileFields(currentPrefs),
                   ),
                 ),
-              ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: preferencesAsync.when(
+                    loading: () => const _SettingsScrollView(
+                      children: <Widget>[
+                        _SettingsHorizontalPadding(
+                          child: SettingsStatusCard(
+                            title: 'Loading settings',
+                            showProgress: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                    error: (error, _) => _SettingsScrollView(
+                      children: <Widget>[
+                        _SettingsHorizontalPadding(
+                          child: SettingsStatusCard(
+                            title: 'Failed to load settings: $error',
+                          ),
+                        ),
+                      ],
+                    ),
+                    data: (prefs) {
+                      final notifier =
+                          ref.read(appPreferencesProvider.notifier);
+                      return _SettingsScrollView(
+                        children: <Widget>[
+                          _SettingsHorizontalPadding(
+                            child: AppearanceSettingsSection(
+                              currentThemeMode: prefs.themeMode,
+                              onThemeChoiceChanged: (choice) {
+                                notifier.updateThemeMode(
+                                  themeModeFromChoice(choice),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 34),
+                          _SettingsHorizontalPadding(
+                            child: GeneralSettingsSection(
+                              confirmWishlistDelete:
+                                  prefs.confirmWishlistDelete,
+                              onConfirmWishlistDeleteChanged:
+                                  notifier.updateConfirmWishlistDelete,
+                            ),
+                          ),
+                          const SizedBox(height: 34),
+                          _SettingsHorizontalPadding(
+                            child: WishlistSettingsSection(
+                              showWishlistDates: prefs.showWishlistDates,
+                              shareWishlistWithFriends:
+                                  _privacySettings?.shareWishlistWithFriends,
+                              isSavingPrivacy: socialPrivacyAsync.isLoading ||
+                                  _isSavingPrivacy,
+                              privacyErrorMessage: privacyError,
+                              onShowWishlistDatesChanged:
+                                  notifier.updateShowWishlistDates,
+                              onShareWishlistChanged:
+                                  _handleWishlistPrivacyChanged,
+                            ),
+                          ),
+                          const SizedBox(height: 34),
+                          _SettingsHorizontalPadding(
+                            child: AiPlannerSettingsSection(
+                              colorScheme: colorScheme,
+                              aiSourceChoice: _aiSourceChoice,
+                              cloudApiBaseUrlController:
+                                  _cloudApiBaseUrlController,
+                              geminiApiKeyController: _geminiApiKeyController,
+                              showGeminiApiKey: _showGeminiApiKey,
+                              onAiSourceChanged: (value) {
+                                _applyState(() {
+                                  _aiSourceChoice = value;
+                                });
+                              },
+                              onToggleGeminiApiKeyVisibility: () {
+                                _applyState(() {
+                                  _showGeminiApiKey = !_showGeminiApiKey;
+                                });
+                              },
+                              onClearGeminiApiKey: () {
+                                _geminiApiKeyController.clear();
+                                _applyState(() {});
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 34),
+                          _SettingsHorizontalPadding(
+                            child: DataSettingsSection(
+                              onResetSettings: _confirmResetDefaults,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
           ],
         ),

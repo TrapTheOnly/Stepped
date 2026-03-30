@@ -4,8 +4,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/widgets.dart';
 import 'package:path/path.dart' as path;
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/db/app_db.dart';
 import '../../data/repositories/trips_repository.dart';
@@ -71,9 +71,16 @@ final socialTravelSnapshotProvider = Provider<SocialTravelSnapshot?>((ref) {
   final profile = ref.watch(socialProfileSnapshotProvider);
   final trips = ref.watch(tripsStreamProvider).valueOrNull;
   final visits = ref.watch(visitedCountriesProvider).valueOrNull;
+  final wishlistItems = ref.watch(wishlistStreamProvider).valueOrNull ??
+      const <WishlistItemRecord>[];
   if (trips == null || visits == null) {
     return null;
   }
+
+  final wishlistByLocalId = <int, WishlistItemRecord>{
+    for (final item in wishlistItems)
+      if (item.id != null) item.id!: item,
+  };
 
   return SocialTravelSnapshot(
     profile: profile,
@@ -91,6 +98,10 @@ final socialTravelSnapshotProvider = Provider<SocialTravelSnapshot?>((ref) {
             legacyCities: trip.cities,
           ),
           coverImageUrl: _remoteImageOrNull(trip.coverImageUri),
+          sourceWishlistItemId: _resolveTripSourceWishlistRemoteId(
+            trip: trip,
+            wishlistByLocalId: wishlistByLocalId,
+          ),
           notes: trip.notes,
         ),
     ],
@@ -202,6 +213,21 @@ String _tripRemoteKey(TripRecord trip) {
 
 String _wishlistRemoteKey(WishlistItemRecord item) {
   return item.remoteId ?? item.id?.toString() ?? _fallbackWishlistItemId(item);
+}
+
+String? _resolveTripSourceWishlistRemoteId({
+  required TripRecord trip,
+  required Map<int, WishlistItemRecord> wishlistByLocalId,
+}) {
+  final localWishlistId = trip.sourceWishlistItemId;
+  if (localWishlistId == null) {
+    return null;
+  }
+  final item = wishlistByLocalId[localWishlistId];
+  if (item == null) {
+    return null;
+  }
+  return _wishlistRemoteKey(item);
 }
 
 String _slugifyCityKey(String value) {
@@ -321,7 +347,8 @@ String? _replaceWishlistCoverImageUrl({
     final currentCover = payload['cover_image'];
     final coverImage = currentCover is Map
         ? <String, dynamic>{
-            for (final entry in currentCover.entries) '${entry.key}': entry.value,
+            for (final entry in currentCover.entries)
+              '${entry.key}': entry.value,
           }
         : <String, dynamic>{};
     coverImage['image_url'] = imageUrl;
@@ -342,7 +369,6 @@ class FriendsHubData {
   final List<FriendSummary> friends;
 }
 
-const _friendsHubCacheKeyPrefix = 'stepped_friends_hub_cache_v1_';
 const _friendsHubCacheMaxAge = Duration(hours: 12);
 
 final socialMeProvider = FutureProvider<SocialMeData>((ref) async {
@@ -499,12 +525,17 @@ final friendProfileProvider = FutureProvider.autoDispose
 });
 
 final socialSyncBootstrapProvider = Provider<void>((ref) {
-  final coordinator = _SocialSyncCoordinator(ref);
-  ref.onDispose(coordinator.dispose);
+  final coordinator = ref.watch(socialSyncControllerProvider);
+  final lifecycleObserver = _SocialSyncLifecycleObserver(coordinator);
+  WidgetsBinding.instance.addObserver(lifecycleObserver);
+  ref.onDispose(() {
+    WidgetsBinding.instance.removeObserver(lifecycleObserver);
+  });
 
   ref.listen<AuthController>(authControllerProvider, (_, __) {
     coordinator.scheduleProfileSync();
     coordinator.scheduleTravelSync();
+    coordinator.scheduleWishlistSync();
   });
   ref.listen<AsyncValue<AppPreferences>>(appPreferencesProvider, (_, __) {
     coordinator.scheduleProfileSync();
@@ -519,6 +550,7 @@ final socialSyncBootstrapProvider = Provider<void>((ref) {
   });
   ref.listen<AsyncValue<List<WishlistItemRecord>>>(wishlistStreamProvider,
       (_, __) {
+    coordinator.scheduleTravelSync();
     coordinator.scheduleWishlistSync();
   });
 
@@ -527,8 +559,29 @@ final socialSyncBootstrapProvider = Provider<void>((ref) {
   coordinator.scheduleWishlistSync();
 });
 
-class _SocialSyncCoordinator {
-  _SocialSyncCoordinator(this.ref);
+final socialSyncControllerProvider = Provider<SocialSyncController>((ref) {
+  final controller = SocialSyncController(ref);
+  ref.onDispose(controller.dispose);
+  return controller;
+});
+
+class _SocialSyncLifecycleObserver extends WidgetsBindingObserver {
+  _SocialSyncLifecycleObserver(this._controller);
+
+  final SocialSyncController _controller;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(_controller.flushAllNow());
+    }
+  }
+}
+
+class SocialSyncController {
+  SocialSyncController(this.ref);
 
   final Ref ref;
   Timer? _profileTimer;
@@ -543,7 +596,7 @@ class _SocialSyncCoordinator {
   void scheduleProfileSync() {
     _profileTimer?.cancel();
     _profileTimer = Timer(
-      const Duration(milliseconds: 850),
+      const Duration(milliseconds: 250),
       () => unawaited(_syncProfile()),
     );
   }
@@ -551,7 +604,7 @@ class _SocialSyncCoordinator {
   void scheduleTravelSync() {
     _travelTimer?.cancel();
     _travelTimer = Timer(
-      const Duration(milliseconds: 1100),
+      const Duration(milliseconds: 300),
       () => unawaited(_syncTravel()),
     );
   }
@@ -559,14 +612,34 @@ class _SocialSyncCoordinator {
   void scheduleWishlistSync() {
     _wishlistTimer?.cancel();
     _wishlistTimer = Timer(
-      const Duration(milliseconds: 1150),
+      const Duration(milliseconds: 300),
       () => unawaited(_syncWishlist()),
     );
+  }
+
+  Future<void> flushTravelNow() async {
+    _travelTimer?.cancel();
+    await _syncTravel();
+  }
+
+  Future<void> flushWishlistNow() async {
+    _wishlistTimer?.cancel();
+    await _syncWishlist();
+  }
+
+  Future<void> flushAllNow() async {
+    _profileTimer?.cancel();
+    _travelTimer?.cancel();
+    _wishlistTimer?.cancel();
+    await _syncProfile();
+    await _syncTravel();
+    await _syncWishlist();
   }
 
   Future<void> _syncProfile() async {
     final session = ref.read(socialSessionProvider);
     if (session == null) {
+      await _clearLocalUserData();
       _hydratedUserId = null;
       _didHydrateRemoteState = false;
       _lastProfileSignature = null;
@@ -576,6 +649,7 @@ class _SocialSyncCoordinator {
     }
 
     if (_hydratedUserId != session.user.id) {
+      await _clearLocalUserData();
       _hydratedUserId = session.user.id;
       _didHydrateRemoteState = false;
       _lastProfileSignature = null;
@@ -672,7 +746,33 @@ class _SocialSyncCoordinator {
       );
       _lastProfileSignature = jsonEncode(syncedProfileSnapshot.toJson());
 
+      final shouldHydrateWishlist =
+          localWishlistItems.isEmpty || me.wishlistItems.isNotEmpty;
+      var effectiveWishlistItems = localWishlistItems;
+      if (me.hasWishlistItemsPayload && shouldHydrateWishlist) {
+        final localWishlistByKey = <String, WishlistItemRecord>{
+          for (final item in localWishlistItems)
+            _wishlistHydrationKey(item.remoteId, item.title): item,
+        };
+        await ref.read(wishlistRepositoryProvider).replaceWishlistItems(
+          <WishlistItemRecord>[
+            for (final item in me.wishlistItems)
+              _wishlistRecordFromRemote(
+                remote: item,
+                local: localWishlistByKey[
+                    _wishlistHydrationKey(item.id, item.title)],
+              ),
+          ],
+        );
+        effectiveWishlistItems =
+            await ref.read(wishlistRepositoryProvider).getWishlistItems();
+      }
+
       if (me.hasTripsPayload) {
+        final wishlistRemoteIdToLocalId = <String, int>{
+          for (final item in effectiveWishlistItems)
+            if (item.id != null) _wishlistRemoteKey(item): item.id!,
+        };
         await ref.read(tripsRepositoryProvider).replaceTrips(
           <TripRecord>[
             for (final trip in me.trips)
@@ -683,6 +783,9 @@ class _SocialSyncCoordinator {
                 startDate: trip.startDate,
                 endDate: trip.endDate,
                 cities: trip.cities,
+                sourceWishlistItemId: trip.sourceWishlistItemId == null
+                    ? null
+                    : wishlistRemoteIdToLocalId[trip.sourceWishlistItemId!],
                 cityDataJson: trip.cityEntries.isNotEmpty
                     ? jsonEncode(
                         trip.cityEntries
@@ -705,25 +808,6 @@ class _SocialSyncCoordinator {
                 countryCode: visit.countryCode.toUpperCase(),
                 countryName: visit.countryName,
                 visitedAt: visit.visitedAt,
-              ),
-          ],
-        );
-      }
-
-      final shouldHydrateWishlist =
-          localWishlistItems.isEmpty || me.wishlistItems.isNotEmpty;
-      if (me.hasWishlistItemsPayload && shouldHydrateWishlist) {
-        final localWishlistByKey = <String, WishlistItemRecord>{
-          for (final item in localWishlistItems)
-            _wishlistHydrationKey(item.remoteId, item.title): item,
-        };
-        await ref.read(wishlistRepositoryProvider).replaceWishlistItems(
-          <WishlistItemRecord>[
-            for (final item in me.wishlistItems)
-              _wishlistRecordFromRemote(
-                remote: item,
-                local: localWishlistByKey[
-                    _wishlistHydrationKey(item.id, item.title)],
               ),
           ],
         );
@@ -963,6 +1047,14 @@ class _SocialSyncCoordinator {
     }
   }
 
+  Future<void> _clearLocalUserData() async {
+    await ref.read(databaseProvider).clearSocialData();
+    await ref.read(appPreferencesProvider.notifier).clearProfileCache();
+    _FriendsHubCacheStore.clearAll();
+    ref.invalidate(socialMeProvider);
+    ref.invalidate(friendsHubProvider);
+  }
+
   void dispose() {
     _profileTimer?.cancel();
     _travelTimer?.cancel();
@@ -984,7 +1076,8 @@ WishlistItemRecord _wishlistRecordFromRemote({
     title: remote.title,
     countryName: _nonEmptyOrNull(remote.countryName) ?? local?.countryName,
     countryCode: _nonEmptyOrNull(remote.countryCode) ?? local?.countryCode,
-    createdAt: remote.createdAt > 0 ? remote.createdAt : (local?.createdAt ?? 0),
+    createdAt:
+        remote.createdAt > 0 ? remote.createdAt : (local?.createdAt ?? 0),
     plannedStartDate: remote.plannedStartDate ?? local?.plannedStartDate,
     plannedEndDate: remote.plannedEndDate ?? local?.plannedEndDate,
     plannedCities:
@@ -1013,7 +1106,8 @@ String? _mergeWishlistAiPlan({
   required String? remoteImageUrl,
 }) {
   final normalizedRemoteImage = normalizeSocialAssetUrl(remoteImageUrl);
-  String? basePlan = _nonEmptyOrNull(remoteAiPlan) ?? _nonEmptyOrNull(localAiPlan);
+  String? basePlan =
+      _nonEmptyOrNull(remoteAiPlan) ?? _nonEmptyOrNull(localAiPlan);
   if (basePlan == null && normalizedRemoteImage == null) {
     return null;
   }
@@ -1054,105 +1148,39 @@ String? _mergeWishlistAiPlan({
 class _FriendsHubCacheStore {
   const _FriendsHubCacheStore._();
 
-  static String _keyFor(String userId) => '$_friendsHubCacheKeyPrefix$userId';
+  static final Map<String, _FriendsHubCacheEntry> _entries =
+      <String, _FriendsHubCacheEntry>{};
 
   static Future<FriendsHubData?> read(String userId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_keyFor(userId));
-    if (raw == null || raw.trim().isEmpty) {
+    final cached = _entries[userId];
+    if (cached == null) {
       return null;
     }
-
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map) {
-        await prefs.remove(_keyFor(userId));
-        return null;
-      }
-      final map = Map<String, dynamic>.from(decoded);
-      final cachedAt =
-          _parseCacheTimestamp(map['cached_at'] ?? map['cachedAt']);
-      if (cachedAt != null &&
-          DateTime.now().difference(cachedAt) > _friendsHubCacheMaxAge) {
-        await prefs.remove(_keyFor(userId));
-        return null;
-      }
-      final meRaw = map['me'];
-      final friendsRaw = map['friends'];
-      if (meRaw == null || friendsRaw is! List) {
-        await prefs.remove(_keyFor(userId));
-        return null;
-      }
-      return FriendsHubData(
-        me: SocialMeData.fromJson(meRaw),
-        friends: <FriendSummary>[
-          for (final entry in friendsRaw) FriendSummary.fromJson(entry),
-        ],
-      );
-    } catch (_) {
-      await prefs.remove(_keyFor(userId));
+    if (DateTime.now().difference(cached.cachedAt) > _friendsHubCacheMaxAge) {
+      _entries.remove(userId);
       return null;
     }
+    return cached.data;
   }
 
   static Future<void> write(String userId, FriendsHubData data) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _keyFor(userId),
-      jsonEncode(<String, dynamic>{
-        'cached_at': DateTime.now().toIso8601String(),
-        'me': _socialMeToJson(data.me),
-        'friends': <Map<String, dynamic>>[
-          for (final friend in data.friends) _friendSummaryToJson(friend),
-        ],
-      }),
+    _entries[userId] = _FriendsHubCacheEntry(
+      data: data,
+      cachedAt: DateTime.now(),
     );
   }
 
-  static DateTime? _parseCacheTimestamp(dynamic raw) {
-    if (raw is! String) {
-      return null;
-    }
-    return DateTime.tryParse(raw.trim());
+  static void clearAll() {
+    _entries.clear();
   }
+}
 
-  static Map<String, dynamic> _socialMeToJson(SocialMeData data) {
-    return <String, dynamic>{
-      'profile': data.profile.toJson(),
-      if (data.invite != null)
-        'active_invite': _socialInviteToJson(data.invite!),
-      if (data.stats != null) 'stats': _socialStatsToJson(data.stats!),
-      'invites': <Map<String, dynamic>>[
-        for (final invite in data.invites) _socialInviteToJson(invite),
-      ],
-    };
-  }
+class _FriendsHubCacheEntry {
+  const _FriendsHubCacheEntry({
+    required this.data,
+    required this.cachedAt,
+  });
 
-  static Map<String, dynamic> _socialInviteToJson(SocialInviteLink invite) {
-    return <String, dynamic>{
-      'token': invite.token,
-      'url': invite.url,
-      'status': invite.status,
-      if (invite.createdAt != null)
-        'created_at': invite.createdAt!.toIso8601String(),
-    };
-  }
-
-  static Map<String, dynamic> _socialStatsToJson(SocialStats stats) {
-    return <String, dynamic>{
-      'total_trips': stats.totalTrips,
-      'visited_countries_count': stats.visitedCountriesCount,
-      'total_friends': stats.totalFriends,
-    };
-  }
-
-  static Map<String, dynamic> _friendSummaryToJson(FriendSummary friend) {
-    return <String, dynamic>{
-      'id': friend.id,
-      'display_name': friend.displayName,
-      if (friend.photoUrl != null) 'photo_url': friend.photoUrl,
-      'home_base': friend.homeBase,
-      if (friend.addedAt != null) 'added_at': friend.addedAt!.toIso8601String(),
-    };
-  }
+  final FriendsHubData data;
+  final DateTime cachedAt;
 }

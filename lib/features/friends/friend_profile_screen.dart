@@ -10,7 +10,6 @@ import '../social/social_models.dart';
 import '../social/social_state.dart';
 import 'widgets/read_only_globe_card.dart';
 
-const _friendProfileTopOverlayClearance = 114.0;
 const _friendProfileBottomPadding = 64.0;
 
 enum _FriendProfileTab { trips, wishlist }
@@ -24,7 +23,8 @@ class FriendProfileScreen extends ConsumerStatefulWidget {
   final String friendUserId;
 
   @override
-  ConsumerState<FriendProfileScreen> createState() => _FriendProfileScreenState();
+  ConsumerState<FriendProfileScreen> createState() =>
+      _FriendProfileScreenState();
 }
 
 class _FriendProfileScreenState extends ConsumerState<FriendProfileScreen>
@@ -81,93 +81,90 @@ class _FriendProfileScreenState extends ConsumerState<FriendProfileScreen>
             const Positioned.fill(
               child: IgnorePointer(child: _FriendProfileAtmosphere()),
             ),
-            Positioned.fill(
-              child: profileAsync.when(
-                skipLoadingOnRefresh: true,
-                skipLoadingOnReload: true,
-                loading: () => const _FriendProfileScrollView(
-                  children: <Widget>[
-                    SizedBox(height: _friendProfileTopOverlayClearance),
-                    _FriendHorizontalPadding(
-                      child: _StatusCard(
-                        title: 'Loading public profile',
-                        message:
-                            'Bringing in their map, stats, and shared travel plans.',
-                        showProgress: true,
-                      ),
+            Column(
+              children: <Widget>[
+                SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: _TopBar(
+                      title: 'Profile',
+                      isRemoving: _isRemoving,
+                      onBack: () => _popOrGoToFriends(context),
+                      onRemove: _isRemoving ? null : _confirmRemove,
                     ),
-                  ],
-                ),
-                error: (error, _) => _FriendProfileScrollView(
-                  children: <Widget>[
-                    const SizedBox(height: _friendProfileTopOverlayClearance),
-                    _FriendHorizontalPadding(
-                      child: _StatusCard(
-                        title: 'Profile unavailable',
-                        message: _messageForError(error),
-                      ),
-                    ),
-                  ],
-                ),
-                data: (profile) => _FriendProfileScrollView(
-                  children: <Widget>[
-                    const SizedBox(height: _friendProfileTopOverlayClearance),
-                    _FriendHorizontalPadding(
-                      child: _HeroCard(friend: profile.friend),
-                    ),
-                    const SizedBox(height: 18),
-                    _FriendHorizontalPadding(
-                      child: ReadOnlyGlobeCard(
-                        visitedCountryCodes: profile.friend.visitedCountries
-                            .map((entry) => entry.countryCode)
-                            .toList(growable: false),
-                        title: 'Map',
-                        subtitle: '',
-                      ),
-                    ),
-                    const SizedBox(height: 22),
-                    _FriendHorizontalPadding(
-                      child: _TabPicker(
-                        selectedTab: _selectedTab,
-                        onSelected: (tab) {
-                          setState(() {
-                            _selectedTab = tab;
-                          });
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    _FriendHorizontalPadding(
-                      child: _SectionLabel(
-                        title: _selectedTab == _FriendProfileTab.trips
-                            ? 'Trips'
-                            : 'Wishlist Ideas',
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    ...(_selectedTab == _FriendProfileTab.trips
-                        ? _buildTripSection(context, profile)
-                        : _buildWishlistSection(context, profile)),
-                  ],
-                ),
-              ),
-            ),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: _TopBar(
-                    title: 'Profile',
-                    isRemoving: _isRemoving,
-                    onBack: () => _popOrGoToFriends(context),
-                    onRemove: _isRemoving ? null : _confirmRemove,
                   ),
                 ),
-              ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: profileAsync.when(
+                    skipLoadingOnRefresh: true,
+                    skipLoadingOnReload: true,
+                    loading: () => const _FriendProfileScrollView(
+                      children: <Widget>[
+                        _FriendHorizontalPadding(
+                          child: _StatusCard(
+                            title: 'Loading public profile',
+                            message:
+                                'Bringing in their map, stats, and shared travel plans.',
+                            showProgress: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                    error: (error, _) => _FriendProfileScrollView(
+                      children: <Widget>[
+                        _FriendHorizontalPadding(
+                          child: _StatusCard(
+                            title: 'Profile unavailable',
+                            message: _messageForError(error),
+                          ),
+                        ),
+                      ],
+                    ),
+                    data: (profile) => _FriendProfileScrollView(
+                      children: <Widget>[
+                        _FriendHorizontalPadding(
+                          child: _HeroCard(friend: profile.friend),
+                        ),
+                        const SizedBox(height: 18),
+                        _FriendHorizontalPadding(
+                          child: ReadOnlyGlobeCard(
+                            visitedCountryCodes: profile.friend.visitedCountries
+                                .map((entry) => entry.countryCode)
+                                .toList(growable: false),
+                            title: 'Map',
+                            subtitle: '',
+                          ),
+                        ),
+                        const SizedBox(height: 22),
+                        _FriendHorizontalPadding(
+                          child: _TabPicker(
+                            selectedTab: _selectedTab,
+                            onSelected: (tab) {
+                              setState(() {
+                                _selectedTab = tab;
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        _FriendHorizontalPadding(
+                          child: _SectionLabel(
+                            title: _selectedTab == _FriendProfileTab.trips
+                                ? 'Trips'
+                                : 'Wishlist Ideas',
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        ...(_selectedTab == _FriendProfileTab.trips
+                            ? _buildTripSection(context, profile)
+                            : _buildWishlistSection(context, profile)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

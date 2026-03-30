@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/repositories/trips_repository.dart';
 import '../../data/repositories/visits_repository.dart';
 import '../../domain/models/trip_ui.dart';
+import '../social/social_state.dart';
 import 'globe/globe_country_data.dart';
 
 const totalCountriesInWorld = 195;
@@ -202,6 +203,7 @@ class MapVisitToggleController extends AutoDisposeAsyncNotifier<void> {
         countryName: countryName,
         visited: visited,
       );
+      await ref.read(socialSyncControllerProvider).flushTravelNow();
       state = const AsyncData(null);
     } catch (error, stackTrace) {
       state = AsyncValue.error(error, stackTrace);

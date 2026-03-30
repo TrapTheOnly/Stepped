@@ -9,12 +9,13 @@ import 'package:intl/intl.dart';
 import '../../data/db/app_db.dart';
 import '../../data/repositories/trips_repository.dart';
 import '../../widgets/frosted_squircle.dart';
+import '../../widgets/shell_scaffold_inset.dart';
 import '../../widgets/stepped_top_bar.dart';
+import '../social/social_state.dart';
 import '../settings/app_preferences.dart';
 
-const _bottomNavClearance = 112.0;
-const _fabOffset = 121.0;
-const _topOverlayClearance = 114.0;
+const _addTripButtonSize = 58.0;
+const _floatingButtonGap = 16.0;
 
 class TripsScreen extends ConsumerWidget {
   const TripsScreen({super.key});
@@ -25,6 +26,9 @@ class TripsScreen extends ConsumerWidget {
     final preferences = ref.watch(appPreferencesProvider).valueOrNull ??
         AppPreferences.defaults;
     final colorScheme = Theme.of(context).colorScheme;
+    final bottomBarHeight = ShellScaffoldInset.bottomBarHeightOf(context);
+    final scrollBottomPadding =
+        bottomBarHeight + _addTripButtonSize + _floatingButtonGap + 20;
 
     return ColoredBox(
       color: colorScheme.surface,
@@ -36,108 +40,116 @@ class TripsScreen extends ConsumerWidget {
               child: _TripsAtmosphere(),
             ),
           ),
-          Positioned.fill(
-            child: tripsAsync.when(
-              loading: () => const _TripsScrollView(
-                children: <Widget>[
-                  SizedBox(height: _topOverlayClearance),
-                  _TripsHorizontalPadding(
-                    child: _TripsHeader(),
+          SafeArea(
+            bottom: false,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: SteppedTopBar(
+                    onOpenSettings: () => context.push('/profile/settings'),
+                    onOpenProfile: () => context.push('/profile'),
                   ),
-                  SizedBox(height: 28),
-                  _TripsHorizontalPadding(
-                    child: _TripsStatusCard(
-                      title: 'Loading your field journal',
-                      message: 'Gathering the latest trips and imagery.',
-                      showProgress: true,
-                    ),
-                  ),
-                ],
-              ),
-              error: (error, _) => _TripsScrollView(
-                children: <Widget>[
-                  const SizedBox(height: _topOverlayClearance),
-                  const _TripsHorizontalPadding(
-                    child: _TripsHeader(),
-                  ),
-                  const SizedBox(height: 28),
-                  _TripsHorizontalPadding(
-                    child: _TripsStatusCard(
-                      title: 'Trips unavailable',
-                      message: 'Failed to load trips: $error',
-                    ),
-                  ),
-                ],
-              ),
-              data: (trips) {
-                if (trips.isEmpty) {
-                  return const _TripsScrollView(
-                    children: <Widget>[
-                      SizedBox(height: _topOverlayClearance),
-                      _TripsHorizontalPadding(
-                        child: _TripsHeader(),
-                      ),
-                      SizedBox(height: 28),
-                      _TripsHorizontalPadding(
-                        child: _TripsStatusCard(
-                          title: 'No journeys yet',
-                          message:
-                              'Start your first trip to build a stitched travel journal.',
+                ),
+                const SizedBox(height: 18),
+                Expanded(
+                  child: tripsAsync.when(
+                    loading: () => _TripsScrollView(
+                      bottomPadding: scrollBottomPadding,
+                      children: const <Widget>[
+                        _TripsHorizontalPadding(
+                          child: _TripsHeader(),
                         ),
-                      ),
-                    ],
-                  );
-                }
-
-                return _TripsScrollView(
-                  children: <Widget>[
-                    const SizedBox(height: _topOverlayClearance),
-                    const _TripsHorizontalPadding(
-                      child: _TripsHeader(),
-                    ),
-                    const SizedBox(height: 28),
-                    for (final trip in trips) ...<Widget>[
-                      _TripsHorizontalPadding(
-                        child: _TripStoryCard(
-                          trip: trip,
-                          onOpen: () => context.push('/trips/view/${trip.id}'),
-                          onEdit: () => context.push('/trips/edit/${trip.id}'),
-                          onDelete: () => _confirmDelete(
-                            context,
-                            ref,
-                            trip,
-                            requireConfirmation:
-                                preferences.confirmWishlistDelete,
+                        SizedBox(height: 28),
+                        _TripsHorizontalPadding(
+                          child: _TripsStatusCard(
+                            title: 'Loading your field journal',
+                            message: 'Gathering the latest trips and imagery.',
+                            showProgress: true,
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 18),
-                    ],
-                  ],
-                );
-              },
-            ),
-          ),
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: SteppedTopBar(
-                  onOpenSettings: () => context.push('/profile/settings'),
-                  onOpenProfile: () => context.push('/profile'),
+                      ],
+                    ),
+                    error: (error, _) => _TripsScrollView(
+                      bottomPadding: scrollBottomPadding,
+                      children: <Widget>[
+                        const _TripsHorizontalPadding(
+                          child: _TripsHeader(),
+                        ),
+                        const SizedBox(height: 28),
+                        _TripsHorizontalPadding(
+                          child: _TripsStatusCard(
+                            title: 'Trips unavailable',
+                            message: 'Failed to load trips: $error',
+                          ),
+                        ),
+                      ],
+                    ),
+                    data: (trips) {
+                      if (trips.isEmpty) {
+                        return _TripsScrollView(
+                          bottomPadding: scrollBottomPadding,
+                          children: const <Widget>[
+                            _TripsHorizontalPadding(
+                              child: _TripsHeader(),
+                            ),
+                            SizedBox(height: 28),
+                            _TripsHorizontalPadding(
+                              child: _TripsStatusCard(
+                                title: 'No journeys yet',
+                                message:
+                                    'Start your first trip to build a stitched travel journal.',
+                              ),
+                            ),
+                          ],
+                        );
+                      }
+
+                      return _TripsScrollView(
+                        bottomPadding: scrollBottomPadding,
+                        children: <Widget>[
+                          const _TripsHorizontalPadding(
+                            child: _TripsHeader(),
+                          ),
+                          const SizedBox(height: 28),
+                          for (final trip in trips) ...<Widget>[
+                            _TripsHorizontalPadding(
+                              child: _TripStoryCard(
+                                trip: trip,
+                                onOpen: () =>
+                                    context.push('/trips/view/${trip.id}'),
+                                onEdit: () =>
+                                    context.push('/trips/edit/${trip.id}'),
+                                onDelete: () => _confirmDelete(
+                                  context,
+                                  ref,
+                                  trip,
+                                  requireConfirmation:
+                                      preferences.confirmWishlistDelete,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                          ],
+                        ],
+                      );
+                    },
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
-          Positioned(
-            right: 24,
-            bottom: _fabOffset,
-            child: _AddTripButton(
-              onTap: () => context.push('/trips/add'),
+          Align(
+            alignment: Alignment.bottomRight,
+            child: Padding(
+              padding: EdgeInsets.only(
+                right: 24,
+                bottom: bottomBarHeight + _floatingButtonGap,
+              ),
+              child: _AddTripButton(
+                onTap: () => context.push('/trips/add'),
+              ),
             ),
           ),
         ],
@@ -180,6 +192,7 @@ class TripsScreen extends ConsumerWidget {
     }
 
     await ref.read(tripsRepositoryProvider).deleteTrip(trip.id!);
+    await ref.read(socialSyncControllerProvider).flushTravelNow();
   }
 }
 
@@ -206,9 +219,13 @@ class _TripsAtmosphere extends StatelessWidget {
 }
 
 class _TripsScrollView extends StatelessWidget {
-  const _TripsScrollView({required this.children});
+  const _TripsScrollView({
+    required this.children,
+    required this.bottomPadding,
+  });
 
   final List<Widget> children;
+  final double bottomPadding;
 
   @override
   Widget build(BuildContext context) {
@@ -216,7 +233,7 @@ class _TripsScrollView extends StatelessWidget {
       builder: (context, constraints) {
         return SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(0, 0, 0, _bottomNavClearance + 44),
+          padding: EdgeInsets.fromLTRB(0, 0, 0, bottomPadding),
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: constraints.maxHeight),
             child: Column(

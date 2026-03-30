@@ -13,7 +13,6 @@ import '../trips/widgets/add_trip_cover_image_preview.dart';
 import '../trips/widgets/add_trip_destination_preview.dart';
 import '../trips/widgets/add_trip_form_sections.dart';
 
-const _friendTripTopOverlayClearance = 114.0;
 const _friendTripBottomPadding = 48.0;
 
 class FriendTripDetailScreen extends ConsumerWidget {
@@ -41,81 +40,80 @@ class FriendTripDetailScreen extends ConsumerWidget {
             const Positioned.fill(
               child: IgnorePointer(child: _FriendTripAtmosphere()),
             ),
-            Positioned.fill(
-              child: profileAsync.when(
-                loading: () => const _StatusView(
-                  title: 'Opening trip',
-                  message: 'Loading the shared route and city guides.',
-                  showProgress: true,
-                ),
-                error: (error, _) => _StatusView(
-                  title: 'Trip unavailable',
-                  message: _messageForError(error),
-                ),
-                data: (profile) {
-                  final trip = _findTrip(profile.trips);
-                  if (trip == null) {
-                    return const _StatusView(
-                      title: 'Trip unavailable',
-                      message:
-                          'This shared trip could not be found in the current friend profile response.',
-                    );
-                  }
-
-                  return _FriendTripScrollView(
-                    children: <Widget>[
-                      const SizedBox(height: _friendTripTopOverlayClearance),
-                      _FriendHorizontalPadding(
-                        child: AddTripDestinationPreview(
-                          countryCode: trip.countryCode,
-                          countryName: trip.countryName,
-                          coverImageUri: trip.coverImageUrl,
-                          startDate: DateTime.fromMillisecondsSinceEpoch(
-                            trip.startDate,
-                          ),
-                          endDate: DateTime.fromMillisecondsSinceEpoch(
-                            trip.endDate,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      _FriendHorizontalPadding(
-                        child: _ReadOnlyDestinationSection(trip: trip),
-                      ),
-                      const SizedBox(height: 12),
-                      _FriendHorizontalPadding(
-                        child: _ReadOnlyTravelDetailsSection(
-                          trip: trip,
-                          onOpenCity: (city) => _openCity(
-                            context,
-                            city: city,
-                            countryName: trip.countryName,
-                            ownerDisplayName: profile.friend.displayName,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _FriendHorizontalPadding(
-                        child: _ReadOnlyMediaNotesSection(trip: trip),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: _FriendTripTopBar(
-                    onBack: () => _popOrGoToProfile(context),
+            Column(
+              children: <Widget>[
+                SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: _FriendTripTopBar(
+                      onBack: () => _popOrGoToProfile(context),
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: profileAsync.when(
+                    loading: () => const _StatusView(
+                      title: 'Opening trip',
+                      message: 'Loading the shared route and city guides.',
+                      showProgress: true,
+                    ),
+                    error: (error, _) => _StatusView(
+                      title: 'Trip unavailable',
+                      message: _messageForError(error),
+                    ),
+                    data: (profile) {
+                      final trip = _findTrip(profile.trips);
+                      if (trip == null) {
+                        return const _StatusView(
+                          title: 'Trip unavailable',
+                          message:
+                              'This shared trip could not be found in the current friend profile response.',
+                        );
+                      }
+
+                      return _FriendTripScrollView(
+                        children: <Widget>[
+                          _FriendHorizontalPadding(
+                            child: AddTripDestinationPreview(
+                              countryCode: trip.countryCode,
+                              countryName: trip.countryName,
+                              coverImageUri: trip.coverImageUrl,
+                              startDate: DateTime.fromMillisecondsSinceEpoch(
+                                trip.startDate,
+                              ),
+                              endDate: DateTime.fromMillisecondsSinceEpoch(
+                                trip.endDate,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          _FriendHorizontalPadding(
+                            child: _ReadOnlyDestinationSection(trip: trip),
+                          ),
+                          const SizedBox(height: 12),
+                          _FriendHorizontalPadding(
+                            child: _ReadOnlyTravelDetailsSection(
+                              trip: trip,
+                              onOpenCity: (city) => _openCity(
+                                context,
+                                city: city,
+                                countryName: trip.countryName,
+                                ownerDisplayName: profile.friend.displayName,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _FriendHorizontalPadding(
+                            child: _ReadOnlyMediaNotesSection(trip: trip),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -229,7 +227,8 @@ class _FriendTripTopBar extends StatelessWidget {
                 child: IconButton(
                   onPressed: onBack,
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                  constraints:
+                      const BoxConstraints(minWidth: 30, minHeight: 30),
                   visualDensity: VisualDensity.compact,
                   icon: Icon(
                     Icons.arrow_back_ios_new_rounded,
@@ -344,7 +343,8 @@ class _ReadOnlyDestinationSection extends StatelessWidget {
                     Text(
                       trip.countryCode.toUpperCase(),
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                     ),
                   ],

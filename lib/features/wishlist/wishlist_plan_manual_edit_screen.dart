@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/db/app_db.dart';
 import '../../data/repositories/wishlist_repository.dart';
+import '../social/social_state.dart';
 import 'gemini_trip_planner.dart';
 import 'wishlist_plan_manual_edit_controller.dart';
 import 'wishlist_plan_manual_edit_city_screen.dart';
@@ -286,6 +287,7 @@ class _WishlistPlanManualEditScreenState
               aiPlan: jsonEncode(mergedPayload),
             ),
           );
+      await ref.read(socialSyncControllerProvider).flushWishlistNow();
       ref.invalidate(wishlistItemProvider(widget.itemId));
       ref.invalidate(wishlistStreamProvider);
 
