@@ -126,7 +126,7 @@ class TripsScreen extends ConsumerWidget {
                                   ref,
                                   trip,
                                   requireConfirmation:
-                                      preferences.confirmWishlistDelete,
+                                      preferences.confirmTripDelete,
                                 ),
                               ),
                             ),

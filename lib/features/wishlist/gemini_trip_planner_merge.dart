@@ -10,39 +10,30 @@ GeminiTripPlan mergeGeminiTripPlans({
   final mergedDuration = isValidGeminiStayDuration(generated.stayDuration)
       ? generated.stayDuration
       : current.stayDuration;
-  final mergedRecommendedDates = generated.recommendedDates;
+  final mergedRecommendedDates = generated.recommendedDates ?? current.recommendedDates;
   final mergedWindows =
       generated.timeWindows.isNotEmpty ? generated.timeWindows : current.timeWindows;
 
-  final generatedCityByKey = <String, GeminiCityPlan>{
-    for (final city in generated.cityPlan) geminiCityKey(city.city): city,
+  final currentCityByKey = <String, GeminiCityPlan>{
+    for (final city in current.cityPlan) geminiCityKey(city.city): city,
   };
-  final consumedGeneratedCityKeys = <String>{};
   final mergedCityPlan = <GeminiCityPlan>[];
-
-  for (final currentCity in current.cityPlan) {
-    final key = geminiCityKey(currentCity.city);
-    final generatedCity = generatedCityByKey[key];
-    if (generatedCity == null) {
-      mergedCityPlan.add(currentCity);
-      continue;
-    }
-    consumedGeneratedCityKeys.add(key);
-      mergedCityPlan.add(
-        GeminiCityPlan(
-          city: readGeminiNonEmpty(generatedCity.city) ?? currentCity.city,
-          days: generatedCity.days > 0 ? generatedCity.days : currentCity.days,
-          reason: readGeminiNonEmpty(generatedCity.reason) ?? currentCity.reason,
-          isExtra: generatedCity.isExtra,
-        ),
-      );
-    }
 
   for (final generatedCity in generated.cityPlan) {
     final key = geminiCityKey(generatedCity.city);
-    if (!consumedGeneratedCityKeys.contains(key)) {
+    final currentCity = currentCityByKey[key];
+    if (currentCity == null) {
       mergedCityPlan.add(generatedCity);
+      continue;
     }
+    mergedCityPlan.add(
+      GeminiCityPlan(
+        city: readGeminiNonEmpty(generatedCity.city) ?? currentCity.city,
+        days: generatedCity.days > 0 ? generatedCity.days : currentCity.days,
+        reason: readGeminiNonEmpty(generatedCity.reason) ?? currentCity.reason,
+        isExtra: generatedCity.isExtra,
+      ),
+    );
   }
 
   final currentDetailByKey = <String, GeminiCityDetail>{

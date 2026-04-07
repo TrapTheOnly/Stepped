@@ -63,10 +63,14 @@ class AuthController extends ChangeNotifier {
       return _accessToken;
     }
 
-    final refreshed = await firebaseUser.getIdToken(forceRefresh);
+    var refreshed = await firebaseUser.getIdToken(forceRefresh);
+    if (!forceRefresh && (refreshed == null || refreshed.trim().isEmpty)) {
+      refreshed = await firebaseUser.getIdToken(true);
+    }
     final normalized = refreshed?.trim();
     if (normalized == null || normalized.isEmpty) {
-      return _accessToken;
+      await _clearSession();
+      return null;
     }
     if (normalized != _accessToken) {
       await _setSession(

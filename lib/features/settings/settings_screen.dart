@@ -161,8 +161,11 @@ extension _SettingsScreenBuildMethods on _SettingsScreenState {
                             child: GeneralSettingsSection(
                               confirmWishlistDelete:
                                   prefs.confirmWishlistDelete,
+                              confirmTripDelete: prefs.confirmTripDelete,
                               onConfirmWishlistDeleteChanged:
                                   notifier.updateConfirmWishlistDelete,
+                              onConfirmTripDeleteChanged:
+                                  notifier.updateConfirmTripDelete,
                             ),
                           ),
                           const SizedBox(height: 34),

@@ -165,22 +165,37 @@ class GeneralSettingsSection extends StatelessWidget {
   const GeneralSettingsSection({
     super.key,
     required this.confirmWishlistDelete,
+    required this.confirmTripDelete,
     required this.onConfirmWishlistDeleteChanged,
+    required this.onConfirmTripDeleteChanged,
   });
 
   final bool confirmWishlistDelete;
+  final bool confirmTripDelete;
   final ValueChanged<bool> onConfirmWishlistDeleteChanged;
+  final ValueChanged<bool> onConfirmTripDeleteChanged;
 
   @override
   Widget build(BuildContext context) {
     return SettingsSectionShell(
       title: 'General',
       child: SettingsEditorialCard(
-        child: _SettingsSwitchTile(
-          value: confirmWishlistDelete,
-          onChanged: onConfirmWishlistDeleteChanged,
-          icon: Icons.delete_outline_rounded,
-          title: 'Confirm before delete',
+        child: Column(
+          children: <Widget>[
+            _SettingsSwitchTile(
+              value: confirmWishlistDelete,
+              onChanged: onConfirmWishlistDeleteChanged,
+              icon: Icons.bookmark_remove_outlined,
+              title: 'Confirm wishlist delete',
+            ),
+            const SizedBox(height: 12),
+            _SettingsSwitchTile(
+              value: confirmTripDelete,
+              onChanged: onConfirmTripDeleteChanged,
+              icon: Icons.delete_outline_rounded,
+              title: 'Confirm trip delete',
+            ),
+          ],
         ),
       ),
     );
