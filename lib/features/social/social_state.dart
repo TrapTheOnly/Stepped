@@ -592,6 +592,9 @@ class SocialSyncController {
   String? _lastWishlistSignature;
   String? _hydratedUserId;
   bool _didHydrateRemoteState = false;
+  bool _syncingProfile = false;
+  bool _syncingTravel = false;
+  bool _syncingWishlist = false;
 
   void scheduleProfileSync() {
     _profileTimer?.cancel();
@@ -637,6 +640,16 @@ class SocialSyncController {
   }
 
   Future<void> _syncProfile() async {
+    if (_syncingProfile) return;
+    _syncingProfile = true;
+    try {
+      await _syncProfileInner();
+    } finally {
+      _syncingProfile = false;
+    }
+  }
+
+  Future<void> _syncProfileInner() async {
     final session = ref.read(socialSessionProvider);
     if (session == null) {
       await _clearLocalUserData();
@@ -838,6 +851,16 @@ class SocialSyncController {
   }
 
   Future<void> _syncTravel() async {
+    if (_syncingTravel) return;
+    _syncingTravel = true;
+    try {
+      await _syncTravelInner();
+    } finally {
+      _syncingTravel = false;
+    }
+  }
+
+  Future<void> _syncTravelInner() async {
     final session = ref.read(socialSessionProvider);
     if (session == null) {
       return;
@@ -871,6 +894,16 @@ class SocialSyncController {
   }
 
   Future<void> _syncWishlist() async {
+    if (_syncingWishlist) return;
+    _syncingWishlist = true;
+    try {
+      await _syncWishlistInner();
+    } finally {
+      _syncingWishlist = false;
+    }
+  }
+
+  Future<void> _syncWishlistInner() async {
     final session = ref.read(socialSessionProvider);
     if (session == null) {
       return;

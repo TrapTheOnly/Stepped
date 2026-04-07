@@ -191,7 +191,9 @@ class TripsScreen extends ConsumerWidget {
       }
     }
 
-    await ref.read(tripsRepositoryProvider).deleteTrip(trip.id!);
+    final tripId = trip.id;
+    if (tripId == null) return;
+    await ref.read(tripsRepositoryProvider).deleteTrip(tripId);
     await ref.read(socialSyncControllerProvider).flushTravelNow();
   }
 }
