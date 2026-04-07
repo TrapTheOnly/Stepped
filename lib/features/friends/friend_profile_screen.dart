@@ -237,6 +237,9 @@ class _FriendProfileScreenState extends ConsumerState<FriendProfileScreen>
 
   String _messageForError(Object error) {
     if (error is SocialApiException) {
+      if (error.isNotFound || error.isForbidden) {
+        return 'You are no longer connected with this friend.';
+      }
       return error.message;
     }
     return 'We could not load this friend profile right now.';
