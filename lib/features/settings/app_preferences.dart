@@ -9,6 +9,7 @@ const _displayNameKey = 'stepped_display_name';
 const _homeBaseKey = 'stepped_home_base';
 const _bioKey = 'stepped_bio';
 const _confirmWishlistDeleteKey = 'stepped_confirm_wishlist_delete';
+const _confirmTripDeleteKey = 'stepped_confirm_trip_delete';
 const _showWishlistDatesKey = 'stepped_show_wishlist_dates';
 const _geminiApiKeyKey = 'stepped_gemini_api_key';
 const _aiPlannerSourceKey = 'stepped_ai_planner_source';
@@ -26,6 +27,7 @@ class AppPreferences {
     required this.homeBase,
     required this.bio,
     required this.confirmWishlistDelete,
+    required this.confirmTripDelete,
     required this.showWishlistDates,
     required this.geminiApiKey,
     required this.aiPlannerSource,
@@ -38,6 +40,7 @@ class AppPreferences {
     homeBase: '',
     bio: '',
     confirmWishlistDelete: true,
+    confirmTripDelete: true,
     showWishlistDates: true,
     geminiApiKey: '',
     aiPlannerSource: AiPlannerSource.cloud,
@@ -49,6 +52,7 @@ class AppPreferences {
   final String homeBase;
   final String bio;
   final bool confirmWishlistDelete;
+  final bool confirmTripDelete;
   final bool showWishlistDates;
   final String geminiApiKey;
   final AiPlannerSource aiPlannerSource;
@@ -60,6 +64,7 @@ class AppPreferences {
     String? homeBase,
     String? bio,
     bool? confirmWishlistDelete,
+    bool? confirmTripDelete,
     bool? showWishlistDates,
     String? geminiApiKey,
     AiPlannerSource? aiPlannerSource,
@@ -72,6 +77,7 @@ class AppPreferences {
       bio: bio ?? this.bio,
       confirmWishlistDelete:
           confirmWishlistDelete ?? this.confirmWishlistDelete,
+      confirmTripDelete: confirmTripDelete ?? this.confirmTripDelete,
       showWishlistDates: showWishlistDates ?? this.showWishlistDates,
       geminiApiKey: geminiApiKey ?? this.geminiApiKey,
       aiPlannerSource: aiPlannerSource ?? this.aiPlannerSource,
@@ -154,6 +160,12 @@ class AppPreferencesController extends AsyncNotifier<AppPreferences> {
     _emitUpdated((current) => current.copyWith(confirmWishlistDelete: value));
   }
 
+  Future<void> updateConfirmTripDelete(bool value) async {
+    final prefs = await _ensurePreferences();
+    await prefs.setBool(_confirmTripDeleteKey, value);
+    _emitUpdated((current) => current.copyWith(confirmTripDelete: value));
+  }
+
   Future<void> updateShowWishlistDates(bool value) async {
     final prefs = await _ensurePreferences();
     await prefs.setBool(_showWishlistDatesKey, value);
@@ -201,6 +213,10 @@ class AppPreferencesController extends AsyncNotifier<AppPreferences> {
       AppPreferences.defaults.confirmWishlistDelete,
     );
     await prefs.setBool(
+      _confirmTripDeleteKey,
+      AppPreferences.defaults.confirmTripDelete,
+    );
+    await prefs.setBool(
       _showWishlistDatesKey,
       AppPreferences.defaults.showWishlistDates,
     );
@@ -243,6 +259,8 @@ class AppPreferencesController extends AsyncNotifier<AppPreferences> {
       bio: '',
       confirmWishlistDelete: prefs.getBool(_confirmWishlistDeleteKey) ??
           AppPreferences.defaults.confirmWishlistDelete,
+      confirmTripDelete: prefs.getBool(_confirmTripDeleteKey) ??
+          AppPreferences.defaults.confirmTripDelete,
       showWishlistDates: prefs.getBool(_showWishlistDatesKey) ??
           AppPreferences.defaults.showWishlistDates,
       geminiApiKey: prefs.getString(_geminiApiKeyKey) ?? '',

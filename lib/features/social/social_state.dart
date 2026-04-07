@@ -1003,6 +1003,7 @@ class SocialSyncController {
     final api = ref.read(socialApiClientProvider);
     final repository = ref.read(wishlistRepositoryProvider);
     final items = await repository.getWishlistItems();
+    var didUpdateWishlist = false;
 
     for (final item in items) {
       final image = normalizeSocialAssetUrl(wishlistPrimaryImageUrl(item));
@@ -1037,6 +1038,7 @@ class SocialSyncController {
           await repository.updateWishlistItem(
             item.copyWith(aiPlan: updatedPlan),
           );
+          didUpdateWishlist = true;
         }
       } catch (error, stackTrace) {
         debugPrint('Wishlist image upload failed: $error');
@@ -1044,6 +1046,9 @@ class SocialSyncController {
       } finally {
         await prepared.dispose();
       }
+    }
+    if (didUpdateWishlist) {
+      ref.invalidate(wishlistStreamProvider);
     }
   }
 

@@ -169,7 +169,9 @@ Future<void> saveWishlistPlanDraft({
 }) async {
   final id = item.id;
   if (id == null) {
-    return;
+    throw StateError(
+      'This wishlist idea is missing a local id and cannot be saved yet.',
+    );
   }
 
   final requestPayload = buildWishlistRequestPayload(
@@ -194,25 +196,32 @@ Future<void> saveWishlistPlanDraft({
     ),
   );
 
-  await repository.updateWishlistItem(
-    item.copyWith(
-      countryName: countryName.isEmpty ? null : countryName,
-      countryCode: selectedCountryCode,
-      plannedStartDate: _resolvedPlannedStartDate(
-        timeInputMode: timeInputMode,
-        dateRange: dateRange,
-        plan: plan,
+  try {
+    await repository.updateWishlistItem(
+      item.copyWith(
+        countryName: countryName.isEmpty ? null : countryName,
+        countryCode: selectedCountryCode,
+        plannedStartDate: _resolvedPlannedStartDate(
+          timeInputMode: timeInputMode,
+          dateRange: dateRange,
+          plan: plan,
+        ),
+        plannedEndDate: _resolvedPlannedEndDate(
+          timeInputMode: timeInputMode,
+          dateRange: dateRange,
+          plan: plan,
+        ),
+        plannedCities: plannedCities == null || plannedCities.isEmpty
+            ? null
+            : plannedCities,
+        aiPlan: payload,
       ),
-      plannedEndDate: _resolvedPlannedEndDate(
-        timeInputMode: timeInputMode,
-        dateRange: dateRange,
-        plan: plan,
-      ),
-      plannedCities:
-          plannedCities == null || plannedCities.isEmpty ? null : plannedCities,
-      aiPlan: payload,
-    ),
-  );
+    );
+  } catch (error) {
+    throw StateError(
+      'The itinerary was generated, but saving failed. Please try again. ($error)',
+    );
+  }
 }
 
 Future<GeminiTripPlan> generateAndSaveWishlistPlan({
