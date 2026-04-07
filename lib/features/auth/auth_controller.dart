@@ -90,7 +90,11 @@ class AuthController extends ChangeNotifier {
     try {
       _preferences = await SharedPreferences.getInstance();
       await _hydrateSessionFromDisk();
-      await _refreshSessionFromFirebase();
+      try {
+        await _refreshSessionFromFirebase();
+      } catch (_) {
+        // Firebase unreachable (e.g. offline) — proceed with cached session.
+      }
     } finally {
       _initialized = true;
       _setBusy(false, notify: false);
