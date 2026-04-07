@@ -102,7 +102,7 @@ class CloudTripPlannerClient {
       request.headers.contentType = ContentType.json;
       request.headers.set(
           HttpHeaders.authorizationHeader, 'Bearer $normalizedAccessToken');
-      request.write(jsonEncode(payload));
+      request.add(utf8.encode(jsonEncode(payload)));
 
       final response = await request.close();
       final rawBody = await response.transform(utf8.decoder).join();

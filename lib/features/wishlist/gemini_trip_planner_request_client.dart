@@ -100,7 +100,7 @@ class GeminiPlannerRequestClient {
 
         final request = await client.postUrl(uri);
         request.headers.contentType = ContentType.json;
-        request.write(jsonEncode(payload));
+        request.add(utf8.encode(jsonEncode(payload)));
 
         final response = await request.close();
         final rawBody = await response.transform(utf8.decoder).join();
