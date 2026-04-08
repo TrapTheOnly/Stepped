@@ -160,7 +160,7 @@ class AuthApiClient {
 
     if (body != null) {
       request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
-      request.write(jsonEncode(body));
+      request.add(utf8.encode(jsonEncode(body)));
     }
 
     HttpClientResponse response;

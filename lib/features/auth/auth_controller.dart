@@ -63,9 +63,16 @@ class AuthController extends ChangeNotifier {
       return _accessToken;
     }
 
-    final refreshed = await firebaseUser.getIdToken(forceRefresh);
+    var refreshed = await firebaseUser.getIdToken(forceRefresh);
+    if (!forceRefresh && (refreshed == null || refreshed.trim().isEmpty)) {
+      refreshed = await firebaseUser.getIdToken(true);
+    }
     final normalized = refreshed?.trim();
     if (normalized == null || normalized.isEmpty) {
+      // getIdToken() returned empty — Firebase may be temporarily unreachable.
+      // Fall back to the in-memory cached token so an active session is not
+      // destroyed on a transient network failure.  The session will be
+      // properly invalidated if the backend rejects the stale token (401).
       return _accessToken;
     }
     if (normalized != _accessToken) {
@@ -86,7 +93,11 @@ class AuthController extends ChangeNotifier {
     try {
       _preferences = await SharedPreferences.getInstance();
       await _hydrateSessionFromDisk();
-      await _refreshSessionFromFirebase();
+      try {
+        await _refreshSessionFromFirebase();
+      } catch (_) {
+        // Firebase unreachable (e.g. offline) — proceed with cached session.
+      }
     } finally {
       _initialized = true;
       _setBusy(false, notify: false);

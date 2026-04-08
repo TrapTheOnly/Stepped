@@ -140,45 +140,103 @@ extension _SettingsScreenBuildMethods on _SettingsScreenState {
                     },
                   ),
                 ),
-                const SizedBox(height: 34),
-                _SettingsHorizontalPadding(
-                  child: GeneralSettingsSection(
-                    confirmWishlistDelete: prefs.confirmWishlistDelete,
-                    onConfirmWishlistDeleteChanged:
-                        notifier.updateConfirmWishlistDelete,
-                  ),
-                ),
-                const SizedBox(height: 34),
-                _SettingsHorizontalPadding(
-                  child: WishlistSettingsSection(
-                    showWishlistDates: prefs.showWishlistDates,
-                    shareWishlistWithFriends:
-                        _privacySettings?.shareWishlistWithFriends,
-                    isSavingPrivacy:
-                        socialPrivacyAsync.isLoading || _isSavingPrivacy,
-                    privacyErrorMessage: privacyError,
-                    onShowWishlistDatesChanged:
-                        notifier.updateShowWishlistDates,
-                    onShareWishlistChanged: _handleWishlistPrivacyChanged,
-                  ),
-                ),
-                const SizedBox(height: 34),
-                _SettingsHorizontalPadding(
-                  child: AiPlannerSettingsSection(
-                    colorScheme: colorScheme,
-                    aiSourceChoice: _aiSourceChoice,
-                    cloudApiBaseUrlController: _cloudApiBaseUrlController,
-                    geminiApiKeyController: _geminiApiKeyController,
-                    showGeminiApiKey: _showGeminiApiKey,
-                    onAiSourceChanged: (value) {
-                      _applyState(() {
-                        _aiSourceChoice = value;
-                      });
-                    },
-                    onToggleGeminiApiKeyVisibility: () {
-                      _applyState(() {
-                        _showGeminiApiKey = !_showGeminiApiKey;
-                      });
+                const SizedBox(height: 16),
+                Expanded(
+                  child: preferencesAsync.when(
+                    loading: () => const _SettingsScrollView(
+                      children: <Widget>[
+                        _SettingsHorizontalPadding(
+                          child: SettingsStatusCard(
+                            title: 'Loading settings',
+                            showProgress: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                    error: (error, _) => _SettingsScrollView(
+                      children: <Widget>[
+                        _SettingsHorizontalPadding(
+                          child: SettingsStatusCard(
+                            title: 'Failed to load settings: $error',
+                          ),
+                        ),
+                      ],
+                    ),
+                    data: (prefs) {
+                      final notifier =
+                          ref.read(appPreferencesProvider.notifier);
+                      return _SettingsScrollView(
+                        children: <Widget>[
+                          _SettingsHorizontalPadding(
+                            child: AppearanceSettingsSection(
+                              currentThemeMode: prefs.themeMode,
+                              onThemeChoiceChanged: (choice) {
+                                notifier.updateThemeMode(
+                                  themeModeFromChoice(choice),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 34),
+                          _SettingsHorizontalPadding(
+                            child: GeneralSettingsSection(
+                              confirmWishlistDelete:
+                                  prefs.confirmWishlistDelete,
+                              confirmTripDelete: prefs.confirmTripDelete,
+                              onConfirmWishlistDeleteChanged:
+                                  notifier.updateConfirmWishlistDelete,
+                              onConfirmTripDeleteChanged:
+                                  notifier.updateConfirmTripDelete,
+                            ),
+                          ),
+                          const SizedBox(height: 34),
+                          _SettingsHorizontalPadding(
+                            child: WishlistSettingsSection(
+                              showWishlistDates: prefs.showWishlistDates,
+                              shareWishlistWithFriends:
+                                  _privacySettings?.shareWishlistWithFriends,
+                              isSavingPrivacy: socialPrivacyAsync.isLoading ||
+                                  _isSavingPrivacy,
+                              privacyErrorMessage: privacyError,
+                              onShowWishlistDatesChanged:
+                                  notifier.updateShowWishlistDates,
+                              onShareWishlistChanged:
+                                  _handleWishlistPrivacyChanged,
+                            ),
+                          ),
+                          const SizedBox(height: 34),
+                          _SettingsHorizontalPadding(
+                            child: AiPlannerSettingsSection(
+                              colorScheme: colorScheme,
+                              aiSourceChoice: _aiSourceChoice,
+                              cloudApiBaseUrlController:
+                                  _cloudApiBaseUrlController,
+                              geminiApiKeyController: _geminiApiKeyController,
+                              showGeminiApiKey: _showGeminiApiKey,
+                              onAiSourceChanged: (value) {
+                                _applyState(() {
+                                  _aiSourceChoice = value;
+                                });
+                              },
+                              onToggleGeminiApiKeyVisibility: () {
+                                _applyState(() {
+                                  _showGeminiApiKey = !_showGeminiApiKey;
+                                });
+                              },
+                              onClearGeminiApiKey: () {
+                                _geminiApiKeyController.clear();
+                                _applyState(() {});
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 34),
+                          _SettingsHorizontalPadding(
+                            child: DataSettingsSection(
+                              onResetSettings: _confirmResetDefaults,
+                            ),
+                          ),
+                        ],
+                      );
                     },
                     onClearGeminiApiKey: () {
                       _geminiApiKeyController.clear();

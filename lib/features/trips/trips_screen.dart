@@ -443,14 +443,32 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
                                 onTap: pickDateRange,
                               ),
                             ),
-                            if (dateRange != null) ...<Widget>[
-                              const SizedBox(width: 8),
-                              EditorialFilterChoiceChip(
-                                label: 'Clear',
-                                selected: false,
-                                onTap: () => setSheetState(() {
-                                  dateRange = null;
-                                }),
+                          ],
+                        );
+                      }
+
+                      return _TripsScrollView(
+                        bottomPadding: scrollBottomPadding,
+                        children: <Widget>[
+                          const _TripsHorizontalPadding(
+                            child: _TripsHeader(),
+                          ),
+                          const SizedBox(height: 28),
+                          for (final trip in trips) ...<Widget>[
+                            _TripsHorizontalPadding(
+                              child: _TripStoryCard(
+                                trip: trip,
+                                onOpen: () =>
+                                    context.push('/trips/view/${trip.id}'),
+                                onEdit: () =>
+                                    context.push('/trips/edit/${trip.id}'),
+                                onDelete: () => _confirmDelete(
+                                  context,
+                                  ref,
+                                  trip,
+                                  requireConfirmation:
+                                      preferences.confirmTripDelete,
+                                ),
                               ),
                             ],
                           ],
@@ -538,7 +556,9 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
       }
     }
 
-    await ref.read(tripsRepositoryProvider).deleteTrip(trip.id!);
+    final tripId = trip.id;
+    if (tripId == null) return;
+    await ref.read(tripsRepositoryProvider).deleteTrip(tripId);
     await ref.read(socialSyncControllerProvider).flushTravelNow();
   }
 }
