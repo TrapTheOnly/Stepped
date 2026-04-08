@@ -69,8 +69,11 @@ class AuthController extends ChangeNotifier {
     }
     final normalized = refreshed?.trim();
     if (normalized == null || normalized.isEmpty) {
-      await _clearSession();
-      return null;
+      // getIdToken() returned empty — Firebase may be temporarily unreachable.
+      // Fall back to the in-memory cached token so an active session is not
+      // destroyed on a transient network failure.  The session will be
+      // properly invalidated if the backend rejects the stale token (401).
+      return _accessToken;
     }
     if (normalized != _accessToken) {
       await _setSession(
