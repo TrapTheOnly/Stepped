@@ -62,17 +62,16 @@ class _WishlistAddIdeaScreenState extends ConsumerState<WishlistAddIdeaScreen> {
             ),
           ],
         ),
-        body: SafeArea(
-          child: ListView(
-            physics: const BouncingScrollPhysics(),
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.fromLTRB(
-              16,
-              wishlistEditorTopOverlayClearance,
-              16,
-              wishlistEditorBottomDockClearance + 48,
-            ),
-            children: <Widget>[
+        body: ListView(
+          physics: const BouncingScrollPhysics(),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: EdgeInsets.fromLTRB(
+            16,
+            wishlistEditorTopOverlayClearanceOf(context),
+            16,
+            wishlistEditorBottomDockClearance + 48,
+          ),
+          children: <Widget>[
               ListenableBuilder(
                 listenable: _titleController,
                 builder: (context, _) {
@@ -132,7 +131,6 @@ class _WishlistAddIdeaScreenState extends ConsumerState<WishlistAddIdeaScreen> {
                 ),
               ),
             ],
-          ),
         ),
       ),
     );

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../auth/auth_controller.dart';
+import '../../widgets/editorial_overlay_page_shell.dart';
 import '../../widgets/frosted_squircle.dart';
 import '../../widgets/person_avatar.dart';
 import '../social/social_api_client.dart';
@@ -39,61 +40,47 @@ class _FriendLinkAcceptScreenState
     final colorScheme = Theme.of(context).colorScheme;
     final ownInvite = _ownInviteFor(meAsync.valueOrNull, widget.token);
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      extendBody: true,
-      body: ColoredBox(
-        color: colorScheme.surface,
-        child: Stack(
-          fit: StackFit.expand,
+    return EditorialOverlayPageShell(
+      background: const _InviteAtmosphere(),
+      backgroundColor: colorScheme.surface,
+      topBar: _InviteTopBar(onBack: _goBack),
+      bodyBuilder: (context, topContentInset, __) {
+        return Column(
           children: <Widget>[
-            const Positioned.fill(
-              child: IgnorePointer(child: _InviteAtmosphere()),
+            Expanded(
+              child: _buildScrollLayer(
+                previewAsync,
+                topPadding: topContentInset,
+                ownInvite: ownInvite,
+                localProfile: localProfile,
+                currentEmail: authController.currentUser?.email ?? '',
+                currentPhotoUrl: authController.currentUser?.photoUrl,
+              ),
             ),
-            Column(
-              children: <Widget>[
-                SafeArea(
-                  bottom: false,
+            SafeArea(
+              top: false,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 520),
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    child: _InviteTopBar(onBack: _goBack),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: _buildScrollLayer(
-                    previewAsync,
-                    ownInvite: ownInvite,
-                    localProfile: localProfile,
-                    currentEmail: authController.currentUser?.email ?? '',
-                    currentPhotoUrl: authController.currentUser?.photoUrl,
-                  ),
-                ),
-                SafeArea(
-                  top: false,
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 520),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                        child: _buildActionArea(
-                          previewAsync,
-                          ownInvite: ownInvite,
-                        ),
-                      ),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                    child: _buildActionArea(
+                      previewAsync,
+                      ownInvite: ownInvite,
                     ),
                   ),
                 ),
-              ],
+              ),
             ),
           ],
-        ),
-      ),
+        );
+      },
     );
   }
 
   Widget _buildScrollLayer(
     AsyncValue<FriendInvitePreview> previewAsync, {
+    required double topPadding,
     required SocialInviteLink? ownInvite,
     required SocialProfileSnapshot localProfile,
     required String currentEmail,
@@ -101,9 +88,9 @@ class _FriendLinkAcceptScreenState
   }) {
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(
+      padding: EdgeInsets.fromLTRB(
         16,
-        0,
+        topPadding,
         16,
         _inviteBottomContentPadding,
       ),

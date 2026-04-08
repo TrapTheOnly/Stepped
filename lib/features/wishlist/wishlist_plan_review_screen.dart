@@ -7,12 +7,15 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/db/app_db.dart';
 import '../../data/repositories/wishlist_repository.dart';
+import '../../widgets/editorial_overlay_page_shell.dart';
 import '../../widgets/frosted_squircle.dart';
 import 'gemini_trip_planner.dart';
 import 'wishlist_plan_parsing.dart';
 import 'widgets/wishlist_editorial_widgets.dart';
 
 const _bottomClearance = 36.0;
+
+typedef _ReviewBodyBuilder = Widget Function(double topPadding);
 
 class WishlistPlanReviewScreen extends ConsumerWidget {
   const WishlistPlanReviewScreen({
@@ -29,21 +32,11 @@ class WishlistPlanReviewScreen extends ConsumerWidget {
 
     return itemAsync.when(
       loading: () => const _ReviewShell(
-        body: WishlistScrollView(
-          bottomPadding: _bottomClearance,
-          children: <Widget>[
-            WishlistHorizontalPadding(
-              child: WishlistStatusCard(
-                title: 'Loading itinerary',
-                message: 'Pulling together this wishlist plan.',
-                showProgress: true,
-              ),
-            ),
-          ],
-        ),
+        bodyBuilder: _buildLoadingBody,
       ),
       error: (error, _) => _ReviewShell(
-        body: WishlistScrollView(
+        bodyBuilder: (topPadding) => WishlistScrollView(
+          topPadding: topPadding,
           bottomPadding: _bottomClearance,
           children: <Widget>[
             WishlistHorizontalPadding(
@@ -58,17 +51,7 @@ class WishlistPlanReviewScreen extends ConsumerWidget {
       data: (item) {
         if (item == null) {
           return const _ReviewShell(
-            body: WishlistScrollView(
-              bottomPadding: _bottomClearance,
-              children: <Widget>[
-                WishlistHorizontalPadding(
-                  child: WishlistStatusCard(
-                    title: 'Wishlist item not found',
-                    message: 'This destination is no longer available.',
-                  ),
-                ),
-              ],
-            ),
+            bodyBuilder: _buildMissingBody,
           );
         }
 
@@ -87,7 +70,8 @@ class WishlistPlanReviewScreen extends ConsumerWidget {
               : () => context.push('/trips/add?wishlistId=${item.id}'),
           onEdit: () => _openEditActions(context, item.id),
           bottomDock: plan == null ? _EmptyPlanDock(itemId: item.id) : null,
-          body: WishlistScrollView(
+          bodyBuilder: (topPadding) => WishlistScrollView(
+            topPadding: topPadding,
             bottomPadding: _bottomClearance,
             children: <Widget>[
               WishlistHorizontalPadding(
@@ -137,6 +121,37 @@ class WishlistPlanReviewScreen extends ConsumerWidget {
           ),
         );
       },
+    );
+  }
+
+  static Widget _buildLoadingBody(double topPadding) {
+    return WishlistScrollView(
+      topPadding: topPadding,
+      bottomPadding: _bottomClearance,
+      children: const <Widget>[
+        WishlistHorizontalPadding(
+          child: WishlistStatusCard(
+            title: 'Loading itinerary',
+            message: 'Pulling together this wishlist plan.',
+            showProgress: true,
+          ),
+        ),
+      ],
+    );
+  }
+
+  static Widget _buildMissingBody(double topPadding) {
+    return WishlistScrollView(
+      topPadding: topPadding,
+      bottomPadding: _bottomClearance,
+      children: const <Widget>[
+        WishlistHorizontalPadding(
+          child: WishlistStatusCard(
+            title: 'Wishlist item not found',
+            message: 'This destination is no longer available.',
+          ),
+        ),
+      ],
     );
   }
 
@@ -216,13 +231,13 @@ class WishlistPlanReviewScreen extends ConsumerWidget {
 
 class _ReviewShell extends StatelessWidget {
   const _ReviewShell({
-    required this.body,
+    required this.bodyBuilder,
     this.onStartTrip,
     this.onEdit,
     this.bottomDock,
   });
 
-  final Widget body;
+  final _ReviewBodyBuilder bodyBuilder;
   final VoidCallback? onStartTrip;
   final VoidCallback? onEdit;
   final Widget? bottomDock;
@@ -231,46 +246,29 @@ class _ReviewShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: ColoredBox(
-        color: scheme.surface,
-        child: Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            const Positioned.fill(
-              child: IgnorePointer(
-                child: WishlistAtmosphere(),
-              ),
-            ),
-            Column(
-              children: <Widget>[
-                SafeArea(
-                  bottom: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    child: _TopBar(
-                      onBack: () => Navigator.of(context).maybePop(),
-                      onStartTrip: onStartTrip,
-                      onEdit: onEdit,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Expanded(child: body),
-                if (bottomDock != null)
-                  SafeArea(
-                    top: false,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                      child: bottomDock!,
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
+    return EditorialOverlayPageShell(
+      background: const WishlistAtmosphere(),
+      backgroundColor: scheme.surface,
+      topBar: _TopBar(
+        onBack: () => Navigator.of(context).maybePop(),
+        onStartTrip: onStartTrip,
+        onEdit: onEdit,
       ),
+      bodyBuilder: (context, topContentInset, __) {
+        return Column(
+          children: <Widget>[
+            Expanded(child: bodyBuilder(topContentInset)),
+            if (bottomDock != null)
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                  child: bottomDock!,
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

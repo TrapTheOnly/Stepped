@@ -5,13 +5,15 @@ import 'package:intl/intl.dart';
 
 import '../../data/db/app_db.dart';
 import '../../data/repositories/wishlist_repository.dart';
+import '../../widgets/editorial_overlay_page_shell.dart';
+import '../../widgets/editorial_search_controls.dart';
 import '../../widgets/frosted_squircle.dart';
-import '../../widgets/shell_scaffold_inset.dart';
 import '../../widgets/stepped_top_bar.dart';
 import '../map/globe/globe_country_data.dart';
 import '../map/map_viewmodel.dart';
 import '../social/social_state.dart';
 import '../settings/app_preferences.dart';
+import 'wishlist_search_filters.dart';
 import 'widgets/wishlist_editorial_widgets.dart';
 
 const _wishlistAddIdeaButtonSize = 58.0;
@@ -26,10 +28,329 @@ class WishlistScreen extends ConsumerStatefulWidget {
 
 class _WishlistScreenState extends ConsumerState<WishlistScreen> {
   final DateFormat _dateFormat = DateFormat.yMMMd();
+  final DateFormat _filterDateFormat = DateFormat.MMMd();
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+
+  WishlistSearchFilters _filters = const WishlistSearchFilters();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return _buildScreenContent(context);
+  }
+
+  List<Widget> _buildSearchSection(
+    BuildContext context,
+    List<WishlistItemRecord> items,
+  ) {
+    final activeFilterChips = _buildActiveFilterChips();
+
+    return <Widget>[
+      const WishlistHorizontalPadding(
+        child: WishlistHeader(),
+      ),
+      const SizedBox(height: 18),
+      WishlistHorizontalPadding(
+        child: EditorialSearchBarRow(
+          controller: _searchController,
+          focusNode: _searchFocusNode,
+          hintText: 'Search wishlist',
+          onChanged: _handleSearchChanged,
+          onClear: _clearSearch,
+          onOpenFilters: () => _openFilters(context, items),
+          hasActiveFilters: _hasStructuredFilters,
+        ),
+      ),
+      if (activeFilterChips.isNotEmpty) ...<Widget>[
+        const SizedBox(height: 12),
+        WishlistHorizontalPadding(
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: activeFilterChips,
+          ),
+        ),
+      ],
+    ];
+  }
+
+  List<Widget> _buildActiveFilterChips() {
+    final chips = <Widget>[];
+
+    if (_filters.status != WishlistListStatusFilter.any) {
+      chips.add(
+        EditorialActiveFilterChip(
+          label: _filters.status.label,
+          onClear: () => setState(() {
+            _filters = _filters.copyWith(status: WishlistListStatusFilter.any);
+          }),
+        ),
+      );
+    }
+    if (_filters.country != null) {
+      chips.add(
+        EditorialActiveFilterChip(
+          label: _filters.country!,
+          onClear: () => setState(() {
+            _filters = _filters.copyWith(country: null);
+          }),
+        ),
+      );
+    }
+    if (_filters.year != null) {
+      chips.add(
+        EditorialActiveFilterChip(
+          label: '${_filters.year}',
+          onClear: () => setState(() {
+            _filters = _filters.copyWith(year: null);
+          }),
+        ),
+      );
+    }
+    if (_filters.dateRange != null) {
+      final range = _filters.dateRange!;
+      chips.add(
+        EditorialActiveFilterChip(
+          label:
+              '${_filterDateFormat.format(range.start)} - ${_filterDateFormat.format(range.end)}',
+          onClear: () => setState(() {
+            _filters = _filters.copyWith(dateRange: null);
+          }),
+        ),
+      );
+    }
+
+    return chips;
+  }
+
+  bool get _hasStructuredFilters =>
+      _filters.status != WishlistListStatusFilter.any ||
+      _filters.country != null ||
+      _filters.year != null ||
+      _filters.dateRange != null;
+
+  void _handleSearchChanged(String value) {
+    setState(() {
+      _filters = _filters.copyWith(query: value);
+    });
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    setState(() {
+      _filters = _filters.copyWith(query: '');
+    });
+  }
+
+  Future<void> _openFilters(
+    BuildContext context,
+    List<WishlistItemRecord> items,
+  ) async {
+    final countryOptions = wishlistCountryFilterOptions(items);
+    final yearOptions = wishlistYearFilterOptions(items);
+
+    var status = _filters.status;
+    String? country = _filters.country;
+    int? year = _filters.year;
+    DateTimeRangeValue? dateRange = _filters.dateRange;
+
+    final nextFilters = await showModalBottomSheet<WishlistSearchFilters>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      showDragHandle: false,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: StatefulBuilder(
+              builder: (sheetContext, setSheetState) {
+                Future<void> pickDateRange() async {
+                  final picked = await showDateRangePicker(
+                    context: context,
+                    firstDate: DateTime(2010),
+                    lastDate: DateTime(2100),
+                    initialDateRange: dateRange == null
+                        ? null
+                        : DateTimeRange(
+                            start: dateRange!.start,
+                            end: dateRange!.end,
+                          ),
+                  );
+                  if (picked == null) {
+                    return;
+                  }
+                  setSheetState(() {
+                    dateRange = DateTimeRangeValue(
+                      start: picked.start,
+                      end: picked.end,
+                    );
+                  });
+                }
+
+                return EditorialFilterSheetContainer(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Center(
+                          child: DecoratedBox(
+                            decoration: ShapeDecoration(
+                              color: Theme.of(sheetContext)
+                                  .colorScheme
+                                  .outlineVariant
+                                  .withValues(alpha: 0.55),
+                              shape: squircleShape(8),
+                            ),
+                            child: const SizedBox(width: 36, height: 4),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Filter wishlist',
+                          style: Theme.of(sheetContext).textTheme.titleLarge,
+                        ),
+                        const SizedBox(height: 18),
+                        const EditorialFilterSectionTitle('Status'),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: WishlistListStatusFilter.values
+                              .map(
+                                (option) => EditorialFilterChoiceChip(
+                                  label: option.label,
+                                  selected: status == option,
+                                  onTap: () => setSheetState(() {
+                                    status = option;
+                                  }),
+                                ),
+                              )
+                              .toList(growable: false),
+                        ),
+                        if (countryOptions.isNotEmpty) ...<Widget>[
+                          const SizedBox(height: 18),
+                          const EditorialFilterSectionTitle('Country'),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: countryOptions
+                                .map(
+                                  (option) => EditorialFilterChoiceChip(
+                                    label: option,
+                                    selected: country == option,
+                                    onTap: () => setSheetState(() {
+                                      country =
+                                          country == option ? null : option;
+                                    }),
+                                  ),
+                                )
+                                .toList(growable: false),
+                          ),
+                        ],
+                        if (yearOptions.isNotEmpty) ...<Widget>[
+                          const SizedBox(height: 18),
+                          const EditorialFilterSectionTitle('Year'),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: yearOptions
+                                .map(
+                                  (option) => EditorialFilterChoiceChip(
+                                    label: '$option',
+                                    selected: year == option,
+                                    onTap: () => setSheetState(() {
+                                      year = year == option ? null : option;
+                                    }),
+                                  ),
+                                )
+                                .toList(growable: false),
+                          ),
+                        ],
+                        const SizedBox(height: 18),
+                        const EditorialFilterSectionTitle('Travel dates'),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: EditorialFilterChoiceChip(
+                                label: dateRange == null
+                                    ? 'Pick a date range'
+                                    : '${_filterDateFormat.format(dateRange!.start)} - ${_filterDateFormat.format(dateRange!.end)}',
+                                selected: dateRange != null,
+                                onTap: pickDateRange,
+                              ),
+                            ),
+                            if (dateRange != null) ...<Widget>[
+                              const SizedBox(width: 8),
+                              EditorialFilterChoiceChip(
+                                label: 'Clear',
+                                selected: false,
+                                onTap: () => setSheetState(() {
+                                  dateRange = null;
+                                }),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 22),
+                        Row(
+                          children: <Widget>[
+                            EditorialFilterActionButton(
+                              label: 'Reset',
+                              onTap: () {
+                                Navigator.of(sheetContext).pop(
+                                  _filters.cleared(query: _filters.query),
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 12),
+                            EditorialFilterActionButton(
+                              label: 'Apply',
+                              emphasized: true,
+                              onTap: () {
+                                Navigator.of(sheetContext).pop(
+                                  _filters.copyWith(
+                                    status: status,
+                                    country: country,
+                                    year: year,
+                                    dateRange: dateRange,
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+
+    if (nextFilters == null) {
+      return;
+    }
+
+    setState(() {
+      _filters = nextFilters;
+    });
   }
 }
 
@@ -50,144 +371,132 @@ extension _WishlistScreenBuildMethods on _WishlistScreenState {
         AppPreferences.defaults;
     final dataset = ref.watch(globeCountryDatasetProvider).valueOrNull;
     final countryCodeByName = _countryCodeByName(dataset);
-    final colorScheme = Theme.of(context).colorScheme;
-    final bottomBarHeight = ShellScaffoldInset.bottomBarHeightOf(context);
-    final scrollBottomPadding = bottomBarHeight +
-        _wishlistAddIdeaButtonSize +
-        _wishlistFloatingButtonGap +
-        20;
 
-    return ColoredBox(
-      color: colorScheme.surface,
-      child: Stack(
-        fit: StackFit.expand,
-        children: <Widget>[
-          const Positioned.fill(
-            child: IgnorePointer(
-              child: WishlistAtmosphere(),
-            ),
-          ),
-          SafeArea(
-            bottom: false,
-            child: Column(
-              children: <Widget>[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: SteppedTopBar(
-                    onOpenSettings: () => context.push('/profile/settings'),
-                    onOpenProfile: () => context.push('/profile'),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Expanded(
-                  child: wishlistAsync.when(
-                    loading: () => WishlistScrollView(
-                      bottomPadding: scrollBottomPadding,
-                      children: const <Widget>[
-                        WishlistHorizontalPadding(
-                          child: WishlistHeader(),
-                        ),
-                        SizedBox(height: 28),
-                        WishlistHorizontalPadding(
-                          child: WishlistStatusCard(
-                            title: 'Loading your saved horizons',
-                            message:
-                                'Gathering the destinations you want to turn into trips.',
-                            showProgress: true,
-                          ),
-                        ),
-                      ],
-                    ),
-                    error: (error, _) => WishlistScrollView(
-                      bottomPadding: scrollBottomPadding,
-                      children: <Widget>[
-                        const WishlistHorizontalPadding(
-                          child: WishlistHeader(),
-                        ),
-                        const SizedBox(height: 28),
-                        WishlistHorizontalPadding(
-                          child: WishlistStatusCard(
-                            title: 'Wishlist unavailable',
-                            message: 'Failed to load wishlist: $error',
-                          ),
-                        ),
-                      ],
-                    ),
-                    data: (items) {
-                      if (items.isEmpty) {
-                        return WishlistScrollView(
-                          bottomPadding: scrollBottomPadding,
-                          children: const <Widget>[
-                            WishlistHorizontalPadding(
-                              child: WishlistHeader(),
-                            ),
-                            SizedBox(height: 28),
-                            WishlistHorizontalPadding(
-                              child: WishlistEmptyState(),
-                            ),
-                          ],
-                        );
-                      }
+    return EditorialOverlayPageShell(
+      background: const WishlistAtmosphere(),
+      topBar: SteppedTopBar(
+        onOpenSettings: () => context.push('/profile/settings'),
+        onOpenProfile: () => context.push('/profile'),
+      ),
+      bodyBuilder: (context, topContentInset, bottomBarHeight) {
+        final scrollBottomPadding = bottomBarHeight +
+            _wishlistAddIdeaButtonSize +
+            _wishlistFloatingButtonGap +
+            20;
 
-                      return WishlistScrollView(
-                        bottomPadding: scrollBottomPadding,
-                        children: <Widget>[
-                          const WishlistHorizontalPadding(
-                            child: WishlistHeader(),
-                          ),
-                          const SizedBox(height: 28),
-                          for (final item in items) ...<Widget>[
-                            WishlistHorizontalPadding(
-                              child: WishlistStoryCard(
-                                item: item,
-                                countryCode: _countryCodeFor(
-                                  item,
-                                  countryCodeByName,
-                                ),
-                                showDate: preferences.showWishlistDates,
-                                dateFormat: _dateFormat,
-                                onOpenPlan: item.id == null
-                                    ? null
-                                    : () => context
-                                        .push('/wishlist/plan/${item.id}'),
-                                onPinToggle: () => _togglePinned(item),
-                                onActions: () => _showActions(
-                                  item: item,
-                                  requireDeleteConfirmation:
-                                      preferences.confirmWishlistDelete,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                          ],
-                        ],
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Positioned.fill(
-            child: SafeArea(
-              top: false,
-              bottom: false,
-              child: Align(
-                alignment: Alignment.bottomRight,
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    right: 24,
-                    bottom: bottomBarHeight + _wishlistFloatingButtonGap,
-                  ),
-                  child: WishlistAddIdeaButton(
-                    onTap: () => context.push('/wishlist/add'),
-                  ),
+        return wishlistAsync.when(
+          loading: () => WishlistScrollView(
+            topPadding: topContentInset,
+            bottomPadding: scrollBottomPadding,
+            children: <Widget>[
+              ..._buildSearchSection(context, const <WishlistItemRecord>[]),
+              const SizedBox(height: 28),
+              WishlistHorizontalPadding(
+                child: WishlistStatusCard(
+                  title: 'Loading your saved horizons',
+                  message:
+                      'Gathering the destinations you want to turn into trips.',
+                  showProgress: true,
                 ),
               ),
+            ],
+          ),
+          error: (error, _) => WishlistScrollView(
+            topPadding: topContentInset,
+            bottomPadding: scrollBottomPadding,
+            children: <Widget>[
+              ..._buildSearchSection(context, const <WishlistItemRecord>[]),
+              const SizedBox(height: 28),
+              WishlistHorizontalPadding(
+                child: WishlistStatusCard(
+                  title: 'Wishlist unavailable',
+                  message: 'Failed to load wishlist: $error',
+                ),
+              ),
+            ],
+          ),
+          data: (items) {
+            final filteredItems = applyWishlistSearchFilters(items, _filters);
+
+            if (items.isEmpty) {
+              return WishlistScrollView(
+                topPadding: topContentInset,
+                bottomPadding: scrollBottomPadding,
+                children: <Widget>[
+                  ..._buildSearchSection(context, items),
+                  const SizedBox(height: 28),
+                  WishlistHorizontalPadding(
+                    child: WishlistEmptyState(),
+                  ),
+                ],
+              );
+            }
+
+            final children = <Widget>[
+              ..._buildSearchSection(context, items),
+              const SizedBox(height: 28),
+            ];
+
+            if (filteredItems.isEmpty) {
+              children.add(
+                const WishlistHorizontalPadding(
+                  child: WishlistStatusCard(
+                    title: 'No wishlist items match',
+                    message:
+                        'Try a different search or clear a few filters to widen the view.',
+                  ),
+                ),
+              );
+            } else {
+              for (final item in filteredItems) {
+                children.add(
+                  WishlistHorizontalPadding(
+                    child: WishlistStoryCard(
+                      item: item,
+                      countryCode: _countryCodeFor(
+                        item,
+                        countryCodeByName,
+                      ),
+                      showDate: preferences.showWishlistDates,
+                      dateFormat: _dateFormat,
+                      onOpenPlan: item.id == null
+                          ? null
+                          : () => context.push('/wishlist/plan/${item.id}'),
+                      onPinToggle: () => _togglePinned(item),
+                      onActions: () => _showActions(
+                        item: item,
+                        requireDeleteConfirmation:
+                            preferences.confirmWishlistDelete,
+                      ),
+                    ),
+                  ),
+                );
+                children.add(const SizedBox(height: 20));
+              }
+            }
+
+            return WishlistScrollView(
+              topPadding: topContentInset,
+              bottomPadding: scrollBottomPadding,
+              children: children,
+            );
+          },
+        );
+      },
+      floatingBuilder: (context, bottomBarHeight) {
+        return Align(
+          alignment: Alignment.bottomRight,
+          child: Padding(
+            padding: EdgeInsets.only(
+              right: 24,
+              bottom: bottomBarHeight + _wishlistFloatingButtonGap,
+            ),
+            child: WishlistAddIdeaButton(
+              onTap: () => context.push('/wishlist/add'),
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 

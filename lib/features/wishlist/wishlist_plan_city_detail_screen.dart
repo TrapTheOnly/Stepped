@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/db/app_db.dart';
 import '../../data/repositories/wishlist_repository.dart';
+import '../../widgets/editorial_overlay_page_shell.dart';
 import '../../widgets/frosted_squircle.dart';
 import 'gemini_trip_planner.dart';
 import '../social/social_state.dart';
@@ -14,6 +15,8 @@ import 'wishlist_plan_ui_state.dart';
 import 'widgets/wishlist_editorial_widgets.dart';
 
 const _cityBottomClearance = 40.0;
+
+typedef _WishlistCityBodyBuilder = Widget Function(double topPadding);
 
 class WishlistPlanCityDetailScreen extends ConsumerStatefulWidget {
   const WishlistPlanCityDetailScreen({
@@ -43,22 +46,12 @@ class _WishlistPlanCityDetailScreenState
     return itemAsync.when(
       loading: () => const _WishlistCityShell(
         title: 'City',
-        body: WishlistScrollView(
-          bottomPadding: _cityBottomClearance,
-          children: <Widget>[
-            WishlistHorizontalPadding(
-              child: WishlistStatusCard(
-                title: 'Loading city guide',
-                message: 'Pulling together the route details for this stop.',
-                showProgress: true,
-              ),
-            ),
-          ],
-        ),
+        bodyBuilder: _buildLoadingBody,
       ),
       error: (error, _) => _WishlistCityShell(
         title: 'City',
-        body: WishlistScrollView(
+        bodyBuilder: (topPadding) => WishlistScrollView(
+          topPadding: topPadding,
           bottomPadding: _cityBottomClearance,
           children: <Widget>[
             WishlistHorizontalPadding(
@@ -74,17 +67,7 @@ class _WishlistPlanCityDetailScreenState
         if (item == null) {
           return const _WishlistCityShell(
             title: 'City',
-            body: WishlistScrollView(
-              bottomPadding: _cityBottomClearance,
-              children: <Widget>[
-                WishlistHorizontalPadding(
-                  child: WishlistStatusCard(
-                    title: 'City unavailable',
-                    message: 'This wishlist item is no longer available.',
-                  ),
-                ),
-              ],
-            ),
+            bodyBuilder: _buildMissingBody,
           );
         }
 
@@ -96,9 +79,10 @@ class _WishlistPlanCityDetailScreenState
           return _WishlistCityShell(
             title: item.title,
             onEdit: () => _openManualEdit(context),
-            body: const WishlistScrollView(
+            bodyBuilder: (topPadding) => WishlistScrollView(
+              topPadding: topPadding,
               bottomPadding: _cityBottomClearance,
-              children: <Widget>[
+              children: const <Widget>[
                 WishlistHorizontalPadding(
                   child: WishlistStatusCard(
                     title: 'No route saved yet',
@@ -114,9 +98,10 @@ class _WishlistPlanCityDetailScreenState
           return _WishlistCityShell(
             title: item.title,
             onEdit: () => _openManualEdit(context),
-            body: const WishlistScrollView(
+            bodyBuilder: (topPadding) => WishlistScrollView(
+              topPadding: topPadding,
               bottomPadding: _cityBottomClearance,
-              children: <Widget>[
+              children: const <Widget>[
                 WishlistHorizontalPadding(
                   child: WishlistStatusCard(
                     title: 'City not found',
@@ -142,7 +127,8 @@ class _WishlistPlanCityDetailScreenState
         return _WishlistCityShell(
           title: city.city,
           onEdit: () => _openManualEdit(context),
-          body: WishlistScrollView(
+          bodyBuilder: (topPadding) => WishlistScrollView(
+            topPadding: topPadding,
             bottomPadding: _cityBottomClearance,
             children: <Widget>[
               WishlistHorizontalPadding(
@@ -290,6 +276,37 @@ class _WishlistPlanCityDetailScreenState
     );
   }
 
+  static Widget _buildLoadingBody(double topPadding) {
+    return WishlistScrollView(
+      topPadding: topPadding,
+      bottomPadding: _cityBottomClearance,
+      children: const <Widget>[
+        WishlistHorizontalPadding(
+          child: WishlistStatusCard(
+            title: 'Loading city guide',
+            message: 'Pulling together the route details for this stop.',
+            showProgress: true,
+          ),
+        ),
+      ],
+    );
+  }
+
+  static Widget _buildMissingBody(double topPadding) {
+    return WishlistScrollView(
+      topPadding: topPadding,
+      bottomPadding: _cityBottomClearance,
+      children: const <Widget>[
+        WishlistHorizontalPadding(
+          child: WishlistStatusCard(
+            title: 'City unavailable',
+            message: 'This wishlist item is no longer available.',
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _openManualEdit(BuildContext context) async {
     await context.push('/wishlist/plan/${widget.itemId}/manual-edit');
     ref.invalidate(wishlistItemProvider(widget.itemId));
@@ -385,50 +402,28 @@ class _WishlistPlanCityDetailScreenState
 class _WishlistCityShell extends StatelessWidget {
   const _WishlistCityShell({
     required this.title,
-    required this.body,
+    required this.bodyBuilder,
     this.onEdit,
   });
 
   final String title;
-  final Widget body;
+  final _WishlistCityBodyBuilder bodyBuilder;
   final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: ColoredBox(
-        color: scheme.surface,
-        child: Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            const Positioned.fill(
-              child: IgnorePointer(
-                child: WishlistAtmosphere(),
-              ),
-            ),
-            Column(
-              children: <Widget>[
-                SafeArea(
-                  bottom: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    child: _WishlistCityTopBar(
-                      title: title,
-                      onBack: () => Navigator.of(context).maybePop(),
-                      onEdit: onEdit,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Expanded(child: body),
-              ],
-            ),
-          ],
-        ),
+    return EditorialOverlayPageShell(
+      background: const WishlistAtmosphere(),
+      backgroundColor: scheme.surface,
+      topBar: _WishlistCityTopBar(
+        title: title,
+        onBack: () => Navigator.of(context).maybePop(),
+        onEdit: onEdit,
       ),
+      bodyBuilder: (context, topContentInset, __) =>
+          bodyBuilder(topContentInset),
     );
   }
 }

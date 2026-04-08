@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../data/db/app_db.dart';
+import '../../../widgets/editorial_empty_state_card.dart';
 import '../../../widgets/frosted_squircle.dart';
 
 class WishlistReadinessStep {
@@ -60,10 +61,12 @@ class WishlistScrollView extends StatelessWidget {
     super.key,
     required this.children,
     required this.bottomPadding,
+    this.topPadding = 0,
   });
 
   final List<Widget> children;
   final double bottomPadding;
+  final double topPadding;
 
   @override
   Widget build(BuildContext context) {
@@ -71,7 +74,7 @@ class WishlistScrollView extends StatelessWidget {
       builder: (context, constraints) {
         return SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(0, 0, 0, bottomPadding),
+          padding: EdgeInsets.fromLTRB(0, topPadding, 0, bottomPadding),
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: constraints.maxHeight),
             child: Column(
@@ -173,46 +176,10 @@ class WishlistEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return FrostedSquircle(
-      radius: 34,
-      blurSigma: 20,
-      color: colorScheme.surface.withValues(alpha: 0.78),
-      borderColor: colorScheme.primaryContainer.withValues(alpha: 0.16),
-      shadowColor: colorScheme.primary.withValues(alpha: 0.08),
-      padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          DecoratedBox(
-            decoration: ShapeDecoration(
-              color: colorScheme.secondaryContainer.withValues(alpha: 0.62),
-              shape: squircleShape(20),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Icon(
-                Icons.push_pin_outlined,
-                color: colorScheme.onSecondaryContainer,
-                size: 22,
-              ),
-            ),
-          ),
-          const SizedBox(height: 18),
-          Text(
-            'No places saved yet',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Use Add idea to start collecting the destinations you want to turn into trips.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-          ),
-        ],
-      ),
+    return const EditorialEmptyStateCard(
+      icon: Icons.auto_awesome_outlined,
+      title: 'No wishlists yet',
+      message: 'Create your first wishlist to start shaping future journeys.',
     );
   }
 }

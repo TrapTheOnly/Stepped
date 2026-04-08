@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../widgets/editorial_overlay_page_shell.dart';
 import '../../widgets/frosted_squircle.dart';
 import '../../widgets/person_avatar.dart';
 import '../social/social_api_client.dart';
@@ -70,105 +71,86 @@ class _FriendProfileScreenState extends ConsumerState<FriendProfileScreen>
     final profileAsync = ref.watch(friendProfileProvider(widget.friendUserId));
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      extendBody: true,
-      body: ColoredBox(
-        color: colorScheme.surface,
-        child: Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            const Positioned.fill(
-              child: IgnorePointer(child: _FriendProfileAtmosphere()),
-            ),
-            Column(
-              children: <Widget>[
-                SafeArea(
-                  bottom: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    child: _TopBar(
-                      title: 'Profile',
-                      isRemoving: _isRemoving,
-                      onBack: () => _popOrGoToFriends(context),
-                      onRemove: _isRemoving ? null : _confirmRemove,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: profileAsync.when(
-                    skipLoadingOnRefresh: true,
-                    skipLoadingOnReload: true,
-                    loading: () => const _FriendProfileScrollView(
-                      children: <Widget>[
-                        _FriendHorizontalPadding(
-                          child: _StatusCard(
-                            title: 'Loading public profile',
-                            message:
-                                'Bringing in their map, stats, and shared travel plans.',
-                            showProgress: true,
-                          ),
-                        ),
-                      ],
-                    ),
-                    error: (error, _) => _FriendProfileScrollView(
-                      children: <Widget>[
-                        _FriendHorizontalPadding(
-                          child: _StatusCard(
-                            title: 'Profile unavailable',
-                            message: _messageForError(error),
-                          ),
-                        ),
-                      ],
-                    ),
-                    data: (profile) => _FriendProfileScrollView(
-                      children: <Widget>[
-                        _FriendHorizontalPadding(
-                          child: _HeroCard(friend: profile.friend),
-                        ),
-                        const SizedBox(height: 18),
-                        _FriendHorizontalPadding(
-                          child: ReadOnlyGlobeCard(
-                            visitedCountryCodes: profile.friend.visitedCountries
-                                .map((entry) => entry.countryCode)
-                                .toList(growable: false),
-                            title: 'Map',
-                            subtitle: '',
-                          ),
-                        ),
-                        const SizedBox(height: 22),
-                        _FriendHorizontalPadding(
-                          child: _TabPicker(
-                            selectedTab: _selectedTab,
-                            onSelected: (tab) {
-                              setState(() {
-                                _selectedTab = tab;
-                              });
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 18),
-                        _FriendHorizontalPadding(
-                          child: _SectionLabel(
-                            title: _selectedTab == _FriendProfileTab.trips
-                                ? 'Trips'
-                                : 'Wishlist Ideas',
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        ...(_selectedTab == _FriendProfileTab.trips
-                            ? _buildTripSection(context, profile)
-                            : _buildWishlistSection(context, profile)),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+    return EditorialOverlayPageShell(
+      background: const _FriendProfileAtmosphere(),
+      backgroundColor: colorScheme.surface,
+      topBar: _TopBar(
+        title: 'Profile',
+        isRemoving: _isRemoving,
+        onBack: () => _popOrGoToFriends(context),
+        onRemove: _isRemoving ? null : _confirmRemove,
       ),
+      bodyBuilder: (context, topContentInset, __) {
+        return profileAsync.when(
+          skipLoadingOnRefresh: true,
+          skipLoadingOnReload: true,
+          loading: () => _FriendProfileScrollView(
+            topPadding: topContentInset,
+            children: <Widget>[
+              _FriendHorizontalPadding(
+                child: _StatusCard(
+                  title: 'Loading public profile',
+                  message:
+                      'Bringing in their map, stats, and shared travel plans.',
+                  showProgress: true,
+                ),
+              ),
+            ],
+          ),
+          error: (error, _) => _FriendProfileScrollView(
+            topPadding: topContentInset,
+            children: <Widget>[
+              _FriendHorizontalPadding(
+                child: _StatusCard(
+                  title: 'Profile unavailable',
+                  message: _messageForError(error),
+                ),
+              ),
+            ],
+          ),
+          data: (profile) => _FriendProfileScrollView(
+            topPadding: topContentInset,
+            children: <Widget>[
+              _FriendHorizontalPadding(
+                child: _HeroCard(friend: profile.friend),
+              ),
+              const SizedBox(height: 18),
+              _FriendHorizontalPadding(
+                child: ReadOnlyGlobeCard(
+                  visitedCountryCodes: profile.friend.visitedCountries
+                      .map((entry) => entry.countryCode)
+                      .toList(growable: false),
+                  title: 'Map',
+                  subtitle: '',
+                ),
+              ),
+              const SizedBox(height: 22),
+              _FriendHorizontalPadding(
+                child: _TabPicker(
+                  selectedTab: _selectedTab,
+                  onSelected: (tab) {
+                    setState(() {
+                      _selectedTab = tab;
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(height: 18),
+              _FriendHorizontalPadding(
+                child: _SectionLabel(
+                  title: _selectedTab == _FriendProfileTab.trips
+                      ? 'Trips'
+                      : 'Wishlist Ideas',
+                ),
+              ),
+              const SizedBox(height: 14),
+              ...(_selectedTab == _FriendProfileTab.trips
+                  ? _buildTripSection(context, profile)
+                  : _buildWishlistSection(context, profile)),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -459,9 +441,13 @@ class _TopBar extends StatelessWidget {
 }
 
 class _FriendProfileScrollView extends StatelessWidget {
-  const _FriendProfileScrollView({required this.children});
+  const _FriendProfileScrollView({
+    required this.children,
+    this.topPadding = 0,
+  });
 
   final List<Widget> children;
+  final double topPadding;
 
   @override
   Widget build(BuildContext context) {
@@ -469,8 +455,12 @@ class _FriendProfileScrollView extends StatelessWidget {
       builder: (context, constraints) {
         return SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
-          padding:
-              const EdgeInsets.fromLTRB(0, 0, 0, _friendProfileBottomPadding),
+          padding: EdgeInsets.fromLTRB(
+            0,
+            topPadding,
+            0,
+            _friendProfileBottomPadding,
+          ),
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: constraints.maxHeight),
             child: Column(
