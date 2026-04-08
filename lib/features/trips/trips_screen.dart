@@ -293,7 +293,7 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
     int? year = _filters.year;
     DateTimeRangeValue? dateRange = _filters.dateRange;
 
-    final nextFilters = await showModalBottomSheet<TripsSearchFilters>(
+    final selectedFilters = await showModalBottomSheet<TripsSearchFilters>(
       context: context,
       backgroundColor: Colors.transparent,
       elevation: 0,
@@ -443,32 +443,14 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
                                 onTap: pickDateRange,
                               ),
                             ),
-                          ],
-                        );
-                      }
-
-                      return _TripsScrollView(
-                        bottomPadding: scrollBottomPadding,
-                        children: <Widget>[
-                          const _TripsHorizontalPadding(
-                            child: _TripsHeader(),
-                          ),
-                          const SizedBox(height: 28),
-                          for (final trip in trips) ...<Widget>[
-                            _TripsHorizontalPadding(
-                              child: _TripStoryCard(
-                                trip: trip,
-                                onOpen: () =>
-                                    context.push('/trips/view/${trip.id}'),
-                                onEdit: () =>
-                                    context.push('/trips/edit/${trip.id}'),
-                                onDelete: () => _confirmDelete(
-                                  context,
-                                  ref,
-                                  trip,
-                                  requireConfirmation:
-                                      preferences.confirmTripDelete,
-                                ),
+                            if (dateRange != null) ...<Widget>[
+                              const SizedBox(width: 8),
+                              EditorialFilterChoiceChip(
+                                label: 'Clear',
+                                selected: false,
+                                onTap: () => setSheetState(() {
+                                  dateRange = null;
+                                }),
                               ),
                             ],
                           ],
@@ -513,12 +495,12 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
       },
     );
 
-    if (nextFilters == null) {
+    if (selectedFilters == null) {
       return;
     }
 
     setState(() {
-      _filters = nextFilters;
+      _filters = selectedFilters;
     });
   }
 
