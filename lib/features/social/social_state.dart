@@ -592,6 +592,7 @@ class SocialSyncController {
   Timer? _profileTimer;
   Timer? _travelTimer;
   Timer? _wishlistTimer;
+  Future<bool>? _remoteHydrationFuture;
   String? _lastProfileSignature;
   String? _lastTravelSignature;
   String? _lastWishlistSignature;
@@ -623,6 +624,27 @@ class SocialSyncController {
       const Duration(milliseconds: 300),
       () => unawaited(_syncWishlist()),
     );
+  }
+
+  void scheduleRemoteRefresh() {
+    final session = ref.read(socialSessionProvider);
+    if (session == null) {
+      _profileTimer?.cancel();
+      _travelTimer?.cancel();
+      _wishlistTimer?.cancel();
+      unawaited(_syncProfile());
+      return;
+    }
+
+    _profileTimer?.cancel();
+    _travelTimer?.cancel();
+    _wishlistTimer?.cancel();
+    _profileTimer = Timer(const Duration(milliseconds: 150), () async {
+      await _hydrateRemoteStateIfNeeded(session, force: true);
+      scheduleProfileSync();
+      scheduleTravelSync();
+      scheduleWishlistSync();
+    });
   }
 
   Future<void> flushTravelNow() async {
