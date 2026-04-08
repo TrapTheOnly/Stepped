@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/db/app_db.dart';
 import '../../data/repositories/trips_repository.dart';
 import '../../data/repositories/wishlist_repository.dart';
+import '../../widgets/editorial_overlay_page_shell.dart';
 import '../../widgets/frosted_squircle.dart';
 import '../map/map_viewmodel.dart';
 import '../wishlist/gemini_trip_planner.dart';
@@ -18,7 +19,6 @@ import 'trip_city_models.dart';
 import 'widgets/add_trip_destination_preview.dart';
 import 'widgets/add_trip_form_sections.dart';
 
-const _editorContentTopPadding = 0.0;
 const _editorContentBottomPadding = 48.0;
 
 class AddTripScreen extends ConsumerStatefulWidget {
@@ -102,64 +102,48 @@ class _AddTripScreenState extends ConsumerState<AddTripScreen> {
 
     return Theme(
       data: Theme.of(context).copyWith(inputDecorationTheme: inputTheme),
-      child: Scaffold(
-        resizeToAvoidBottomInset: false,
-        backgroundColor: Colors.transparent,
-        body: ColoredBox(
-          color: colorScheme.surface,
-          child: Stack(
-            fit: StackFit.expand,
+      child: EditorialOverlayPageShell(
+        background: const _TripEditorAtmosphere(),
+        backgroundColor: colorScheme.surface,
+        topBar: _EditorTopBar(
+          title: _isEditing ? 'Edit Trip' : 'Add Trip',
+          onBack: () => context.pop(),
+        ),
+        bodyBuilder: (context, topContentInset, __) {
+          return Column(
             children: <Widget>[
-              const Positioned.fill(
-                child: IgnorePointer(
-                  child: _TripEditorAtmosphere(),
+              Expanded(
+                child: _buildBody(
+                  context: context,
+                  topContentInset: topContentInset,
+                  existingTripAsync: existingTripAsync,
+                  countriesAsync: countriesAsync,
+                  wishlistItemAsync: wishlistItemAsync,
+                  submitState: submitState,
                 ),
               ),
-              Column(
-                children: <Widget>[
-                  SafeArea(
-                    bottom: false,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                      child: _EditorTopBar(
-                        title: _isEditing ? 'Edit Trip' : 'Add Trip',
-                        onBack: () => context.pop(),
-                      ),
+              if (canRenderForm)
+                SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                    child: _EditorDockButton(
+                      label: _isEditing ? 'Update Trip' : 'Save Trip',
+                      isLoading: submitState.isLoading,
+                      onTap: submitState.isLoading ? null : _submit,
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: _buildBody(
-                      context: context,
-                      existingTripAsync: existingTripAsync,
-                      countriesAsync: countriesAsync,
-                      wishlistItemAsync: wishlistItemAsync,
-                      submitState: submitState,
-                    ),
-                  ),
-                  if (canRenderForm)
-                    SafeArea(
-                      top: false,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                        child: _EditorDockButton(
-                          label: _isEditing ? 'Update Trip' : 'Save Trip',
-                          isLoading: submitState.isLoading,
-                          onTap: submitState.isLoading ? null : _submit,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
+                ),
             ],
-          ),
-        ),
+          );
+        },
       ),
     );
   }
 
   Widget _buildBody({
     required BuildContext context,
+    required double topContentInset,
     required AsyncValue<TripRecord?> existingTripAsync,
     required AsyncValue<dynamic> countriesAsync,
     required AsyncValue<WishlistItemRecord?> wishlistItemAsync,
@@ -177,6 +161,7 @@ class _AddTripScreenState extends ConsumerState<AddTripScreen> {
       ),
       data: (existingTrip) => _buildEditorContent(
         context: context,
+        topContentInset: topContentInset,
         existingTrip: existingTrip,
         countriesAsync: countriesAsync,
         wishlistItemAsync: wishlistItemAsync,
@@ -187,6 +172,7 @@ class _AddTripScreenState extends ConsumerState<AddTripScreen> {
 
   Widget _buildEditorContent({
     required BuildContext context,
+    required double topContentInset,
     required TripRecord? existingTrip,
     required AsyncValue<dynamic> countriesAsync,
     required AsyncValue<WishlistItemRecord?> wishlistItemAsync,
@@ -276,9 +262,9 @@ class _AddTripScreenState extends ConsumerState<AddTripScreen> {
       child: ListView(
         physics: const BouncingScrollPhysics(),
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: const EdgeInsets.fromLTRB(
+        padding: EdgeInsets.fromLTRB(
           16,
-          _editorContentTopPadding,
+          topContentInset,
           16,
           _editorContentBottomPadding,
         ),
@@ -591,35 +577,34 @@ class _EditorStatusView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final topPadding = editorialOverlayTopContentInsetOf(context, fallback: 24);
 
-    return SafeArea(
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, topPadding, 16, 16),
       child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(title, style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  Text(
-                    message,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(title, style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                Text(
+                  message,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                ),
+                if (showProgress) ...<Widget>[
+                  const SizedBox(height: 18),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: const LinearProgressIndicator(minHeight: 6),
                   ),
-                  if (showProgress) ...<Widget>[
-                    const SizedBox(height: 18),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: const LinearProgressIndicator(minHeight: 6),
-                    ),
-                  ],
                 ],
-              ),
+              ],
             ),
           ),
         ),

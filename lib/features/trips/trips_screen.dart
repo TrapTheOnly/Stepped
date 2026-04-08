@@ -8,98 +8,439 @@ import 'package:intl/intl.dart';
 
 import '../../data/db/app_db.dart';
 import '../../data/repositories/trips_repository.dart';
+import '../../widgets/editorial_empty_state_card.dart';
+import '../../widgets/editorial_overlay_page_shell.dart';
+import '../../widgets/editorial_search_controls.dart';
 import '../../widgets/frosted_squircle.dart';
-import '../../widgets/shell_scaffold_inset.dart';
 import '../../widgets/stepped_top_bar.dart';
 import '../social/social_state.dart';
 import '../settings/app_preferences.dart';
+import 'trips_search_filters.dart';
 
 const _addTripButtonSize = 58.0;
 const _floatingButtonGap = 16.0;
 
-class TripsScreen extends ConsumerWidget {
+class TripsScreen extends ConsumerStatefulWidget {
   const TripsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TripsScreen> createState() => _TripsScreenState();
+}
+
+class _TripsScreenState extends ConsumerState<TripsScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  final DateFormat _filterDateFormat = DateFormat.MMMd();
+
+  TripsSearchFilters _filters = const TripsSearchFilters();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final tripsAsync = ref.watch(tripsStreamProvider);
     final preferences = ref.watch(appPreferencesProvider).valueOrNull ??
         AppPreferences.defaults;
-    final colorScheme = Theme.of(context).colorScheme;
-    final bottomBarHeight = ShellScaffoldInset.bottomBarHeightOf(context);
-    final scrollBottomPadding =
-        bottomBarHeight + _addTripButtonSize + _floatingButtonGap + 20;
 
-    return ColoredBox(
-      color: colorScheme.surface,
-      child: Stack(
-        fit: StackFit.expand,
-        children: <Widget>[
-          const Positioned.fill(
-            child: IgnorePointer(
-              child: _TripsAtmosphere(),
-            ),
+    return EditorialOverlayPageShell(
+      background: const _TripsAtmosphere(),
+      topBar: SteppedTopBar(
+        onOpenSettings: () => context.push('/profile/settings'),
+        onOpenProfile: () => context.push('/profile'),
+      ),
+      bodyBuilder: (context, topContentInset, bottomBarHeight) {
+        final scrollBottomPadding =
+            bottomBarHeight + _addTripButtonSize + _floatingButtonGap + 20;
+
+        return tripsAsync.when(
+          loading: () => _TripsScrollView(
+            topPadding: topContentInset,
+            bottomPadding: scrollBottomPadding,
+            children: <Widget>[
+              ..._buildSearchSection(context, const <TripRecord>[]),
+              const SizedBox(height: 28),
+              _TripsHorizontalPadding(
+                child: _TripsStatusCard(
+                  title: 'Loading your field journal',
+                  message: 'Gathering the latest trips and imagery.',
+                  showProgress: true,
+                ),
+              ),
+            ],
           ),
-          SafeArea(
-            bottom: false,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: SteppedTopBar(
-                    onOpenSettings: () => context.push('/profile/settings'),
-                    onOpenProfile: () => context.push('/profile'),
+          error: (error, _) => _TripsScrollView(
+            topPadding: topContentInset,
+            bottomPadding: scrollBottomPadding,
+            children: <Widget>[
+              ..._buildSearchSection(context, const <TripRecord>[]),
+              const SizedBox(height: 28),
+              _TripsHorizontalPadding(
+                child: _TripsStatusCard(
+                  title: 'Trips unavailable',
+                  message: 'Failed to load trips: $error',
+                ),
+              ),
+            ],
+          ),
+          data: (trips) {
+            final filteredTrips = applyTripSearchFilters(trips, _filters);
+
+            if (trips.isEmpty) {
+              return _TripsScrollView(
+                topPadding: topContentInset,
+                bottomPadding: scrollBottomPadding,
+                children: <Widget>[
+                  ..._buildSearchSection(context, trips),
+                  const SizedBox(height: 28),
+                  const _TripsHorizontalPadding(
+                    child: EditorialEmptyStateCard(
+                      icon: Icons.flight_takeoff_rounded,
+                      title: 'No trips yet',
+                      message:
+                          'Create your first trip to start building your travel journal.',
+                    ),
+                  ),
+                ],
+              );
+            }
+
+            final children = <Widget>[
+              ..._buildSearchSection(context, trips),
+              const SizedBox(height: 28),
+            ];
+
+            if (filteredTrips.isEmpty) {
+              children.add(
+                const _TripsHorizontalPadding(
+                  child: _TripsStatusCard(
+                    title: 'No trips match',
+                    message:
+                        'Try a different search or clear a few filters to widen the view.',
                   ),
                 ),
-                const SizedBox(height: 18),
-                Expanded(
-                  child: tripsAsync.when(
-                    loading: () => _TripsScrollView(
-                      bottomPadding: scrollBottomPadding,
-                      children: const <Widget>[
-                        _TripsHorizontalPadding(
-                          child: _TripsHeader(),
-                        ),
-                        SizedBox(height: 28),
-                        _TripsHorizontalPadding(
-                          child: _TripsStatusCard(
-                            title: 'Loading your field journal',
-                            message: 'Gathering the latest trips and imagery.',
-                            showProgress: true,
-                          ),
-                        ),
-                      ],
+              );
+            } else {
+              for (final trip in filteredTrips) {
+                children.add(
+                  _TripsHorizontalPadding(
+                    child: _TripStoryCard(
+                      trip: trip,
+                      onOpen: () => context.push('/trips/view/${trip.id}'),
+                      onEdit: () => context.push('/trips/edit/${trip.id}'),
+                      onDelete: () => _confirmDelete(
+                        context,
+                        ref,
+                        trip,
+                        requireConfirmation: preferences.confirmWishlistDelete,
+                      ),
                     ),
-                    error: (error, _) => _TripsScrollView(
-                      bottomPadding: scrollBottomPadding,
+                  ),
+                );
+                children.add(const SizedBox(height: 18));
+              }
+            }
+
+            return _TripsScrollView(
+              topPadding: topContentInset,
+              bottomPadding: scrollBottomPadding,
+              children: children,
+            );
+          },
+        );
+      },
+      floatingBuilder: (context, bottomBarHeight) {
+        return Align(
+          alignment: Alignment.bottomRight,
+          child: Padding(
+            padding: EdgeInsets.only(
+              right: 24,
+              bottom: bottomBarHeight + _floatingButtonGap,
+            ),
+            child: _AddTripButton(
+              onTap: () => context.push('/trips/add'),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  List<Widget> _buildSearchSection(
+      BuildContext context, List<TripRecord> trips) {
+    final activeFilterChips = _buildActiveFilterChips();
+
+    return <Widget>[
+      const _TripsHorizontalPadding(
+        child: _TripsHeader(),
+      ),
+      const SizedBox(height: 18),
+      _TripsHorizontalPadding(
+        child: EditorialSearchBarRow(
+          controller: _searchController,
+          focusNode: _searchFocusNode,
+          hintText: 'Search trips',
+          onChanged: _handleSearchChanged,
+          onClear: _clearSearch,
+          onOpenFilters: () => _openFilters(context, trips),
+          hasActiveFilters: _hasStructuredFilters,
+        ),
+      ),
+      if (activeFilterChips.isNotEmpty) ...<Widget>[
+        const SizedBox(height: 12),
+        _TripsHorizontalPadding(
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: activeFilterChips,
+          ),
+        ),
+      ],
+    ];
+  }
+
+  List<Widget> _buildActiveFilterChips() {
+    final chips = <Widget>[];
+
+    if (_filters.status != TripListStatusFilter.any) {
+      chips.add(
+        EditorialActiveFilterChip(
+          label: _filters.status.label,
+          onClear: () => setState(() {
+            _filters = _filters.copyWith(status: TripListStatusFilter.any);
+          }),
+        ),
+      );
+    }
+    if (_filters.source != TripListSourceFilter.any) {
+      chips.add(
+        EditorialActiveFilterChip(
+          label: _filters.source.label,
+          onClear: () => setState(() {
+            _filters = _filters.copyWith(source: TripListSourceFilter.any);
+          }),
+        ),
+      );
+    }
+    if (_filters.country != null) {
+      chips.add(
+        EditorialActiveFilterChip(
+          label: _filters.country!,
+          onClear: () => setState(() {
+            _filters = _filters.copyWith(country: null);
+          }),
+        ),
+      );
+    }
+    if (_filters.year != null) {
+      chips.add(
+        EditorialActiveFilterChip(
+          label: '${_filters.year}',
+          onClear: () => setState(() {
+            _filters = _filters.copyWith(year: null);
+          }),
+        ),
+      );
+    }
+    if (_filters.dateRange != null) {
+      final range = _filters.dateRange!;
+      chips.add(
+        EditorialActiveFilterChip(
+          label:
+              '${_filterDateFormat.format(range.start)} - ${_filterDateFormat.format(range.end)}',
+          onClear: () => setState(() {
+            _filters = _filters.copyWith(dateRange: null);
+          }),
+        ),
+      );
+    }
+
+    return chips;
+  }
+
+  bool get _hasStructuredFilters =>
+      _filters.status != TripListStatusFilter.any ||
+      _filters.source != TripListSourceFilter.any ||
+      _filters.country != null ||
+      _filters.year != null ||
+      _filters.dateRange != null;
+
+  void _handleSearchChanged(String value) {
+    setState(() {
+      _filters = _filters.copyWith(query: value);
+    });
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    setState(() {
+      _filters = _filters.copyWith(query: '');
+    });
+  }
+
+  Future<void> _openFilters(
+      BuildContext context, List<TripRecord> trips) async {
+    final countryOptions = tripCountryFilterOptions(trips);
+    final yearOptions = tripYearFilterOptions(trips);
+
+    var status = _filters.status;
+    var source = _filters.source;
+    String? country = _filters.country;
+    int? year = _filters.year;
+    DateTimeRangeValue? dateRange = _filters.dateRange;
+
+    final nextFilters = await showModalBottomSheet<TripsSearchFilters>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      showDragHandle: false,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: StatefulBuilder(
+              builder: (sheetContext, setSheetState) {
+                Future<void> pickDateRange() async {
+                  final picked = await showDateRangePicker(
+                    context: context,
+                    firstDate: DateTime(2010),
+                    lastDate: DateTime(2100),
+                    initialDateRange: dateRange == null
+                        ? null
+                        : DateTimeRange(
+                            start: dateRange!.start,
+                            end: dateRange!.end,
+                          ),
+                  );
+                  if (picked == null) {
+                    return;
+                  }
+                  setSheetState(() {
+                    dateRange = DateTimeRangeValue(
+                      start: picked.start,
+                      end: picked.end,
+                    );
+                  });
+                }
+
+                return EditorialFilterSheetContainer(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
-                        const _TripsHorizontalPadding(
-                          child: _TripsHeader(),
-                        ),
-                        const SizedBox(height: 28),
-                        _TripsHorizontalPadding(
-                          child: _TripsStatusCard(
-                            title: 'Trips unavailable',
-                            message: 'Failed to load trips: $error',
+                        Center(
+                          child: DecoratedBox(
+                            decoration: ShapeDecoration(
+                              color: Theme.of(sheetContext)
+                                  .colorScheme
+                                  .outlineVariant
+                                  .withValues(alpha: 0.55),
+                              shape: squircleShape(8),
+                            ),
+                            child: const SizedBox(width: 36, height: 4),
                           ),
                         ),
-                      ],
-                    ),
-                    data: (trips) {
-                      if (trips.isEmpty) {
-                        return _TripsScrollView(
-                          bottomPadding: scrollBottomPadding,
-                          children: const <Widget>[
-                            _TripsHorizontalPadding(
-                              child: _TripsHeader(),
-                            ),
-                            SizedBox(height: 28),
-                            _TripsHorizontalPadding(
-                              child: _TripsStatusCard(
-                                title: 'No journeys yet',
-                                message:
-                                    'Start your first trip to build a stitched travel journal.',
+                        const SizedBox(height: 12),
+                        Text(
+                          'Filter trips',
+                          style: Theme.of(sheetContext).textTheme.titleLarge,
+                        ),
+                        const SizedBox(height: 18),
+                        const EditorialFilterSectionTitle('Status'),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: TripListStatusFilter.values
+                              .map(
+                                (option) => EditorialFilterChoiceChip(
+                                  label: option.label,
+                                  selected: status == option,
+                                  onTap: () => setSheetState(() {
+                                    status = option;
+                                  }),
+                                ),
+                              )
+                              .toList(growable: false),
+                        ),
+                        const SizedBox(height: 18),
+                        const EditorialFilterSectionTitle('Source'),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: TripListSourceFilter.values
+                              .map(
+                                (option) => EditorialFilterChoiceChip(
+                                  label: option.label,
+                                  selected: source == option,
+                                  onTap: () => setSheetState(() {
+                                    source = option;
+                                  }),
+                                ),
+                              )
+                              .toList(growable: false),
+                        ),
+                        if (countryOptions.isNotEmpty) ...<Widget>[
+                          const SizedBox(height: 18),
+                          const EditorialFilterSectionTitle('Country'),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: countryOptions
+                                .map(
+                                  (option) => EditorialFilterChoiceChip(
+                                    label: option,
+                                    selected: country == option,
+                                    onTap: () => setSheetState(() {
+                                      country =
+                                          country == option ? null : option;
+                                    }),
+                                  ),
+                                )
+                                .toList(growable: false),
+                          ),
+                        ],
+                        if (yearOptions.isNotEmpty) ...<Widget>[
+                          const SizedBox(height: 18),
+                          const EditorialFilterSectionTitle('Year'),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: yearOptions
+                                .map(
+                                  (option) => EditorialFilterChoiceChip(
+                                    label: '$option',
+                                    selected: year == option,
+                                    onTap: () => setSheetState(() {
+                                      year = year == option ? null : option;
+                                    }),
+                                  ),
+                                )
+                                .toList(growable: false),
+                          ),
+                        ],
+                        const SizedBox(height: 18),
+                        const EditorialFilterSectionTitle('Travel dates'),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: EditorialFilterChoiceChip(
+                                label: dateRange == null
+                                    ? 'Pick a date range'
+                                    : '${_filterDateFormat.format(dateRange!.start)} - ${_filterDateFormat.format(dateRange!.end)}',
+                                selected: dateRange != null,
+                                onTap: pickDateRange,
                               ),
                             ),
                           ],
@@ -129,32 +470,56 @@ class TripsScreen extends ConsumerWidget {
                                       preferences.confirmTripDelete,
                                 ),
                               ),
-                            ),
-                            const SizedBox(height: 18),
+                            ],
                           ],
-                        ],
-                      );
-                    },
+                        ),
+                        const SizedBox(height: 22),
+                        Row(
+                          children: <Widget>[
+                            EditorialFilterActionButton(
+                              label: 'Reset',
+                              onTap: () {
+                                Navigator.of(sheetContext).pop(
+                                  _filters.cleared(query: _filters.query),
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 12),
+                            EditorialFilterActionButton(
+                              label: 'Apply',
+                              emphasized: true,
+                              onTap: () {
+                                Navigator.of(sheetContext).pop(
+                                  _filters.copyWith(
+                                    status: status,
+                                    source: source,
+                                    country: country,
+                                    year: year,
+                                    dateRange: dateRange,
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                );
+              },
             ),
           ),
-          Align(
-            alignment: Alignment.bottomRight,
-            child: Padding(
-              padding: EdgeInsets.only(
-                right: 24,
-                bottom: bottomBarHeight + _floatingButtonGap,
-              ),
-              child: _AddTripButton(
-                onTap: () => context.push('/trips/add'),
-              ),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
+
+    if (nextFilters == null) {
+      return;
+    }
+
+    setState(() {
+      _filters = nextFilters;
+    });
   }
 
   Future<void> _confirmDelete(
@@ -224,10 +589,12 @@ class _TripsScrollView extends StatelessWidget {
   const _TripsScrollView({
     required this.children,
     required this.bottomPadding,
+    this.topPadding = 0,
   });
 
   final List<Widget> children;
   final double bottomPadding;
+  final double topPadding;
 
   @override
   Widget build(BuildContext context) {
@@ -235,7 +602,7 @@ class _TripsScrollView extends StatelessWidget {
       builder: (context, constraints) {
         return SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(0, 0, 0, bottomPadding),
+          padding: EdgeInsets.fromLTRB(0, topPadding, 0, bottomPadding),
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: constraints.maxHeight),
             child: Column(

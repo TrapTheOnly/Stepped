@@ -89,9 +89,9 @@ class _WishlistPlanManualEditScreenState
             return ListView(
               physics: const BouncingScrollPhysics(),
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.fromLTRB(
+              padding: EdgeInsets.fromLTRB(
                 16,
-                wishlistEditorTopOverlayClearance,
+                wishlistEditorTopOverlayClearanceOf(context),
                 16,
                 wishlistEditorBottomDockClearance + 48,
               ),

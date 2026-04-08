@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../../widgets/editorial_overlay_page_shell.dart';
 import '../../widgets/frosted_squircle.dart';
 import '../wishlist/gemini_trip_planner.dart';
 import '../wishlist/widgets/wishlist_editorial_widgets.dart';
@@ -16,6 +17,8 @@ enum TripCityScreenMode {
   view,
   edit,
 }
+
+typedef _TripCityBodyBuilder = Widget Function(double topPadding);
 
 class TripCityDetailScreen extends StatefulWidget {
   const TripCityDetailScreen({
@@ -116,7 +119,8 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
       title: widget.city.name,
       onBack: _closeViewMode,
       onEdit: widget.allowEditing ? _openEditMode : null,
-      body: WishlistScrollView(
+      bodyBuilder: (topPadding) => WishlistScrollView(
+        topPadding: topPadding,
         bottomPadding: _tripCityViewBottomClearance,
         children: <Widget>[
           WishlistHorizontalPadding(
@@ -373,7 +377,8 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
     return _TripCityShell(
       title: widget.city.name,
       onBack: () => Navigator.of(context).maybePop(),
-      body: WishlistScrollView(
+      bodyBuilder: (topPadding) => WishlistScrollView(
+        topPadding: topPadding,
         bottomPadding: _tripCityEditBottomClearance,
         children: <Widget>[
           WishlistHorizontalPadding(
@@ -940,14 +945,14 @@ class _TripCityDetailScreenState extends State<TripCityDetailScreen> {
 class _TripCityShell extends StatelessWidget {
   const _TripCityShell({
     required this.title,
-    required this.body,
+    required this.bodyBuilder,
     required this.onBack,
     this.onEdit,
     this.bottomChild,
   });
 
   final String title;
-  final Widget body;
+  final _TripCityBodyBuilder bodyBuilder;
   final VoidCallback onBack;
   final VoidCallback? onEdit;
   final Widget? bottomChild;
@@ -956,46 +961,29 @@ class _TripCityShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: ColoredBox(
-        color: scheme.surface,
-        child: Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            const Positioned.fill(
-              child: IgnorePointer(
-                child: WishlistAtmosphere(),
-              ),
-            ),
-            Column(
-              children: <Widget>[
-                SafeArea(
-                  bottom: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    child: _TripCityTopBar(
-                      title: title,
-                      onBack: onBack,
-                      onEdit: onEdit,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Expanded(child: body),
-                if (bottomChild != null)
-                  SafeArea(
-                    top: false,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                      child: bottomChild!,
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
+    return EditorialOverlayPageShell(
+      background: const WishlistAtmosphere(),
+      backgroundColor: scheme.surface,
+      topBar: _TripCityTopBar(
+        title: title,
+        onBack: onBack,
+        onEdit: onEdit,
       ),
+      bodyBuilder: (context, topContentInset, __) {
+        return Column(
+          children: <Widget>[
+            Expanded(child: bodyBuilder(topContentInset)),
+            if (bottomChild != null)
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                  child: bottomChild!,
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

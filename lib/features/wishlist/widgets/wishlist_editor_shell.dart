@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 
 import '../../../widgets/frosted_squircle.dart';
+import '../../../widgets/editorial_overlay_page_shell.dart';
 import 'wishlist_editorial_widgets.dart';
 
-const wishlistEditorTopOverlayClearance = 0.0;
+double wishlistEditorTopOverlayClearanceOf(BuildContext context) {
+  return editorialOverlayTopContentInsetOf(context);
+}
+
 const wishlistEditorBottomDockClearance = 0.0;
 
 InputDecorationTheme wishlistEditorInputDecorationTheme(BuildContext context) {
@@ -68,47 +72,34 @@ class WishlistEditorShell extends StatelessWidget {
     final shouldShowBottomDock = bottomDock != null &&
         !(hideBottomDockWhenKeyboardVisible && keyboardVisible);
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: ColoredBox(
-        color: scheme.surface,
-        child: Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            const Positioned.fill(
-              child: IgnorePointer(
-                child: WishlistAtmosphere(),
-              ),
-            ),
-            Column(
-              children: <Widget>[
-                SafeArea(
-                  bottom: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    child: _WishlistEditorTopBar(
-                      title: title,
-                      onBack: onBack,
-                      actions: topActions,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Expanded(child: body),
-                if (shouldShowBottomDock)
-                  SafeArea(
-                    top: false,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                      child: bottomDock!,
-                    ),
-                  ),
-              ],
-            ),
-            if (overlay != null) Positioned.fill(child: overlay!),
-          ],
-        ),
+    return EditorialOverlayPageShell(
+      background: const WishlistAtmosphere(),
+      backgroundColor: scheme.surface,
+      topBar: _WishlistEditorTopBar(
+        title: title,
+        onBack: onBack,
+        actions: topActions,
       ),
+      bodyBuilder: (context, _, __) {
+        return Column(
+          children: <Widget>[
+            Expanded(child: body),
+            if (shouldShowBottomDock)
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                  child: bottomDock!,
+                ),
+              ),
+          ],
+        );
+      },
+      floatingBuilder: overlay == null
+          ? null
+          : (context, bottomBarHeight) {
+              return overlay!;
+            },
     );
   }
 }
@@ -252,20 +243,20 @@ class WishlistEditorStatusView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
+    final topPadding = editorialOverlayTopContentInsetOf(context, fallback: 24);
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, topPadding, 16, 16),
       child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: WishlistEditorSectionCard(
-            title: title,
-            subtitle: message,
-            child: showProgress
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(999),
-                    child: const LinearProgressIndicator(minHeight: 6),
-                  )
-                : const SizedBox.shrink(),
-          ),
+        child: WishlistEditorSectionCard(
+          title: title,
+          subtitle: message,
+          child: showProgress
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: const LinearProgressIndicator(minHeight: 6),
+                )
+              : const SizedBox.shrink(),
         ),
       ),
     );

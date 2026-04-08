@@ -70,9 +70,9 @@ class _WishlistPlanManualEditCityScreenState
         body: ListView(
           physics: const BouncingScrollPhysics(),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: const EdgeInsets.fromLTRB(
+          padding: EdgeInsets.fromLTRB(
             16,
-            wishlistEditorTopOverlayClearance,
+            wishlistEditorTopOverlayClearanceOf(context),
             16,
             40,
           ),
@@ -221,7 +221,8 @@ class _WishlistPlanManualEditCityScreenState
                   WishlistManualEditSubSectionHeader(
                     title: 'Stops',
                     onAdd: () async {
-                      if (await widget.controller.addTimelineStep(context, _city)) {
+                      if (await widget.controller
+                          .addTimelineStep(context, _city)) {
                         setState(_notifyDraftChanged);
                       }
                     },

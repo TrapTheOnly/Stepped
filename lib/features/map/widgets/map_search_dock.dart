@@ -9,12 +9,14 @@ class MapSearchDock extends StatelessWidget {
     required this.focusNode,
     required this.onChanged,
     required this.onClear,
+    this.hintText = 'Search countries',
   });
 
   final TextEditingController controller;
   final FocusNode focusNode;
   final ValueChanged<String> onChanged;
   final VoidCallback onClear;
+  final String hintText;
 
   @override
   Widget build(BuildContext context) {
@@ -43,8 +45,8 @@ class MapSearchDock extends StatelessWidget {
                 focusNode: focusNode,
                 onChanged: onChanged,
                 textInputAction: TextInputAction.search,
-                decoration: const InputDecoration(
-                  hintText: 'Search countries',
+                decoration: InputDecoration(
+                  hintText: hintText,
                   border: InputBorder.none,
                   enabledBorder: InputBorder.none,
                   focusedBorder: InputBorder.none,

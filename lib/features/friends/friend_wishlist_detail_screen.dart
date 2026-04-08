@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../widgets/editorial_overlay_page_shell.dart';
 import '../../widgets/frosted_squircle.dart';
 import '../social/social_api_client.dart';
 import '../social/social_models.dart';
@@ -11,6 +12,8 @@ import '../social/social_state.dart';
 import '../wishlist/widgets/wishlist_editorial_widgets.dart';
 
 const _bottomClearance = 36.0;
+
+typedef _FriendWishlistBodyBuilder = Widget Function(double topPadding);
 
 class FriendWishlistDetailScreen extends ConsumerWidget {
   const FriendWishlistDetailScreen({
@@ -30,21 +33,11 @@ class FriendWishlistDetailScreen extends ConsumerWidget {
       skipLoadingOnRefresh: true,
       skipLoadingOnReload: true,
       loading: () => const _Shell(
-        body: WishlistScrollView(
-          bottomPadding: _bottomClearance,
-          children: <Widget>[
-            WishlistHorizontalPadding(
-              child: WishlistStatusCard(
-                title: 'Loading wishlist idea',
-                message: 'Opening the shared plan details.',
-                showProgress: true,
-              ),
-            ),
-          ],
-        ),
+        bodyBuilder: _buildLoadingBody,
       ),
       error: (error, _) => _Shell(
-        body: WishlistScrollView(
+        bodyBuilder: (topPadding) => WishlistScrollView(
+          topPadding: topPadding,
           bottomPadding: _bottomClearance,
           children: <Widget>[
             WishlistHorizontalPadding(
@@ -69,51 +62,42 @@ class FriendWishlistDetailScreen extends ConsumerWidget {
 
         if (item == null) {
           return const _Shell(
-            body: WishlistScrollView(
-              bottomPadding: _bottomClearance,
-              children: <Widget>[
-                WishlistHorizontalPadding(
-                  child: WishlistStatusCard(
-                    title: 'Wishlist idea not found',
-                    message:
-                        'This shared wishlist item is no longer available.',
-                  ),
-                ),
-              ],
-            ),
+            bodyBuilder: _buildMissingBody,
           );
         }
+        final sharedItem = item;
 
         return _Shell(
-          body: WishlistScrollView(
+          bodyBuilder: (topPadding) => WishlistScrollView(
+            topPadding: topPadding,
             bottomPadding: _bottomClearance,
             children: <Widget>[
               WishlistHorizontalPadding(
                 child: _HeroCard(
-                  item: item,
+                  item: sharedItem,
                 ),
               ),
               const SizedBox(height: 18),
               WishlistHorizontalPadding(
                 child: _PlanSummaryCard(
-                  item: item,
+                  item: sharedItem,
                 ),
               ),
               const SizedBox(height: 16),
               WishlistHorizontalPadding(
-                child: _TravelDetailsCard(item: item),
+                child: _TravelDetailsCard(item: sharedItem),
               ),
-              if (item.plannedCities.trim().isNotEmpty) ...<Widget>[
+              if (sharedItem.plannedCities.trim().isNotEmpty) ...<Widget>[
                 const SizedBox(height: 16),
                 WishlistHorizontalPadding(
-                  child: _CitiesCard(item: item),
+                  child: _CitiesCard(item: sharedItem),
                 ),
               ],
-              if ((item.notes ?? '').trim().isNotEmpty) ...<Widget>[
+              if ((sharedItem.notes ?? '').trim().isNotEmpty) ...<Widget>[
                 const SizedBox(height: 16),
                 WishlistHorizontalPadding(
                   child: _NotesCard(
-                    item: item,
+                    item: sharedItem,
                     friendName: profile.friend.displayName,
                   ),
                 ),
@@ -124,51 +108,62 @@ class FriendWishlistDetailScreen extends ConsumerWidget {
       },
     );
   }
+
+  static Widget _buildLoadingBody(double topPadding) {
+    return WishlistScrollView(
+      topPadding: topPadding,
+      bottomPadding: _bottomClearance,
+      children: const <Widget>[
+        WishlistHorizontalPadding(
+          child: WishlistStatusCard(
+            title: 'Loading wishlist idea',
+            message: 'Opening the shared plan details.',
+            showProgress: true,
+          ),
+        ),
+      ],
+    );
+  }
+
+  static Widget _buildMissingBody(double topPadding) {
+    return WishlistScrollView(
+      topPadding: topPadding,
+      bottomPadding: _bottomClearance,
+      children: const <Widget>[
+        WishlistHorizontalPadding(
+          child: WishlistStatusCard(
+            title: 'Wishlist idea not found',
+            message: 'This shared wishlist item is no longer available.',
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _Shell extends StatelessWidget {
-  const _Shell({required this.body});
+  const _Shell({required this.bodyBuilder});
 
-  final Widget body;
+  final _FriendWishlistBodyBuilder bodyBuilder;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: ColoredBox(
-        color: scheme.surface,
-        child: Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            const Positioned.fill(
-              child: IgnorePointer(child: WishlistAtmosphere()),
-            ),
-            Column(
-              children: <Widget>[
-                SafeArea(
-                  bottom: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    child: _TopBar(
-                      onBack: () {
-                        if (context.canPop()) {
-                          context.pop();
-                          return;
-                        }
-                        context.go('/friends');
-                      },
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Expanded(child: body),
-              ],
-            ),
-          ],
-        ),
+    return EditorialOverlayPageShell(
+      background: const WishlistAtmosphere(),
+      backgroundColor: scheme.surface,
+      topBar: _TopBar(
+        onBack: () {
+          if (context.canPop()) {
+            context.pop();
+            return;
+          }
+          context.go('/friends');
+        },
       ),
+      bodyBuilder: (context, topContentInset, __) =>
+          bodyBuilder(topContentInset),
     );
   }
 }

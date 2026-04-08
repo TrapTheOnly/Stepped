@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../widgets/editorial_overlay_page_shell.dart';
 import '../../widgets/frosted_squircle.dart';
 import '../social/social_api_client.dart';
 import '../social/social_models.dart';
@@ -30,94 +31,74 @@ class FriendTripDetailScreen extends ConsumerWidget {
     final profileAsync = ref.watch(friendProfileProvider(friendUserId));
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: ColoredBox(
-        color: colorScheme.surface,
-        child: Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            const Positioned.fill(
-              child: IgnorePointer(child: _FriendTripAtmosphere()),
-            ),
-            Column(
+    return EditorialOverlayPageShell(
+      background: const _FriendTripAtmosphere(),
+      backgroundColor: colorScheme.surface,
+      topBar: _FriendTripTopBar(
+        onBack: () => _popOrGoToProfile(context),
+      ),
+      bodyBuilder: (context, topContentInset, __) {
+        return profileAsync.when(
+          loading: () => const _StatusView(
+            title: 'Opening trip',
+            message: 'Loading the shared route and city guides.',
+            showProgress: true,
+          ),
+          error: (error, _) => _StatusView(
+            title: 'Trip unavailable',
+            message: _messageForError(error),
+          ),
+          data: (profile) {
+            final trip = _findTrip(profile.trips);
+            if (trip == null) {
+              return const _StatusView(
+                title: 'Trip unavailable',
+                message:
+                    'This shared trip could not be found in the current friend profile response.',
+              );
+            }
+
+            return _FriendTripScrollView(
+              topPadding: topContentInset,
               children: <Widget>[
-                SafeArea(
-                  bottom: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    child: _FriendTripTopBar(
-                      onBack: () => _popOrGoToProfile(context),
+                _FriendHorizontalPadding(
+                  child: AddTripDestinationPreview(
+                    countryCode: trip.countryCode,
+                    countryName: trip.countryName,
+                    coverImageUri: trip.coverImageUrl,
+                    startDate: DateTime.fromMillisecondsSinceEpoch(
+                      trip.startDate,
+                    ),
+                    endDate: DateTime.fromMillisecondsSinceEpoch(
+                      trip.endDate,
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: profileAsync.when(
-                    loading: () => const _StatusView(
-                      title: 'Opening trip',
-                      message: 'Loading the shared route and city guides.',
-                      showProgress: true,
+                const SizedBox(height: 18),
+                _FriendHorizontalPadding(
+                  child: _ReadOnlyDestinationSection(trip: trip),
+                ),
+                const SizedBox(height: 12),
+                _FriendHorizontalPadding(
+                  child: _ReadOnlyTravelDetailsSection(
+                    trip: trip,
+                    onOpenCity: (city) => _openCity(
+                      context,
+                      city: city,
+                      countryName: trip.countryName,
+                      ownerDisplayName: profile.friend.displayName,
                     ),
-                    error: (error, _) => _StatusView(
-                      title: 'Trip unavailable',
-                      message: _messageForError(error),
-                    ),
-                    data: (profile) {
-                      final trip = _findTrip(profile.trips);
-                      if (trip == null) {
-                        return const _StatusView(
-                          title: 'Trip unavailable',
-                          message:
-                              'This shared trip could not be found in the current friend profile response.',
-                        );
-                      }
-
-                      return _FriendTripScrollView(
-                        children: <Widget>[
-                          _FriendHorizontalPadding(
-                            child: AddTripDestinationPreview(
-                              countryCode: trip.countryCode,
-                              countryName: trip.countryName,
-                              coverImageUri: trip.coverImageUrl,
-                              startDate: DateTime.fromMillisecondsSinceEpoch(
-                                trip.startDate,
-                              ),
-                              endDate: DateTime.fromMillisecondsSinceEpoch(
-                                trip.endDate,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 18),
-                          _FriendHorizontalPadding(
-                            child: _ReadOnlyDestinationSection(trip: trip),
-                          ),
-                          const SizedBox(height: 12),
-                          _FriendHorizontalPadding(
-                            child: _ReadOnlyTravelDetailsSection(
-                              trip: trip,
-                              onOpenCity: (city) => _openCity(
-                                context,
-                                city: city,
-                                countryName: trip.countryName,
-                                ownerDisplayName: profile.friend.displayName,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          _FriendHorizontalPadding(
-                            child: _ReadOnlyMediaNotesSection(trip: trip),
-                          ),
-                        ],
-                      );
-                    },
                   ),
+                ),
+                const SizedBox(height: 12),
+                _FriendHorizontalPadding(
+                  child: _ReadOnlyMediaNotesSection(trip: trip),
                 ),
               ],
-            ),
-          ],
-        ),
-      ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -257,17 +238,21 @@ class _FriendTripTopBar extends StatelessWidget {
 }
 
 class _FriendTripScrollView extends StatelessWidget {
-  const _FriendTripScrollView({required this.children});
+  const _FriendTripScrollView({
+    required this.children,
+    this.topPadding = 0,
+  });
 
   final List<Widget> children;
+  final double topPadding;
 
   @override
   Widget build(BuildContext context) {
     return ListView(
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(
+      padding: EdgeInsets.fromLTRB(
         0,
-        0,
+        topPadding,
         0,
         _friendTripBottomPadding,
       ),
@@ -617,39 +602,38 @@ class _StatusView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final topPadding = editorialOverlayTopContentInsetOf(context, fallback: 24);
 
-    return SafeArea(
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, topPadding, 16, 16),
       child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: FrostedSquircle(
-            radius: 30,
-            blurSigma: 16,
-            color: colorScheme.surface.withValues(alpha: 0.72),
-            borderColor: colorScheme.primaryContainer.withValues(alpha: 0.14),
-            shadowColor: colorScheme.primary.withValues(alpha: 0.08),
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(title, style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 8),
-                Text(
-                  message,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+        child: FrostedSquircle(
+          radius: 30,
+          blurSigma: 16,
+          color: colorScheme.surface.withValues(alpha: 0.72),
+          borderColor: colorScheme.primaryContainer.withValues(alpha: 0.14),
+          shadowColor: colorScheme.primary.withValues(alpha: 0.08),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(title, style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Text(
+                message,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              if (showProgress) ...<Widget>[
+                const SizedBox(height: 18),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: const LinearProgressIndicator(minHeight: 6),
                 ),
-                if (showProgress) ...<Widget>[
-                  const SizedBox(height: 18),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(999),
-                    child: const LinearProgressIndicator(minHeight: 6),
-                  ),
-                ],
               ],
-            ),
+            ],
           ),
         ),
       ),

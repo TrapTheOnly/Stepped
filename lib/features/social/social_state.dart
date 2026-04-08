@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/widgets.dart';
 import 'package:path/path.dart' as path;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/db/app_db.dart';
 import '../../data/repositories/trips_repository.dart';
@@ -19,6 +20,8 @@ import '../wishlist/widgets/wishlist_editorial_widgets.dart';
 import 'social_api_client.dart';
 import 'social_asset_urls.dart';
 import 'social_models.dart';
+
+const _socialCacheOwnerKey = 'stepped_social_cache_owner_v1';
 
 final socialApiClientProvider = Provider<SocialApiClient>((ref) {
   return SocialApiClient();
@@ -533,9 +536,7 @@ final socialSyncBootstrapProvider = Provider<void>((ref) {
   });
 
   ref.listen<AuthController>(authControllerProvider, (_, __) {
-    coordinator.scheduleProfileSync();
-    coordinator.scheduleTravelSync();
-    coordinator.scheduleWishlistSync();
+    coordinator.scheduleRemoteRefresh();
   });
   ref.listen<AsyncValue<AppPreferences>>(appPreferencesProvider, (_, __) {
     coordinator.scheduleProfileSync();
@@ -572,6 +573,10 @@ class _SocialSyncLifecycleObserver extends WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _controller.scheduleRemoteRefresh();
+      return;
+    }
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
@@ -655,22 +660,18 @@ class SocialSyncController {
       await _clearLocalUserData();
       _hydratedUserId = null;
       _didHydrateRemoteState = false;
+      _remoteHydrationFuture = null;
       _lastProfileSignature = null;
       _lastTravelSignature = null;
       _lastWishlistSignature = null;
       return;
     }
 
-    if (_hydratedUserId != session.user.id) {
-      await _clearLocalUserData();
-      _hydratedUserId = session.user.id;
-      _didHydrateRemoteState = false;
-      _lastProfileSignature = null;
-      _lastTravelSignature = null;
-      _lastWishlistSignature = null;
+    await _prepareForSession(session);
+    final hydrateSucceeded = await _hydrateRemoteStateIfNeeded(session);
+    if (!hydrateSucceeded) {
+      return;
     }
-
-    await _hydrateRemoteStateIfNeeded(session);
 
     final snapshot = ref.read(socialProfileSnapshotProvider);
     final signature = jsonEncode(snapshot.toJson());
@@ -702,12 +703,36 @@ class SocialSyncController {
     }
   }
 
-  Future<void> _hydrateRemoteStateIfNeeded(SocialSession session) async {
+  Future<bool> _hydrateRemoteStateIfNeeded(
+    SocialSession session, {
+    bool force = false,
+  }) async {
+    await _prepareForSession(session);
+    if (force) {
+      _didHydrateRemoteState = false;
+      _remoteHydrationFuture = null;
+    }
     if (_didHydrateRemoteState) {
-      return;
+      return true;
     }
 
-    _didHydrateRemoteState = true;
+    final inFlight = _remoteHydrationFuture;
+    if (inFlight != null) {
+      return inFlight;
+    }
+
+    final future = _runRemoteHydration(session);
+    _remoteHydrationFuture = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_remoteHydrationFuture, future)) {
+        _remoteHydrationFuture = null;
+      }
+    }
+  }
+
+  Future<bool> _runRemoteHydration(SocialSession session) async {
     try {
       final localWishlistItems =
           await ref.read(wishlistRepositoryProvider).getWishlistItems();
@@ -842,11 +867,16 @@ class SocialSyncController {
         );
       }
 
+      _didHydrateRemoteState = true;
+      await _writeLocalCacheOwner(session.user.id);
       ref.invalidate(socialMeProvider);
       ref.invalidate(friendsHubProvider);
+      return true;
     } catch (error, stackTrace) {
+      _didHydrateRemoteState = false;
       debugPrint('Remote social state hydration failed: $error');
       debugPrintStack(stackTrace: stackTrace);
+      return false;
     }
   }
 
@@ -866,7 +896,11 @@ class SocialSyncController {
       return;
     }
 
-    await _hydrateRemoteStateIfNeeded(session);
+    await _prepareForSession(session);
+    final hydrateSucceeded = await _hydrateRemoteStateIfNeeded(session);
+    if (!hydrateSucceeded) {
+      return;
+    }
     await _promoteTripMedia(session);
 
     final snapshot = ref.read(socialTravelSnapshotProvider);
@@ -909,7 +943,11 @@ class SocialSyncController {
       return;
     }
 
-    await _hydrateRemoteStateIfNeeded(session);
+    await _prepareForSession(session);
+    final hydrateSucceeded = await _hydrateRemoteStateIfNeeded(session);
+    if (!hydrateSucceeded) {
+      return;
+    }
     await _promoteWishlistMedia(session);
 
     final snapshot = ref.read(socialWishlistSnapshotProvider);
@@ -1088,9 +1126,45 @@ class SocialSyncController {
   Future<void> _clearLocalUserData() async {
     await ref.read(databaseProvider).clearSocialData();
     await ref.read(appPreferencesProvider.notifier).clearProfileCache();
+    await _clearLocalCacheOwner();
     _FriendsHubCacheStore.clearAll();
     ref.invalidate(socialMeProvider);
     ref.invalidate(friendsHubProvider);
+  }
+
+  Future<void> _prepareForSession(SocialSession session) async {
+    if (_hydratedUserId == session.user.id) {
+      return;
+    }
+
+    final cacheOwner = await _readLocalCacheOwner();
+    final shouldClearForUserSwitch =
+        cacheOwner != null && cacheOwner != session.user.id;
+    if (shouldClearForUserSwitch) {
+      await _clearLocalUserData();
+    }
+
+    _hydratedUserId = session.user.id;
+    _didHydrateRemoteState = false;
+    _remoteHydrationFuture = null;
+    _lastProfileSignature = null;
+    _lastTravelSignature = null;
+    _lastWishlistSignature = null;
+  }
+
+  Future<String?> _readLocalCacheOwner() async {
+    final prefs = await SharedPreferences.getInstance();
+    return _nonEmptyOrNull(prefs.getString(_socialCacheOwnerKey));
+  }
+
+  Future<void> _writeLocalCacheOwner(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_socialCacheOwnerKey, userId);
+  }
+
+  Future<void> _clearLocalCacheOwner() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_socialCacheOwnerKey);
   }
 
   void dispose() {

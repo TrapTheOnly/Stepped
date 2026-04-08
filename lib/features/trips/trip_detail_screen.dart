@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../data/db/app_db.dart';
 import '../../data/repositories/trips_repository.dart';
 import '../../data/repositories/wishlist_repository.dart';
+import '../../widgets/editorial_overlay_page_shell.dart';
 import '../../widgets/frosted_squircle.dart';
 import '../social/social_state.dart';
 import '../wishlist/gemini_trip_planner.dart';
@@ -30,6 +31,8 @@ class TripDetailScreen extends ConsumerStatefulWidget {
   ConsumerState<TripDetailScreen> createState() => _TripDetailScreenState();
 }
 
+typedef _TripDetailBodyBuilder = Widget Function(double topPadding);
+
 class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   TripRecord? _trip;
   List<TripCityEntry> _tripCities = const <TripCityEntry>[];
@@ -45,11 +48,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
         : ref.watch(wishlistItemProvider(sourceWishlistItemId));
 
     return tripAsync.when(
-      loading: () => const _TripDetailShell(
+      loading: () => _TripDetailShell(
         title: 'Trip',
-        body: WishlistScrollView(
+        bodyBuilder: (topPadding) => WishlistScrollView(
+          topPadding: topPadding,
           bottomPadding: _tripDetailBottomClearance,
-          children: <Widget>[
+          children: const <Widget>[
             WishlistHorizontalPadding(
               child: WishlistStatusCard(
                 title: 'Loading trip',
@@ -62,7 +66,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
       ),
       error: (error, _) => _TripDetailShell(
         title: 'Trip',
-        body: WishlistScrollView(
+        bodyBuilder: (topPadding) => WishlistScrollView(
+          topPadding: topPadding,
           bottomPadding: _tripDetailBottomClearance,
           children: <Widget>[
             WishlistHorizontalPadding(
@@ -76,11 +81,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
       ),
       data: (trip) {
         if (trip == null) {
-          return const _TripDetailShell(
+          return _TripDetailShell(
             title: 'Trip',
-            body: WishlistScrollView(
+            bodyBuilder: (topPadding) => WishlistScrollView(
+              topPadding: topPadding,
               bottomPadding: _tripDetailBottomClearance,
-              children: <Widget>[
+              children: const <Widget>[
                 WishlistHorizontalPadding(
                   child: WishlistStatusCard(
                     title: 'Trip unavailable',
@@ -105,7 +111,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
         return _TripDetailShell(
           title: 'Trip',
           onEdit: _openEditor,
-          body: WishlistScrollView(
+          bodyBuilder: (topPadding) => WishlistScrollView(
+            topPadding: topPadding,
             bottomPadding: _tripDetailBottomClearance,
             children: <Widget>[
               WishlistHorizontalPadding(
@@ -374,50 +381,28 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
 class _TripDetailShell extends StatelessWidget {
   const _TripDetailShell({
     required this.title,
-    required this.body,
+    required this.bodyBuilder,
     this.onEdit,
   });
 
   final String title;
-  final Widget body;
+  final _TripDetailBodyBuilder bodyBuilder;
   final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: ColoredBox(
-        color: scheme.surface,
-        child: Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            const Positioned.fill(
-              child: IgnorePointer(
-                child: WishlistAtmosphere(),
-              ),
-            ),
-            Column(
-              children: <Widget>[
-                SafeArea(
-                  bottom: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    child: _TripDetailTopBar(
-                      title: title,
-                      onBack: () => Navigator.of(context).maybePop(),
-                      onEdit: onEdit,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Expanded(child: body),
-              ],
-            ),
-          ],
-        ),
+    return EditorialOverlayPageShell(
+      background: const WishlistAtmosphere(),
+      backgroundColor: scheme.surface,
+      topBar: _TripDetailTopBar(
+        title: title,
+        onBack: () => Navigator.of(context).maybePop(),
+        onEdit: onEdit,
       ),
+      bodyBuilder: (context, topContentInset, __) =>
+          bodyBuilder(topContentInset),
     );
   }
 }
