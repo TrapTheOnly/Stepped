@@ -1,10 +1,22 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
 import 'globe_country_data.dart';
 import 'globe_projection.dart';
 
+/// CustomPainter that renders the interactive globe.
+///
+/// The renderer is structured around per-ring drawing:
+///
+/// * Every disjoint landmass (Alaska, Hawaii, French Guiana, Kalimantan…)
+///   is treated as an independent shape, so a country's secondary pieces
+///   never disappear because the primary mainland left the field of view.
+/// * Polygon clipping happens in 3D camera space against the horizon plane
+///   (`z = 0`). When a ring crosses the horizon we follow the silhouette
+///   circle with `arcToPoint`, which removes the chord-shaped "ocean" gaps
+///   that the previous straight-line closer used to leak onto the disc edge.
 class GlobePainter extends CustomPainter {
   GlobePainter({
     required this.colorScheme,
@@ -18,19 +30,12 @@ class GlobePainter extends CustomPainter {
   });
 
   final ColorScheme colorScheme;
-
   final double rotation;
-
   final double pitch;
-
   final double zoom;
-
   final int lodLevel;
-
   final List<GlobeCountryShape> countries;
-
   final Set<String> visitedCountryCodes;
-
   final String? selectedCountryCode;
 
   @override
@@ -44,44 +49,58 @@ class GlobePainter extends CustomPainter {
       center: center,
       radius: globeRadius,
     );
+    final palette = _GlobePalette.fromScheme(colorScheme);
 
-    _paintShadow(canvas, center, baseRadius);
-    _paintGlobeBase(canvas, center, globeRadius);
+    _paintAmbientShadow(canvas, center, baseRadius, palette);
+    _paintAtmosphere(canvas, center, globeRadius, palette);
+    _paintSphereSurface(canvas, center, globeRadius, palette);
 
     canvas.save();
+    // Tight oval clip (slightly oversized) ensures any sub-pixel overshoot
+    // produced by the silhouette interpolation is hidden behind the rim.
     canvas.clipPath(
-        Path()..addOval(Rect.fromCircle(center: center, radius: globeRadius)));
+      Path()
+        ..addOval(
+          Rect.fromCircle(center: center, radius: globeRadius + 0.5),
+        ),
+    );
 
-    final visibleCountries = _collectVisibleCountries(
+    final renderQueue = _collectRenderItems(
       size: size,
-      center: center,
-      globeRadius: globeRadius,
       projector: projector,
+      globeRadius: globeRadius,
     );
 
-    _paintCountries(
-      canvas,
-      globeRadius: globeRadius,
-      projector: projector,
-      countriesToPaint: visibleCountries,
-    );
+    final strokeBase = baseRadius;
+    final defaultStroke = (strokeBase * 0.0048).clamp(0.42, 0.85);
+    final visitedStroke = (strokeBase * 0.0064).clamp(0.55, 1.05);
+    final selectedStroke = (strokeBase * 0.0085).clamp(0.72, 1.45);
 
-    _paintVisitedMarkers(
+    for (final item in renderQueue) {
+      _paintRing(
+        canvas,
+        item: item,
+        projector: projector,
+        center: center,
+        radius: globeRadius,
+        palette: palette,
+        defaultStroke: defaultStroke,
+        visitedStroke: visitedStroke,
+        selectedStroke: selectedStroke,
+      );
+    }
+
+    _paintMarkers(
       canvas,
-      globeRadius: globeRadius,
-      countriesToPaint: visibleCountries,
+      renderItems: renderQueue,
+      projector: projector,
+      baseRadius: baseRadius,
+      palette: palette,
     );
 
     canvas.restore();
 
-    canvas.drawCircle(
-      center,
-      globeRadius,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1.0, baseRadius * 0.008)
-        ..color = colorScheme.outlineVariant.withValues(alpha: 0.66),
-    );
+    _paintRim(canvas, center, globeRadius, palette, baseRadius);
   }
 
   @override
@@ -96,21 +115,547 @@ class GlobePainter extends CustomPainter {
         !_sameVisitedCodes(
             oldDelegate.visitedCountryCodes, visitedCountryCodes);
   }
-}
 
-class _CountryPaintCandidate {
-  const _CountryPaintCandidate({
-    required this.country,
-    required this.projectedCentroid,
-    required this.opacity,
-  });
+  // ---------------------------------------------------------------------------
+  // Background & atmosphere
+  // ---------------------------------------------------------------------------
 
-  final GlobeCountryShape country;
-  final GlobeProjectedPoint projectedCentroid;
-  final double opacity;
-}
+  void _paintAmbientShadow(
+    Canvas canvas,
+    Offset center,
+    double baseRadius,
+    _GlobePalette palette,
+  ) {
+    final rect = Rect.fromCenter(
+      center: Offset(center.dx, center.dy + (baseRadius * 1.06)),
+      width: baseRadius * 1.7,
+      height: baseRadius * 0.36,
+    );
+    final paint = Paint()
+      ..shader = ui.Gradient.radial(
+        rect.center,
+        rect.width * 0.5,
+        <Color>[
+          palette.ambientShadow.withValues(alpha: 0.42),
+          palette.ambientShadow.withValues(alpha: 0.0),
+        ],
+      );
+    canvas.drawOval(rect, paint);
+  }
 
-extension _GlobePainterShapeMethods on GlobePainter {
+  void _paintAtmosphere(
+    Canvas canvas,
+    Offset center,
+    double globeRadius,
+    _GlobePalette palette,
+  ) {
+    final outerRadius = globeRadius * 1.10;
+    final rect = Rect.fromCircle(center: center, radius: outerRadius);
+    final paint = Paint()
+      ..shader = ui.Gradient.radial(
+        center,
+        outerRadius,
+        <Color>[
+          palette.atmosphere.withValues(alpha: 0.0),
+          palette.atmosphere.withValues(alpha: 0.18),
+          palette.atmosphere.withValues(alpha: 0.0),
+        ],
+        <double>[0.86, 0.93, 1.0],
+      );
+    canvas.drawRect(rect, paint);
+  }
+
+  void _paintSphereSurface(
+    Canvas canvas,
+    Offset center,
+    double globeRadius,
+    _GlobePalette palette,
+  ) {
+    // Base ocean fill — soft radial gradient to suggest a 3D sphere without
+    // the glossy "globus" feel.
+    canvas.drawCircle(
+      center,
+      globeRadius,
+      Paint()
+        ..shader = ui.Gradient.radial(
+          Offset(
+            center.dx - (globeRadius * 0.38),
+            center.dy - (globeRadius * 0.44),
+          ),
+          globeRadius * 1.35,
+          <Color>[palette.oceanHighlight, palette.oceanBase, palette.oceanDeep],
+          <double>[0.0, 0.55, 1.0],
+        ),
+    );
+
+    // Subtle warm rim light to make the sphere feel lit from above.
+    canvas.drawCircle(
+      center,
+      globeRadius,
+      Paint()
+        ..shader = ui.Gradient.radial(
+          Offset(
+            center.dx - (globeRadius * 0.55),
+            center.dy - (globeRadius * 0.65),
+          ),
+          globeRadius * 0.8,
+          <Color>[
+            palette.rimLight.withValues(alpha: 0.18),
+            palette.rimLight.withValues(alpha: 0.0),
+          ],
+        ),
+    );
+
+    // Soft inner shadow on the lower-right to deepen the sphere.
+    canvas.drawCircle(
+      center,
+      globeRadius,
+      Paint()
+        ..shader = ui.Gradient.radial(
+          Offset(
+            center.dx + (globeRadius * 0.45),
+            center.dy + (globeRadius * 0.55),
+          ),
+          globeRadius * 1.1,
+          <Color>[
+            palette.innerShadow.withValues(alpha: 0.0),
+            palette.innerShadow.withValues(alpha: 0.22),
+          ],
+          <double>[0.6, 1.0],
+        ),
+    );
+  }
+
+  void _paintRim(
+    Canvas canvas,
+    Offset center,
+    double globeRadius,
+    _GlobePalette palette,
+    double baseRadius,
+  ) {
+    final rimWidth = math.max(1.0, baseRadius * 0.006);
+    canvas.drawCircle(
+      center,
+      globeRadius,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = rimWidth
+        ..color = palette.rim.withValues(alpha: 0.55),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Country rendering
+  // ---------------------------------------------------------------------------
+
+  List<_RingRenderItem> _collectRenderItems({
+    required Size size,
+    required GlobeProjector projector,
+    required double globeRadius,
+  }) {
+    final items = <_RingRenderItem>[];
+    final viewportMargin = globeRadius * 0.08;
+    final viewport = Rect.fromLTRB(
+      -viewportMargin,
+      -viewportMargin,
+      size.width + viewportMargin,
+      size.height + viewportMargin,
+    );
+
+    for (final country in countries) {
+      final isVisited = visitedCountryCodes.contains(country.iso2);
+      final isSelected = selectedCountryCode == country.iso2;
+      final rings = country.ringsForLod(lodLevel);
+
+      for (final ring in rings) {
+        final centroid = projector.project(ring.centroid);
+        final maxSin = math.sin(ring.maxAngularDistanceRad).abs();
+
+        // Cull rings that are entirely on the back hemisphere. We allow a
+        // tiny epsilon so rings that *just* touch the horizon still draw.
+        if (centroid.z + maxSin < -0.02) {
+          continue;
+        }
+
+        // Coarse on-screen culling using the centroid + max-extent bounding
+        // circle. This keeps tight zoom-ins fast (most rings are skipped).
+        final approxRadius =
+            (globeRadius * maxSin).clamp(8.0, globeRadius + 16.0);
+        if (centroid.offset.dx + approxRadius < viewport.left ||
+            centroid.offset.dx - approxRadius > viewport.right ||
+            centroid.offset.dy + approxRadius < viewport.top ||
+            centroid.offset.dy - approxRadius > viewport.bottom) {
+          continue;
+        }
+
+        items.add(
+          _RingRenderItem(
+            country: country,
+            ring: ring,
+            isVisited: isVisited,
+            isSelected: isSelected,
+            centroid: centroid,
+          ),
+        );
+      }
+    }
+
+    // Back-to-front by camera depth so closer rings paint on top of further
+    // rings on the rare occasions where they overlap (e.g., overseas
+    // territories drawn near a continental neighbour at low zoom).
+    items.sort((left, right) =>
+        left.centroid.z.compareTo(right.centroid.z));
+    return items;
+  }
+
+  void _paintRing(
+    Canvas canvas, {
+    required _RingRenderItem item,
+    required GlobeProjector projector,
+    required Offset center,
+    required double radius,
+    required _GlobePalette palette,
+    required double defaultStroke,
+    required double visitedStroke,
+    required double selectedStroke,
+  }) {
+    final ring = item.ring;
+    final verts = _projectRing(ring, projector);
+
+    var anyVisible = false;
+    for (final v in verts) {
+      if (v.visible) {
+        anyVisible = true;
+        break;
+      }
+    }
+    if (!anyVisible) {
+      return;
+    }
+
+    final fillPath = _buildFillPath(verts, center, radius);
+    if (fillPath == null) {
+      return;
+    }
+
+    final isSelected = item.isSelected;
+    final isVisited = item.isVisited;
+
+    final fillColor = isSelected
+        ? palette.selectedFill
+        : (isVisited ? palette.visitedFill : palette.landFill);
+    final borderColor = isSelected
+        ? palette.selectedBorder
+        : (isVisited ? palette.visitedBorder : palette.landBorder);
+    final strokeWidth = isSelected
+        ? selectedStroke
+        : (isVisited ? visitedStroke : defaultStroke);
+
+    final fillPaint = Paint()
+      ..isAntiAlias = true
+      ..style = PaintingStyle.fill
+      ..color = fillColor;
+
+    canvas.drawPath(fillPath, fillPaint);
+
+    final borderPath = _buildBorderPath(verts, center, radius);
+    if (!borderPath.getBounds().isEmpty) {
+      // A thin matching-color underlay smooths the join between fill and
+      // stroke at high zoom — without it, antialiasing can leave a 1px
+      // ocean-coloured halo at the polygon edge.
+      final sealPaint = Paint()
+        ..isAntiAlias = true
+        ..style = PaintingStyle.stroke
+        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = StrokeCap.round
+        ..strokeWidth = strokeWidth * 1.25
+        ..color = fillColor;
+      canvas.drawPath(borderPath, sealPaint);
+
+      final borderPaint = Paint()
+        ..isAntiAlias = true
+        ..style = PaintingStyle.stroke
+        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = StrokeCap.round
+        ..strokeWidth = strokeWidth
+        ..color = borderColor;
+      canvas.drawPath(borderPath, borderPaint);
+    }
+  }
+
+  List<GlobeProjectedPoint> _projectRing(
+    GlobeRingShape ring,
+    GlobeProjector projector,
+  ) {
+    final points = ring.points;
+    final result = List<GlobeProjectedPoint>.filled(
+      points.length,
+      const GlobeProjectedPoint(x: 0, y: 0, z: 0, offset: Offset.zero),
+    );
+    for (var i = 0; i < points.length; i++) {
+      result[i] = projector.project(points[i]);
+    }
+    return result;
+  }
+
+  /// Build a closed fill path that follows the visible portion of the ring,
+  /// connecting consecutive horizon crossings with arcs along the silhouette.
+  Path? _buildFillPath(
+    List<GlobeProjectedPoint> verts,
+    Offset center,
+    double radius,
+  ) {
+    final n = verts.length - 1; // ignore the closing duplicate vertex
+    if (n < 3) {
+      return null;
+    }
+
+    var allVisible = true;
+    var anyVisible = false;
+    for (var i = 0; i < n; i++) {
+      if (verts[i].visible) {
+        anyVisible = true;
+      } else {
+        allVisible = false;
+      }
+    }
+    if (!anyVisible) {
+      return null;
+    }
+
+    if (allVisible) {
+      final path = Path()
+        ..moveTo(verts[0].offset.dx, verts[0].offset.dy);
+      for (var i = 1; i < n; i++) {
+        path.lineTo(verts[i].offset.dx, verts[i].offset.dy);
+      }
+      path.close();
+      return path;
+    }
+
+    // Locate a back -> front transition so we can walk the ring linearly.
+    var startIdx = -1;
+    for (var i = 0; i < n; i++) {
+      final prev = verts[(i - 1 + n) % n];
+      final curr = verts[i];
+      if (curr.visible && !prev.visible) {
+        startIdx = i;
+        break;
+      }
+    }
+
+    if (startIdx < 0) {
+      // No proper transition (e.g. a single vertex barely poking through).
+      return null;
+    }
+
+    final path = Path();
+    var started = false;
+    Offset? firstEnterScreen;
+    double? firstEnterAngle;
+    double? pendingExitAngle;
+
+    for (var step = 0; step < n; step++) {
+      final i = (startIdx + step) % n;
+      final j = (i + 1) % n;
+      final curr = verts[i];
+      final next = verts[j];
+
+      if (curr.visible) {
+        if (!started) {
+          // We started on a back -> front transition vertex; insert the
+          // entry intersection so the polygon begins on the silhouette.
+          final prev = verts[(i - 1 + n) % n];
+          final entry = computeSilhouettePoint(
+            a: prev,
+            b: curr,
+            center: center,
+            radius: radius,
+          );
+          path.moveTo(entry.screen.dx, entry.screen.dy);
+          path.lineTo(curr.offset.dx, curr.offset.dy);
+          firstEnterScreen = entry.screen;
+          firstEnterAngle = entry.angle;
+          started = true;
+        } else {
+          path.lineTo(curr.offset.dx, curr.offset.dy);
+        }
+
+        if (!next.visible) {
+          final exit = computeSilhouettePoint(
+            a: curr,
+            b: next,
+            center: center,
+            radius: radius,
+          );
+          path.lineTo(exit.screen.dx, exit.screen.dy);
+          pendingExitAngle = exit.angle;
+        }
+      } else if (next.visible) {
+        final entry = computeSilhouettePoint(
+          a: curr,
+          b: next,
+          center: center,
+          radius: radius,
+        );
+        if (pendingExitAngle != null) {
+          _appendSilhouetteArc(
+            path,
+            startAngle: pendingExitAngle,
+            endAngle: entry.angle,
+            endPoint: entry.screen,
+            radius: radius,
+          );
+          pendingExitAngle = null;
+        } else {
+          path.moveTo(entry.screen.dx, entry.screen.dy);
+          firstEnterScreen ??= entry.screen;
+          firstEnterAngle ??= entry.angle;
+          started = true;
+        }
+      }
+    }
+
+    if (!started) {
+      return null;
+    }
+
+    if (pendingExitAngle != null &&
+        firstEnterAngle != null &&
+        firstEnterScreen != null) {
+      _appendSilhouetteArc(
+        path,
+        startAngle: pendingExitAngle,
+        endAngle: firstEnterAngle,
+        endPoint: firstEnterScreen,
+        radius: radius,
+      );
+    }
+
+    path.close();
+    return path;
+  }
+
+  /// Border path with no silhouette arcs — just polygon segments truncated
+  /// at the horizon. This keeps the country outline strictly political.
+  Path _buildBorderPath(
+    List<GlobeProjectedPoint> verts,
+    Offset center,
+    double radius,
+  ) {
+    final n = verts.length - 1;
+    final path = Path();
+    if (n < 2) {
+      return path;
+    }
+
+    for (var i = 0; i < n; i++) {
+      final curr = verts[i];
+      final next = verts[(i + 1) % n];
+      final currVisible = curr.visible;
+      final nextVisible = next.visible;
+
+      if (currVisible && nextVisible) {
+        path.moveTo(curr.offset.dx, curr.offset.dy);
+        path.lineTo(next.offset.dx, next.offset.dy);
+      } else if (currVisible && !nextVisible) {
+        final exit = computeSilhouettePoint(
+          a: curr,
+          b: next,
+          center: center,
+          radius: radius,
+        );
+        path.moveTo(curr.offset.dx, curr.offset.dy);
+        path.lineTo(exit.screen.dx, exit.screen.dy);
+      } else if (!currVisible && nextVisible) {
+        final entry = computeSilhouettePoint(
+          a: curr,
+          b: next,
+          center: center,
+          radius: radius,
+        );
+        path.moveTo(entry.screen.dx, entry.screen.dy);
+        path.lineTo(next.offset.dx, next.offset.dy);
+      }
+    }
+    return path;
+  }
+
+  void _appendSilhouetteArc(
+    Path path, {
+    required double startAngle,
+    required double endAngle,
+    required Offset endPoint,
+    required double radius,
+  }) {
+    var diff = endAngle - startAngle;
+    while (diff > math.pi) {
+      diff -= math.pi * 2;
+    }
+    while (diff < -math.pi) {
+      diff += math.pi * 2;
+    }
+
+    // Screen coords have y pointing down: a positive angular delta sweeps
+    // clockwise visually, which is also Flutter's `clockwise: true`.
+    final clockwise = diff > 0;
+    path.arcToPoint(
+      endPoint,
+      radius: Radius.circular(radius),
+      clockwise: clockwise,
+      largeArc: false,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Pins / markers
+  // ---------------------------------------------------------------------------
+
+  void _paintMarkers(
+    Canvas canvas, {
+    required List<_RingRenderItem> renderItems,
+    required GlobeProjector projector,
+    required double baseRadius,
+    required _GlobePalette palette,
+  }) {
+    // Only mark each country once — pin sits on its largest visible piece.
+    final marked = <String>{};
+    for (final item in renderItems) {
+      final country = item.country;
+      final isVisited = item.isVisited;
+      final isSelected = item.isSelected;
+      if (!isVisited && !isSelected) {
+        continue;
+      }
+      if (!marked.add(country.iso2)) {
+        continue;
+      }
+      final centroid = item.centroid;
+      if (centroid.z < 0.02) {
+        continue;
+      }
+
+      final outerSize = (baseRadius *
+              (isSelected ? 0.024 : 0.018))
+          .clamp(2.6, 9.0);
+      canvas.drawCircle(
+        centroid.offset,
+        outerSize.toDouble(),
+        Paint()
+          ..color = isSelected ? palette.selectedPin : palette.visitedPin,
+      );
+      canvas.drawCircle(
+        centroid.offset,
+        (outerSize * 0.42).clamp(1.1, 4.0).toDouble(),
+        Paint()..color = palette.pinCore,
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+
   bool _sameVisitedCodes(Set<String> left, Set<String> right) {
     if (left.length != right.length) {
       return false;
@@ -122,391 +667,103 @@ extension _GlobePainterShapeMethods on GlobePainter {
     }
     return true;
   }
-
-  void _paintShadow(Canvas canvas, Offset center, double baseRadius) {
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(center.dx, center.dy + (baseRadius * 1.08)),
-        width: baseRadius * 1.58,
-        height: baseRadius * 0.34,
-      ),
-      Paint()..color = colorScheme.shadow.withValues(alpha: 0.16),
-    );
-  }
-
-  void _paintGlobeBase(Canvas canvas, Offset center, double globeRadius) {
-    final globeRect = Rect.fromCircle(center: center, radius: globeRadius);
-    final oceanCenter = _oceanColor(colorScheme.brightness, centerTone: true);
-    final oceanEdge = _oceanColor(colorScheme.brightness, centerTone: false);
-
-    final baseShader = RadialGradient(
-      center: const Alignment(-0.36, -0.42),
-      radius: 1.0,
-      colors: <Color>[oceanCenter, oceanEdge],
-    ).createShader(globeRect);
-
-    canvas.drawCircle(center, globeRadius, Paint()..shader = baseShader);
-
-    final glowShader = RadialGradient(
-      center: const Alignment(-0.5, -0.58),
-      radius: 0.7,
-      colors: <Color>[
-        colorScheme.primary.withValues(alpha: 0.14),
-        Colors.transparent,
-      ],
-    ).createShader(globeRect);
-
-    canvas.drawCircle(center, globeRadius, Paint()..shader = glowShader);
-  }
-
-  Color _oceanColor(Brightness brightness, {required bool centerTone}) {
-    final base = HSLColor.fromAHSL(
-      1,
-      205,
-      brightness == Brightness.dark ? 0.45 : 0.52,
-      brightness == Brightness.dark ? 0.30 : 0.78,
-    );
-    final shifted = centerTone
-        ? base.withLightness((base.lightness + 0.04).clamp(0.0, 1.0))
-        : base.withLightness((base.lightness - 0.06).clamp(0.0, 1.0));
-    return shifted.toColor();
-  }
-
-  List<_CountryPaintCandidate> _collectVisibleCountries({
-    required Size size,
-    required Offset center,
-    required double globeRadius,
-    required GlobeProjector projector,
-  }) {
-    final visible = <_CountryPaintCandidate>[];
-    final fadeStart = math.min(size.width, size.height) * 0.35;
-    final fadeEnd = math.max(size.width, size.height) * 0.74;
-
-    for (final country in countries) {
-      final projected = projector.project(country.centroid);
-
-      if (projected.depth < -0.45) {
-        continue;
-      }
-
-      final approxRadius =
-          (globeRadius * math.sin(country.maxAngularDistanceRad).abs())
-              .clamp(6.0, globeRadius);
-      if (projected.offset.dx < -approxRadius * 1.6 ||
-          projected.offset.dx > size.width + approxRadius * 1.6 ||
-          projected.offset.dy < -approxRadius * 1.6 ||
-          projected.offset.dy > size.height + approxRadius * 1.6) {
-        continue;
-      }
-
-      var opacity = 1.0;
-      if (zoom > 1.55) {
-        final focusDistance = math.max(
-            0.0, (projected.offset - center).distance - (approxRadius * 0.8));
-        final t = ((focusDistance - fadeStart) / (fadeEnd - fadeStart))
-            .clamp(0.0, 1.0);
-        opacity = 1 - (t * 0.72);
-      }
-
-      if (projected.depth < 0.04) {
-        final depthFade = ((projected.depth + 0.16) / 0.2).clamp(0.0, 1.0);
-        opacity *= (0.55 + (depthFade * 0.45));
-      }
-
-      opacity = opacity.clamp(0.22, 1.0);
-
-      visible.add(
-        _CountryPaintCandidate(
-          country: country,
-          projectedCentroid: projected,
-          opacity: opacity,
-        ),
-      );
-    }
-
-    visible.sort((left, right) =>
-        left.projectedCentroid.depth.compareTo(right.projectedCentroid.depth));
-    return visible;
-  }
-
-  void _paintCountries(
-    Canvas canvas, {
-    required double globeRadius,
-    required GlobeProjector projector,
-    required List<_CountryPaintCandidate> countriesToPaint,
-  }) {
-    final landFillColor =
-        colorScheme.surfaceContainerHigh.withValues(alpha: 0.9);
-    final defaultBorderColor =
-        colorScheme.onSurfaceVariant.withValues(alpha: 0.62);
-    final visitedFillColor =
-        colorScheme.primaryContainer.withValues(alpha: 0.93);
-    final visitedBorderColor = colorScheme.primary.withValues(alpha: 0.92);
-    final selectedFillColor =
-        colorScheme.tertiaryContainer.withValues(alpha: 0.96);
-    final selectedBorderColor = colorScheme.tertiary.withValues(alpha: 0.96);
-
-    final baseRadius = globeRadius / zoom.clamp(1.0, 50.0);
-    final defaultStroke = (baseRadius * 0.0058).clamp(0.44, 0.92);
-    final visitedStroke = (baseRadius * 0.0072).clamp(0.56, 1.18);
-    final selectedStroke = (baseRadius * 0.009).clamp(0.74, 1.45);
-
-    for (final candidate in countriesToPaint) {
-      final country = candidate.country;
-      final isVisited = visitedCountryCodes.contains(country.iso2);
-      final isSelected = selectedCountryCode == country.iso2;
-      final rings = country.ringsForLod(lodLevel);
-      final internalSharedEdges = country.iso2 == 'UA'
-          ? _collectInternalSharedEdges(rings)
-          : const <String>{};
-
-      final fillPaint = Paint()
-        ..style = PaintingStyle.fill
-        ..isAntiAlias = true
-        ..color = _applyOpacity(
-          isSelected
-              ? selectedFillColor
-              : (isVisited ? visitedFillColor : landFillColor),
-          candidate.opacity,
-        );
-
-      final borderPaint = Paint()
-        ..style = PaintingStyle.stroke
-        ..isAntiAlias = true
-        ..strokeJoin = StrokeJoin.round
-        ..strokeCap = StrokeCap.round
-        ..strokeWidth = isSelected
-            ? selectedStroke
-            : (isVisited ? visitedStroke : defaultStroke)
-        ..color = _applyOpacity(
-          isSelected
-              ? selectedBorderColor
-              : (isVisited ? visitedBorderColor : defaultBorderColor),
-          candidate.opacity,
-        );
-      final sealPaint = Paint()
-        ..style = PaintingStyle.stroke
-        ..isAntiAlias = true
-        ..strokeJoin = StrokeJoin.round
-        ..strokeCap = StrokeCap.round
-        ..strokeWidth = borderPaint.strokeWidth * 1.28
-        ..color = fillPaint.color;
-
-      for (final ring in rings) {
-        final projected = <GlobeProjectedPoint>[
-          for (final point in ring) projector.project(point),
-        ];
-
-        final fillPaths = _buildVisibleFillPaths(projected, ring);
-        for (final fillPath in fillPaths) {
-          canvas.drawPath(fillPath, fillPaint);
-        }
-
-        final borderPath = _buildVisibleBorderPath(
-          projected,
-          ring,
-          internalSharedEdges,
-        );
-        if (!borderPath.getBounds().isEmpty) {
-          canvas.drawPath(borderPath, sealPaint);
-          canvas.drawPath(borderPath, borderPaint);
-        }
-      }
-    }
-  }
 }
 
-extension _GlobePainterProjectionMethods on GlobePainter {
-  void _paintVisitedMarkers(
-    Canvas canvas, {
-    required double globeRadius,
-    required List<_CountryPaintCandidate> countriesToPaint,
-  }) {
-    for (final candidate in countriesToPaint) {
-      final country = candidate.country;
-      final isVisited = visitedCountryCodes.contains(country.iso2);
-      final isSelected = selectedCountryCode == country.iso2;
-      if (!isVisited && !isSelected) {
-        continue;
-      }
+class _RingRenderItem {
+  const _RingRenderItem({
+    required this.country,
+    required this.ring,
+    required this.isVisited,
+    required this.isSelected,
+    required this.centroid,
+  });
 
-      final projected = candidate.projectedCentroid;
-      if (!projected.visible) {
-        continue;
-      }
+  final GlobeCountryShape country;
+  final GlobeRingShape ring;
+  final bool isVisited;
+  final bool isSelected;
+  final GlobeProjectedPoint centroid;
+}
 
-      final markerPaint = Paint()
-        ..color = _applyOpacity(
-          isSelected ? colorScheme.tertiary : colorScheme.primary,
-          candidate.opacity,
-        );
-      final markerInnerPaint = Paint()
-        ..color = _applyOpacity(colorScheme.onPrimary, candidate.opacity);
+/// Centralised palette so the visual identity of the globe is in one place.
+/// The colors are derived from the active [ColorScheme] so the globe still
+/// follows the rest of the app's theme but with a more cinematic, deep-water
+/// look that doesn't read as a children's globus.
+class _GlobePalette {
+  const _GlobePalette({
+    required this.oceanHighlight,
+    required this.oceanBase,
+    required this.oceanDeep,
+    required this.atmosphere,
+    required this.rim,
+    required this.rimLight,
+    required this.innerShadow,
+    required this.ambientShadow,
+    required this.landFill,
+    required this.landBorder,
+    required this.visitedFill,
+    required this.visitedBorder,
+    required this.visitedPin,
+    required this.selectedFill,
+    required this.selectedBorder,
+    required this.selectedPin,
+    required this.pinCore,
+  });
 
-      final baseRadius = globeRadius / zoom.clamp(1.0, 50.0);
-      final outerSize = isSelected ? baseRadius * 0.026 : baseRadius * 0.02;
-      canvas.drawCircle(
-          projected.offset, outerSize.clamp(2.4, 10.0), markerPaint);
-      canvas.drawCircle(
-        projected.offset,
-        (outerSize * 0.42).clamp(1.2, 4.5),
-        markerInnerPaint,
-      );
-    }
-  }
+  final Color oceanHighlight;
+  final Color oceanBase;
+  final Color oceanDeep;
+  final Color atmosphere;
+  final Color rim;
+  final Color rimLight;
+  final Color innerShadow;
+  final Color ambientShadow;
+  final Color landFill;
+  final Color landBorder;
+  final Color visitedFill;
+  final Color visitedBorder;
+  final Color visitedPin;
+  final Color selectedFill;
+  final Color selectedBorder;
+  final Color selectedPin;
+  final Color pinCore;
 
-  Path _buildVisibleBorderPath(
-    List<GlobeProjectedPoint> points,
-    List<GlobeGeoPoint> ring,
-    Set<String> internalSharedEdges,
-  ) {
-    final path = Path();
-    if (points.length < 2) {
-      return path;
-    }
+  factory _GlobePalette.fromScheme(ColorScheme scheme) {
+    final isDark = scheme.brightness == Brightness.dark;
 
-    for (var i = 0; i < points.length - 1; i++) {
-      final current = points[i];
-      final next = points[i + 1];
-      if (!_isFront(current) || !_isFront(next)) {
-        continue;
-      }
-      if (_isGeoDateLineJump(ring[i], ring[i + 1])) {
-        continue;
-      }
-      if (internalSharedEdges.isNotEmpty &&
-          internalSharedEdges.contains(_segmentKey(ring[i], ring[i + 1]))) {
-        continue;
-      }
+    // Cool deep-water gradient — three stops for a sense of depth.
+    final oceanHighlight = isDark
+        ? const Color(0xFF1E2B3F)
+        : const Color(0xFFE7EEF6);
+    final oceanBase = isDark
+        ? const Color(0xFF13202F)
+        : const Color(0xFFCBD9E8);
+    final oceanDeep = isDark
+        ? const Color(0xFF0A1422)
+        : const Color(0xFFA9BCD0);
 
-      path.moveTo(current.offset.dx, current.offset.dy);
-      path.lineTo(next.offset.dx, next.offset.dy);
-    }
-
-    return path;
-  }
-
-  List<Path> _buildVisibleFillPaths(
-    List<GlobeProjectedPoint> points,
-    List<GlobeGeoPoint> ring,
-  ) {
-    if (points.length < 4) {
-      return const <Path>[];
-    }
-
-    final runs = _visibleRuns(points, ring);
-    if (runs.isEmpty) {
-      return const <Path>[];
-    }
-
-    final paths = <Path>[];
-    for (final run in runs) {
-      final path = Path()..moveTo(run.first.dx, run.first.dy);
-      for (final offset in run.skip(1)) {
-        path.lineTo(offset.dx, offset.dy);
-      }
-      path.close();
-      paths.add(path);
-    }
-    return paths;
-  }
-
-  List<List<Offset>> _visibleRuns(
-    List<GlobeProjectedPoint> points,
-    List<GlobeGeoPoint> ring,
-  ) {
-    final runs = <List<Offset>>[];
-    var current = <Offset>[];
-
-    for (var index = 0; index < points.length; index++) {
-      final point = points[index];
-      final previousIndex = index == 0 ? points.length - 1 : index - 1;
-      final previousGeo = ring[previousIndex];
-      final currentGeo = ring[index];
-
-      final connected = !_isGeoDateLineJump(previousGeo, currentGeo);
-
-      if (_isFront(point) && (current.isEmpty || connected)) {
-        current.add(point.offset);
-      } else {
-        if (current.isNotEmpty) {
-          runs.add(current);
-          current = <Offset>[];
-        }
-        if (_isFront(point)) {
-          current.add(point.offset);
-        }
-      }
-    }
-
-    if (current.isNotEmpty) {
-      runs.add(current);
-    }
-
-    if (runs.isEmpty) {
-      return const <List<Offset>>[];
-    }
-
-    if (_isFront(points.first) &&
-        _isFront(points.last) &&
-        runs.length >= 2 &&
-        !_isGeoDateLineJump(ring.first, ring.last)) {
-      final merged = <Offset>[...runs.last, ...runs.first];
-      runs
-        ..removeAt(runs.length - 1)
-        ..removeAt(0)
-        ..insert(0, merged);
-    }
-
-    return runs.where((run) => run.length >= 3).toList(growable: false);
-  }
-
-  bool _isFront(GlobeProjectedPoint point) => point.depth > -0.03;
-
-  bool _isGeoDateLineJump(GlobeGeoPoint left, GlobeGeoPoint right) {
-    final lonDelta = (left.lon - right.lon).abs();
-    return lonDelta > 170;
-  }
-
-  Set<String> _collectInternalSharedEdges(List<List<GlobeGeoPoint>> rings) {
-    final counts = <String, int>{};
-    for (final ring in rings) {
-      if (ring.length < 2) {
-        continue;
-      }
-      for (var i = 0; i < ring.length - 1; i++) {
-        final left = ring[i];
-        final right = ring[i + 1];
-        if (_isGeoDateLineJump(left, right)) {
-          continue;
-        }
-        final key = _segmentKey(left, right);
-        counts[key] = (counts[key] ?? 0) + 1;
-      }
-    }
-
-    return {
-      for (final entry in counts.entries)
-        if (entry.value > 1) entry.key,
-    };
-  }
-
-  String _segmentKey(GlobeGeoPoint left, GlobeGeoPoint right) {
-    final leftKey = _pointKey(left);
-    final rightKey = _pointKey(right);
-    if (leftKey.compareTo(rightKey) <= 0) {
-      return '$leftKey|$rightKey';
-    }
-    return '$rightKey|$leftKey';
-  }
-
-  String _pointKey(GlobeGeoPoint point) {
-    final lon = (point.lon * 1000000).round();
-    final lat = (point.lat * 1000000).round();
-    return '$lon:$lat';
-  }
-
-  Color _applyOpacity(Color color, double opacity) {
-    return color.withValues(alpha: (color.a * opacity).clamp(0.0, 1.0));
+    return _GlobePalette(
+      oceanHighlight: oceanHighlight,
+      oceanBase: oceanBase,
+      oceanDeep: oceanDeep,
+      atmosphere: scheme.primary,
+      rim: scheme.outlineVariant,
+      rimLight: isDark ? const Color(0xFFCFE3FF) : const Color(0xFFFFFFFF),
+      innerShadow: isDark ? Colors.black : const Color(0xFF1B2A3D),
+      ambientShadow: scheme.shadow,
+      landFill: isDark
+          ? const Color(0xFF2A3A4F).withValues(alpha: 0.92)
+          : const Color(0xFFF3F1EC).withValues(alpha: 0.96),
+      landBorder: isDark
+          ? const Color(0xFF7B8FA8).withValues(alpha: 0.60)
+          : const Color(0xFF6A788C).withValues(alpha: 0.68),
+      visitedFill: scheme.primaryContainer.withValues(alpha: 0.95),
+      visitedBorder: scheme.primary.withValues(alpha: 0.95),
+      visitedPin: scheme.primary,
+      selectedFill: scheme.tertiaryContainer.withValues(alpha: 0.97),
+      selectedBorder: scheme.tertiary.withValues(alpha: 0.98),
+      selectedPin: scheme.tertiary,
+      pinCore: scheme.onPrimary,
+    );
   }
 }

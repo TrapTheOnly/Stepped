@@ -30,6 +30,35 @@ class GlobeGeoPoint {
   final double cosLat;
 }
 
+/// A single closed landmass (outer ring of a polygon).
+///
+/// Each ring carries its own centroid, max angular extent and area, so the
+/// renderer/hit tester can treat disjoint pieces of a country (Alaska,
+/// French Guiana, Indonesian islands, …) independently of the country as a
+/// whole.
+@immutable
+class GlobeRingShape {
+  const GlobeRingShape({
+    required this.points,
+    required this.centroid,
+    required this.maxAngularDistanceRad,
+    required this.areaAbs,
+  });
+
+  /// Closed ring of geo points (last point equals the first).
+  final List<GlobeGeoPoint> points;
+
+  /// Polygon centroid in geographic coordinates.
+  final GlobeGeoPoint centroid;
+
+  /// Maximum great-circle distance (radians) from [centroid] to any vertex.
+  /// Used both for fitting zoom calculations and for visibility culling.
+  final double maxAngularDistanceRad;
+
+  /// Absolute polygon area in lon/lat space — used to rank disjoint pieces.
+  final double areaAbs;
+}
+
 @immutable
 class GlobeCountryShape {
   const GlobeCountryShape({
@@ -44,13 +73,31 @@ class GlobeCountryShape {
   final String iso2;
   final String name;
   final String? continent;
-  final List<List<List<GlobeGeoPoint>>> lodRings;
+
+  /// Per-LOD list of ring shapes. Sorted from largest to smallest area.
+  final List<List<GlobeRingShape>> lodRings;
+
+  /// Centroid of the largest ring of the country (the "primary" landmass).
   final GlobeGeoPoint centroid;
+
+  /// Max angular distance for the largest ring.
   final double maxAngularDistanceRad;
 
-  List<List<GlobeGeoPoint>> ringsForLod(int lodLevel) {
+  List<GlobeRingShape> ringsForLod(int lodLevel) {
     final lod = lodLevel.clamp(0, _lodCount - 1);
     return lodRings[lod];
+  }
+
+  /// The largest ring at the highest available LOD — used as the natural
+  /// "primary landmass" when an external focus request targets a country
+  /// without naming a specific piece.
+  GlobeRingShape get primaryRing {
+    for (var lod = _lodCount - 1; lod >= 0; lod--) {
+      if (lodRings[lod].isNotEmpty) {
+        return lodRings[lod].first;
+      }
+    }
+    throw StateError('Country $iso2 has no rings');
   }
 }
 
@@ -75,11 +122,9 @@ class GlobeCountryDatasetLoader {
   static Future<GlobeCountryDataset> _loadFromAssets() async {
     final low = await _loadRawCountries(
       assetPath: 'assets/data/countries_200m.geojson',
-      source: _GeoSource.naturalEarth110m,
     );
     final high = await _loadRawCountries(
       assetPath: 'assets/data/countries_110m.geojson',
-      source: _GeoSource.naturalEarth110m,
     );
 
     final allIsoCodes = <String>{...low.keys, ...high.keys};
@@ -100,10 +145,10 @@ class GlobeCountryDatasetLoader {
       final lowRings = lowRaw.rings;
       final highRings = highRaw?.rings ?? lowRings;
 
-      final lodRings = List<List<List<GlobeGeoPoint>>>.generate(
-        _lodCount,
-        (_) => <List<GlobeGeoPoint>>[],
-      );
+      final lodRings = <List<List<GlobeGeoPoint>>>[
+        <List<GlobeGeoPoint>>[],
+        <List<GlobeGeoPoint>>[],
+      ];
 
       for (final ring in lowRings) {
         if (ring.points.length >= 4) {
@@ -137,27 +182,40 @@ class GlobeCountryDatasetLoader {
 
     final countries = <GlobeCountryShape>[];
     for (final build in builds.values) {
-      final topLodRings = _bestReferenceRings(build.lodRings);
-      if (topLodRings.isEmpty) {
+      final lodRingShapes = <List<GlobeRingShape>>[
+        for (var lod = 0; lod < _lodCount; lod++)
+          _buildRingShapes(build.lodRings[lod]),
+      ];
+
+      // Drop the country entirely if every LOD ended up empty (shouldn't
+      // happen given the upstream guards, but be defensive).
+      if (lodRingShapes.every((rings) => rings.isEmpty)) {
         continue;
       }
 
-      final centroid = _computeCentroid(topLodRings);
-      final maxAngularDistanceRad =
-          _computeMaxAngularDistance(centroid, topLodRings);
+      // Use the largest ring of the highest available LOD as the country
+      // primary so external focus requests have a sensible default.
+      GlobeRingShape? primary;
+      for (var lod = _lodCount - 1; lod >= 0 && primary == null; lod--) {
+        if (lodRingShapes[lod].isNotEmpty) {
+          primary = lodRingShapes[lod].first;
+        }
+      }
+      primary ??= lodRingShapes
+          .firstWhere((rings) => rings.isNotEmpty)
+          .first;
 
       countries.add(
         GlobeCountryShape(
           iso2: build.iso2,
           name: build.name,
           continent: build.continent,
-          lodRings: List<List<List<GlobeGeoPoint>>>.unmodifiable(
-            build.lodRings.map(
-              (rings) => List<List<GlobeGeoPoint>>.unmodifiable(rings),
-            ),
+          lodRings: List<List<GlobeRingShape>>.unmodifiable(
+            lodRingShapes
+                .map((rings) => List<GlobeRingShape>.unmodifiable(rings)),
           ),
-          centroid: centroid,
-          maxAngularDistanceRad: maxAngularDistanceRad,
+          centroid: primary.centroid,
+          maxAngularDistanceRad: primary.maxAngularDistanceRad,
         ),
       );
     }
@@ -174,9 +232,38 @@ class GlobeCountryDatasetLoader {
     );
   }
 
+  /// Build [GlobeRingShape]s for a list of geographic rings, sorted largest
+  /// first. Tiny rings (sliver islands smaller than the LOD's effective
+  /// resolution) are dropped to keep the renderer cheap.
+  static List<GlobeRingShape> _buildRingShapes(
+    List<List<GlobeGeoPoint>> rings,
+  ) {
+    final shapes = <GlobeRingShape>[];
+    for (final ring in rings) {
+      if (ring.length < 4) {
+        continue;
+      }
+      final area = _ringAreaAbs(ring);
+      if (area <= 0) {
+        continue;
+      }
+      final centroid = _ringCentroid(ring);
+      final extent = _ringMaxAngularDistance(centroid, ring);
+      shapes.add(
+        GlobeRingShape(
+          points: ring,
+          centroid: centroid,
+          maxAngularDistanceRad: extent,
+          areaAbs: area,
+        ),
+      );
+    }
+    shapes.sort((left, right) => right.areaAbs.compareTo(left.areaAbs));
+    return shapes;
+  }
+
   static Future<Map<String, _RawCountry>> _loadRawCountries({
     required String assetPath,
-    required _GeoSource source,
   }) async {
     final sourceText = await rootBundle.loadString(assetPath);
     final root = jsonDecode(sourceText) as Map<String, dynamic>;
@@ -195,12 +282,12 @@ class GlobeCountryDatasetLoader {
         continue;
       }
 
-      final iso2 = _readIso2(properties, source);
+      final iso2 = _readIso2(properties);
       if (iso2 == null) {
         continue;
       }
 
-      final name = _readName(properties, source, fallback: iso2);
+      final name = _readName(properties, fallback: iso2);
       final continent = _readContinent(properties);
 
       final rings = _extractBaseRings(geometry)
@@ -220,21 +307,13 @@ class GlobeCountryDatasetLoader {
     return countries;
   }
 
-  static String? _readIso2(Map<String, dynamic> properties, _GeoSource source) {
-    String? raw;
-
-    switch (source) {
-      case _GeoSource.geoCountries:
-        raw = (properties['ISO3166-1-Alpha-2'] as String?) ??
-            (properties['iso_a2'] as String?);
-      case _GeoSource.naturalEarth110m:
-        raw = (properties['ISO_A2_EH'] as String?) ??
-            (properties['ISO_A2'] as String?) ??
-            (properties['WB_A2'] as String?) ??
-            (properties['iso_a2_eh'] as String?) ??
-            (properties['iso_a2'] as String?) ??
-            (properties['wb_a2'] as String?);
-    }
+  static String? _readIso2(Map<String, dynamic> properties) {
+    final raw = (properties['ISO_A2_EH'] as String?) ??
+        (properties['ISO_A2'] as String?) ??
+        (properties['WB_A2'] as String?) ??
+        (properties['iso_a2_eh'] as String?) ??
+        (properties['iso_a2'] as String?) ??
+        (properties['wb_a2'] as String?);
 
     if (raw == null) {
       return null;
@@ -249,19 +328,13 @@ class GlobeCountryDatasetLoader {
   }
 
   static String _readName(
-    Map<String, dynamic> properties,
-    _GeoSource source, {
+    Map<String, dynamic> properties, {
     required String fallback,
   }) {
-    final raw = switch (source) {
-      _GeoSource.geoCountries => (properties['name'] as String?) ??
-          (properties['ADMIN'] as String?) ??
-          (properties['NAME'] as String?),
-      _GeoSource.naturalEarth110m => (properties['NAME'] as String?) ??
-          (properties['ADMIN'] as String?) ??
-          (properties['admin'] as String?) ??
-          (properties['name'] as String?),
-    };
+    final raw = (properties['NAME'] as String?) ??
+        (properties['ADMIN'] as String?) ??
+        (properties['admin'] as String?) ??
+        (properties['name'] as String?);
 
     final normalized = raw?.trim();
     return normalized == null || normalized.isEmpty ? fallback : normalized;
@@ -298,17 +371,6 @@ class GlobeCountryDatasetLoader {
       'antarctica' => 'Antarctica',
       _ => null,
     };
-  }
-
-  static List<List<GlobeGeoPoint>> _bestReferenceRings(
-    List<List<List<GlobeGeoPoint>>> lodRings,
-  ) {
-    for (var lod = _lodCount - 1; lod >= 0; lod--) {
-      if (lodRings[lod].isNotEmpty) {
-        return lodRings[lod];
-      }
-    }
-    return const <List<GlobeGeoPoint>>[];
   }
 
   static void _reattachCrimeaToUkraine(Map<String, _MutableCountry> builds) {
@@ -446,12 +508,11 @@ class GlobeCountryDatasetLoader {
     return points.length >= 4 ? points : const <GlobeGeoPoint>[];
   }
 
-  static GlobeGeoPoint _computeCentroid(List<List<GlobeGeoPoint>> rings) {
-    final referenceRing = rings.reduce(
-      (left, right) => _ringAreaAbs(left) >= _ringAreaAbs(right) ? left : right,
-    );
-
-    final open = referenceRing.sublist(0, referenceRing.length - 1);
+  static GlobeGeoPoint _ringCentroid(List<GlobeGeoPoint> ring) {
+    final open = ring.sublist(0, ring.length - 1);
+    if (open.isEmpty) {
+      return GlobeGeoPoint(lon: 0, lat: 0);
+    }
     final area = _signedRingArea(open);
     if (area.abs() < 1e-7) {
       return _averagePoint(open);
@@ -474,23 +535,20 @@ class GlobeCountryDatasetLoader {
     );
   }
 
-  static double _computeMaxAngularDistance(
+  static double _ringMaxAngularDistance(
     GlobeGeoPoint centroid,
-    List<List<GlobeGeoPoint>> rings,
+    List<GlobeGeoPoint> ring,
   ) {
-    final referenceRing = rings.reduce(
-      (left, right) => _ringAreaAbs(left) >= _ringAreaAbs(right) ? left : right,
-    );
-
     var maxDistance = 0.0;
-    for (final point in referenceRing) {
+    for (final point in ring) {
       final distance = _angularDistanceRad(centroid, point);
       if (distance > maxDistance) {
         maxDistance = distance;
       }
     }
-
-    return math.max(maxDistance, 0.08);
+    // Floor so we never return zero — the renderer uses this for fast culling
+    // checks and zero would degenerate the math.
+    return math.max(maxDistance, 0.015);
   }
 
   static GlobeGeoPoint _averagePoint(List<GlobeGeoPoint> points) {
@@ -542,11 +600,6 @@ class GlobeCountryDatasetLoader {
     }
     return normalized;
   }
-}
-
-enum _GeoSource {
-  geoCountries,
-  naturalEarth110m,
 }
 
 class _RawCountry {
