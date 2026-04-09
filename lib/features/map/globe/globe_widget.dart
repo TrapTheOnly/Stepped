@@ -41,11 +41,13 @@ class _GlobeWidgetState extends State<GlobeWidget>
 
   static const _minZoom = 1.0;
   static const _maxZoom = 10.0;
-  static const _focusedZoom = 6.2;
+
+  // Fraction of the smaller screen dimension that a focused ring should
+  // occupy after a zoom-fit. Lower = more padding around the country.
+  static const _focusFitFraction = 0.78;
 
   static const _doubleTapIntervalMs = 320;
   static const _doubleTapDistance = 40.0;
-  static const _frontVisibilityDepthThreshold = -0.03;
   static const _pitchMin = -1.2;
   static const _pitchMax = 1.2;
   static const _rotationVelocityThreshold = 0.04;
@@ -188,6 +190,10 @@ class _GlobeWidgetState extends State<GlobeWidget>
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Pointer / gesture handling
+  // ---------------------------------------------------------------------------
 
   void _handlePointerSignal(PointerSignalEvent event) {
     if (event is! PointerScrollEvent) {
@@ -350,13 +356,13 @@ class _GlobeWidgetState extends State<GlobeWidget>
     _stopInertia();
     _doubleTapEnabled = false;
 
-    final country = _hitTestCountry(
+    final hit = _hitTestRing(
       localPosition: localPosition,
       size: size,
       dataset: dataset,
     );
 
-    if (country == null) {
+    if (hit == null) {
       _setSelectedCountry(null);
       _animateCameraTo(
         rotation: _rotation,
@@ -367,130 +373,123 @@ class _GlobeWidgetState extends State<GlobeWidget>
       return;
     }
 
-    final isSameSelection = _selectedCountry?.iso2 == country.iso2;
+    final isSameSelection = _selectedCountry?.iso2 == hit.country.iso2;
     if (isSameSelection) {
       _setSelectedCountry(null);
       return;
     }
 
-    _setSelectedCountry(country);
-
-    final targetRotation = GlobeProjection.nearestAngle(
-      current: _rotation,
-      target: -country.centroid.lonRad,
-    );
-    final targetPitch = country.centroid.latRad.clamp(-0.95, 0.95);
-    _animateCameraTo(
-      rotation: targetRotation,
-      pitch: targetPitch,
-      zoom: _focusedZoom,
-    );
+    _setSelectedCountry(hit.country);
+    _focusRing(hit.ring, size: size);
   }
 
-  GlobeCountryShape? _hitTestCountry({
+  // ---------------------------------------------------------------------------
+  // Hit testing — per ring, so users can target specific landmasses.
+  // ---------------------------------------------------------------------------
+
+  _RingHit? _hitTestRing({
     required Offset localPosition,
     required Size size,
     required GlobeCountryDataset dataset,
   }) {
     final center = size.center(Offset.zero);
     final globeRadius = math.min(size.width, size.height) * 0.42 * _zoom;
-    if ((localPosition - center).distance > globeRadius) {
+    if ((localPosition - center).distance > globeRadius + 12) {
       return null;
     }
 
-    final polygonHits = <_CountryHitCandidate>[];
+    final projector = GlobeProjection.projector(
+      rotation: _rotation,
+      pitch: _pitch,
+      center: center,
+      radius: globeRadius,
+    );
+
+    final polygonHits = <_RingHit>[];
 
     for (final country in dataset.countries) {
-      final rings = country.ringsForLod(4);
-      var bestDepth = -2.0;
-      var nearestDistance = double.infinity;
-
+      final rings = country.ringsForLod(_activeLod);
       for (final ring in rings) {
-        final projected = <GlobeProjectedPoint>[
-          for (final point in ring)
-            GlobeProjection.project(
-              point: point,
-              rotation: _rotation,
-              pitch: _pitch,
-              center: center,
-              radius: globeRadius,
-            ),
-        ];
-
-        final hitPaths = _buildHitPaths(projected, ring);
-        final containsPoint =
-            hitPaths.any((path) => path.contains(localPosition));
-        if (!containsPoint) {
+        // Quick reject using the centroid bounding circle.
+        final centroid = projector.project(ring.centroid);
+        final maxSin = math.sin(ring.maxAngularDistanceRad).abs();
+        if (centroid.z + maxSin < -0.02) {
+          continue;
+        }
+        final approxRadius =
+            (globeRadius * maxSin).clamp(8.0, globeRadius + 16.0);
+        if ((localPosition - centroid.offset).distance >
+            approxRadius + 6) {
           continue;
         }
 
-        for (final point in projected) {
-          if (!_isFrontFacing(point)) {
-            continue;
-          }
-          bestDepth = math.max(bestDepth, point.depth);
-          nearestDistance = math.min(
-              nearestDistance, (point.offset - localPosition).distance);
-        }
-      }
+        final projected = <GlobeProjectedPoint>[
+          for (final point in ring.points) projector.project(point),
+        ];
 
-      if (bestDepth > -1.5) {
-        polygonHits.add(
-          _CountryHitCandidate(
-            country: country,
-            depth: bestDepth,
-            centroidDistance: nearestDistance,
-          ),
-        );
+        final fillPath = _ringFillPath(projected, center, globeRadius);
+        if (fillPath != null && fillPath.contains(localPosition)) {
+          polygonHits.add(
+            _RingHit(
+              country: country,
+              ring: ring,
+              centroidDepth: centroid.z,
+              centroidDistance: (centroid.offset - localPosition).distance,
+            ),
+          );
+        }
       }
     }
 
     if (polygonHits.isNotEmpty) {
+      // Prefer the hit whose centroid is closest to the tap (so users
+      // selecting an island that overlaps a continental neighbour at low
+      // zoom always grab the island they aimed at), and break ties by
+      // depth.
       polygonHits.sort((left, right) {
         final distanceCmp =
             left.centroidDistance.compareTo(right.centroidDistance);
         if (distanceCmp != 0) {
           return distanceCmp;
         }
-        return right.depth.compareTo(left.depth);
+        return right.centroidDepth.compareTo(left.centroidDepth);
       });
-      return polygonHits.first.country;
+      return polygonHits.first;
     }
 
-    // Fallback for tiny countries on touch.
-    final centroidCandidates = <_CountryHitCandidate>[];
+    // Tiny country fallback — pin the tap to the nearest small ring centroid
+    // so islands you can't reasonably tap inside still get a hit.
+    final centroidCandidates = <_RingHit>[];
     for (final country in dataset.countries) {
-      final projectedCentroid = GlobeProjection.project(
-        point: country.centroid,
-        rotation: _rotation,
-        pitch: _pitch,
-        center: center,
-        radius: globeRadius,
-      );
-      if (!projectedCentroid.visible) {
-        continue;
-      }
+      final rings = country.ringsForLod(_activeLod);
+      for (final ring in rings) {
+        final projected = projector.project(ring.centroid);
+        if (projected.z < 0) {
+          continue;
+        }
+        final projectedRadius =
+            globeRadius * math.sin(ring.maxAngularDistanceRad).abs();
+        final isTinyRing =
+            ring.maxAngularDistanceRad <= 0.22 || projectedRadius <= 18;
+        if (!isTinyRing) {
+          continue;
+        }
 
-      final projectedRadius =
-          globeRadius * math.sin(country.maxAngularDistanceRad).abs();
-      final isTinyCountry =
-          country.maxAngularDistanceRad <= 0.22 || projectedRadius <= 18;
-      if (!isTinyCountry) {
-        continue;
-      }
-
-      final distance = (projectedCentroid.offset - localPosition).distance;
-      final hitRadius = (projectedRadius * (_zoom >= 3.0 ? 1.35 : 1.65))
-          .clamp(10.0, 24.0)
-          .toDouble();
-      if (distance <= hitRadius) {
-        centroidCandidates.add(
-          _CountryHitCandidate(
-            country: country,
-            depth: projectedCentroid.depth,
-            centroidDistance: distance / hitRadius,
-          ),
-        );
+        final distance = (projected.offset - localPosition).distance;
+        final hitRadius =
+            (projectedRadius * (_zoom >= 3.0 ? 1.35 : 1.65))
+                .clamp(10.0, 24.0)
+                .toDouble();
+        if (distance <= hitRadius) {
+          centroidCandidates.add(
+            _RingHit(
+              country: country,
+              ring: ring,
+              centroidDepth: projected.z,
+              centroidDistance: distance,
+            ),
+          );
+        }
       }
     }
 
@@ -501,99 +500,210 @@ class _GlobeWidgetState extends State<GlobeWidget>
         if (distanceCmp != 0) {
           return distanceCmp;
         }
-        return right.depth.compareTo(left.depth);
+        return right.centroidDepth.compareTo(left.centroidDepth);
       });
-      return centroidCandidates.first.country;
+      return centroidCandidates.first;
     }
 
     return null;
   }
 
-  List<Path> _buildHitPaths(
-    List<GlobeProjectedPoint> points,
-    List<GlobeGeoPoint> ring,
+  /// Build the same arc-clipped fill path the painter uses, so hit-testing
+  /// matches what the user actually sees.
+  Path? _ringFillPath(
+    List<GlobeProjectedPoint> verts,
+    Offset center,
+    double radius,
   ) {
-    if (points.length < 4 || ring.length < 4) {
-      return const <Path>[];
+    final n = verts.length - 1;
+    if (n < 3) {
+      return null;
     }
 
-    final runs = _visibleRuns(points, ring);
-    if (runs.isEmpty) {
-      return const <Path>[];
+    var allVisible = true;
+    var anyVisible = false;
+    for (var i = 0; i < n; i++) {
+      if (verts[i].visible) {
+        anyVisible = true;
+      } else {
+        allVisible = false;
+      }
+    }
+    if (!anyVisible) {
+      return null;
     }
 
-    return runs.map((run) {
-      final path = Path()..moveTo(run.first.dx, run.first.dy);
-      for (final offset in run.skip(1)) {
-        path.lineTo(offset.dx, offset.dy);
+    if (allVisible) {
+      final path = Path()..moveTo(verts[0].offset.dx, verts[0].offset.dy);
+      for (var i = 1; i < n; i++) {
+        path.lineTo(verts[i].offset.dx, verts[i].offset.dy);
       }
       path.close();
       return path;
-    }).toList(growable: false);
-  }
+    }
 
-  List<List<Offset>> _visibleRuns(
-    List<GlobeProjectedPoint> points,
-    List<GlobeGeoPoint> ring,
-  ) {
-    final runs = <List<Offset>>[];
-    var current = <Offset>[];
+    var startIdx = -1;
+    for (var i = 0; i < n; i++) {
+      final prev = verts[(i - 1 + n) % n];
+      final curr = verts[i];
+      if (curr.visible && !prev.visible) {
+        startIdx = i;
+        break;
+      }
+    }
+    if (startIdx < 0) {
+      return null;
+    }
 
-    for (var index = 0; index < points.length; index++) {
-      final point = points[index];
-      final previousIndex = index == 0 ? points.length - 1 : index - 1;
-      final previousGeo = ring[previousIndex];
-      final currentGeo = ring[index];
-      final connected = !_isGeoDateLineJump(previousGeo, currentGeo);
+    final path = Path();
+    var started = false;
+    Offset? firstEnterScreen;
+    double? firstEnterAngle;
+    double? pendingExitAngle;
 
-      if (_isFrontFacing(point) && (current.isEmpty || connected)) {
-        current.add(point.offset);
-      } else {
-        if (current.length >= 3) {
-          runs.add(current);
+    for (var step = 0; step < n; step++) {
+      final i = (startIdx + step) % n;
+      final j = (i + 1) % n;
+      final curr = verts[i];
+      final next = verts[j];
+
+      if (curr.visible) {
+        if (!started) {
+          final prev = verts[(i - 1 + n) % n];
+          final entry = computeSilhouettePoint(
+            a: prev,
+            b: curr,
+            center: center,
+            radius: radius,
+          );
+          path.moveTo(entry.screen.dx, entry.screen.dy);
+          path.lineTo(curr.offset.dx, curr.offset.dy);
+          firstEnterScreen = entry.screen;
+          firstEnterAngle = entry.angle;
+          started = true;
+        } else {
+          path.lineTo(curr.offset.dx, curr.offset.dy);
         }
-        current = <Offset>[];
-        if (_isFrontFacing(point)) {
-          current.add(point.offset);
+
+        if (!next.visible) {
+          final exit = computeSilhouettePoint(
+            a: curr,
+            b: next,
+            center: center,
+            radius: radius,
+          );
+          path.lineTo(exit.screen.dx, exit.screen.dy);
+          pendingExitAngle = exit.angle;
+        }
+      } else if (next.visible) {
+        final entry = computeSilhouettePoint(
+          a: curr,
+          b: next,
+          center: center,
+          radius: radius,
+        );
+        if (pendingExitAngle != null) {
+          _appendArc(
+            path,
+            startAngle: pendingExitAngle,
+            endAngle: entry.angle,
+            endPoint: entry.screen,
+            radius: radius,
+          );
+          pendingExitAngle = null;
+        } else {
+          path.moveTo(entry.screen.dx, entry.screen.dy);
+          firstEnterScreen ??= entry.screen;
+          firstEnterAngle ??= entry.angle;
+          started = true;
         }
       }
     }
 
-    if (current.length >= 3) {
-      runs.add(current);
+    if (!started) {
+      return null;
     }
 
-    if (runs.isEmpty) {
-      return const <List<Offset>>[];
+    if (pendingExitAngle != null &&
+        firstEnterAngle != null &&
+        firstEnterScreen != null) {
+      _appendArc(
+        path,
+        startAngle: pendingExitAngle,
+        endAngle: firstEnterAngle,
+        endPoint: firstEnterScreen,
+        radius: radius,
+      );
     }
 
-    if (_isFrontFacing(points.first) &&
-        _isFrontFacing(points.last) &&
-        runs.length >= 2 &&
-        !_isGeoDateLineJump(ring.first, ring.last)) {
-      final merged = <Offset>[...runs.last, ...runs.first];
-      runs
-        ..removeAt(runs.length - 1)
-        ..removeAt(0)
-        ..insert(0, merged);
-    }
-
-    return runs.where((run) => run.length >= 3).toList(growable: false);
+    path.close();
+    return path;
   }
 
-  bool _isFrontFacing(GlobeProjectedPoint point) {
-    return point.depth > _frontVisibilityDepthThreshold;
+  void _appendArc(
+    Path path, {
+    required double startAngle,
+    required double endAngle,
+    required Offset endPoint,
+    required double radius,
+  }) {
+    var diff = endAngle - startAngle;
+    while (diff > math.pi) {
+      diff -= math.pi * 2;
+    }
+    while (diff < -math.pi) {
+      diff += math.pi * 2;
+    }
+    final clockwise = diff > 0;
+    path.arcToPoint(
+      endPoint,
+      radius: Radius.circular(radius),
+      clockwise: clockwise,
+      largeArc: false,
+    );
   }
 
-  bool _isGeoDateLineJump(GlobeGeoPoint left, GlobeGeoPoint right) {
-    return (left.lon - right.lon).abs() > 170;
+  // ---------------------------------------------------------------------------
+  // Camera focus / animation
+  // ---------------------------------------------------------------------------
+
+  void _focusRing(GlobeRingShape ring, {required Size size}) {
+    final targetRotation = GlobeProjection.nearestAngle(
+      current: _rotation,
+      target: -ring.centroid.lonRad,
+    );
+    final targetPitch = ring.centroid.latRad.clamp(-0.95, 0.95);
+    final targetZoom = _ringFitZoom(ring);
+
+    _animateCameraTo(
+      rotation: targetRotation,
+      pitch: targetPitch,
+      zoom: targetZoom,
+    );
+  }
+
+  /// Compute the zoom level that fits a ring's bounding circle within the
+  /// configured fit fraction of the smaller screen dimension.
+  ///
+  /// The projected radius of a spherical cap with angular extent θ at zoom z
+  /// is `baseRadius * z * sin(θ)`. We want
+  ///   `2 * baseRadius * z * sin(θ) <= fraction * min(w, h)`
+  /// which simplifies to `z <= fraction / (0.84 * sin(θ))`. Always clamped
+  /// to `[_minZoom, _maxZoom]`.
+  double _ringFitZoom(GlobeRingShape ring) {
+    final sinExtent = math.sin(ring.maxAngularDistanceRad).abs();
+    if (sinExtent < 1e-6) {
+      return _maxZoom;
+    }
+    final fitted = _focusFitFraction / (0.84 * sinExtent);
+    return fitted.clamp(_minZoom, _maxZoom).toDouble();
   }
 
   void _animateCameraTo({
     required double rotation,
     required double pitch,
     required double zoom,
-    Duration duration = const Duration(milliseconds: 420),
+    Duration duration = const Duration(milliseconds: 460),
   }) {
     final generation = ++_cameraAnimationGeneration;
     final targetRotation = GlobeProjection.nearestAngle(
@@ -658,6 +768,10 @@ class _GlobeWidgetState extends State<GlobeWidget>
     _zoomTween = null;
     _doubleTapEnabled = true;
   }
+
+  // ---------------------------------------------------------------------------
+  // Inertia
+  // ---------------------------------------------------------------------------
 
   double _gestureDeltaSeconds(int nowMicros) {
     final lastMicros = _lastGestureSampleMicros;
@@ -766,6 +880,10 @@ class _GlobeWidgetState extends State<GlobeWidget>
     _zoomVelocity = 0;
   }
 
+  // ---------------------------------------------------------------------------
+  // Pointer plumbing
+  // ---------------------------------------------------------------------------
+
   void _handlePointerDown(PointerDownEvent event) {
     _activePointers.add(event.pointer);
     _notifyInteractionChanged(true);
@@ -804,6 +922,10 @@ class _GlobeWidgetState extends State<GlobeWidget>
     _zoom = zoom.clamp(_minZoom, _maxZoom);
     _activeLod = _lodForZoom(_zoom);
   }
+
+  // ---------------------------------------------------------------------------
+  // External focus / reset
+  // ---------------------------------------------------------------------------
 
   void _maybeApplyResetView({
     int? previousToken,
@@ -876,28 +998,21 @@ class _GlobeWidgetState extends State<GlobeWidget>
       _doubleTapEnabled = true;
     });
 
-    final targetRotation = GlobeProjection.nearestAngle(
-      current: _rotation,
-      target: -country.centroid.lonRad,
-    );
-    final targetPitch = country.centroid.latRad.clamp(-0.95, 0.95);
-    _animateCameraTo(
-      rotation: targetRotation,
-      pitch: targetPitch,
-      zoom: math.max(_zoom, _focusedZoom),
-    );
+    _focusRing(country.primaryRing, size: context.size ?? Size.zero);
     widget.onFocusRequestConsumed?.call(country.iso2, token);
   }
 }
 
-class _CountryHitCandidate {
-  const _CountryHitCandidate({
+class _RingHit {
+  const _RingHit({
     required this.country,
-    required this.depth,
+    required this.ring,
+    required this.centroidDepth,
     required this.centroidDistance,
   });
 
   final GlobeCountryShape country;
-  final double depth;
+  final GlobeRingShape ring;
+  final double centroidDepth;
   final double centroidDistance;
 }
