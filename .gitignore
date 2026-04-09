@@ -28,3 +28,7 @@ test/
 *.log
 /*.png
 /tmp/
+.claude/
+tmp_*.xml
+*_options.yaml
+*_options.yml

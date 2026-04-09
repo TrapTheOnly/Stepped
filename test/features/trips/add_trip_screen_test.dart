@@ -18,9 +18,9 @@ void main() {
       iso2: 'TR',
       name: 'Turkey',
       continent: 'Asia',
-      lodRings: const <List<List<GlobeGeoPoint>>>[
-        <List<GlobeGeoPoint>>[],
-        <List<GlobeGeoPoint>>[],
+      lodRings: const <List<GlobeRingShape>>[
+        <GlobeRingShape>[],
+        <GlobeRingShape>[],
       ],
       centroid: GlobeGeoPoint(lon: 0, lat: 0),
       maxAngularDistanceRad: 0,
