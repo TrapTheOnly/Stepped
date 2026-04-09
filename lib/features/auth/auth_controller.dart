@@ -557,8 +557,7 @@ class AuthController extends ChangeNotifier {
     ]);
 
     return switch (error.code) {
-      GoogleSignInExceptionCode.canceled =>
-        '',
+      GoogleSignInExceptionCode.canceled => '',
       GoogleSignInExceptionCode.interrupted =>
         'Google sign-in was interrupted. Please try again.',
       GoogleSignInExceptionCode.uiUnavailable =>
