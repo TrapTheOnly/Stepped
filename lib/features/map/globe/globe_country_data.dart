@@ -6,7 +6,45 @@ import 'package:flutter/services.dart';
 
 const _degreesToRadians = math.pi / 180.0;
 const _lodCount = 2;
-const _hiddenTinyCountryIso2 = <String>{'AD', 'LI', 'MC', 'SM', 'VA'};
+const _supplementalCountryIso2 = <String>{
+  'AD',
+  'AG',
+  'BB',
+  'BH',
+  'CV',
+  'DM',
+  'FM',
+  'GD',
+  'KI',
+  'KM',
+  'KN',
+  'LC',
+  'LI',
+  'MC',
+  'MH',
+  'MT',
+  'MU',
+  'MV',
+  'NR',
+  'PW',
+  'SC',
+  'SG',
+  'SM',
+  'ST',
+  'TO',
+  'TV',
+  'VA',
+  'VC',
+  'WS',
+};
+const _countryNameOverrides = <String, String>{
+  'AG': 'Antigua and Barbuda',
+  'KN': 'Saint Kitts and Nevis',
+  'MH': 'Marshall Islands',
+  'SB': 'Solomon Islands',
+  'VA': 'Vatican City',
+  'VC': 'Saint Vincent and the Grenadines',
+};
 
 @immutable
 class GlobeGeoPoint {
@@ -126,24 +164,26 @@ class GlobeCountryDatasetLoader {
     final high = await _loadRawCountries(
       assetPath: 'assets/data/countries_110m.geojson',
     );
+    final full = await _loadRawCountries(
+      assetPath: 'assets/data/countries.geojson',
+      allowedIso2: _supplementalCountryIso2,
+    );
 
-    final allIsoCodes = <String>{...low.keys, ...high.keys};
+    final allIsoCodes = <String>{...low.keys, ...high.keys, ...full.keys};
     final builds = <String, _MutableCountry>{};
 
     for (final iso2 in allIsoCodes) {
-      if (_hiddenTinyCountryIso2.contains(iso2)) {
-        continue;
-      }
-
+      final fullRaw = full[iso2];
       final highRaw = high[iso2];
-      final lowRaw = low[iso2] ?? highRaw;
+      final lowRaw = low[iso2] ?? highRaw ?? fullRaw;
       if (lowRaw == null || lowRaw.rings.isEmpty) {
         continue;
       }
-      final name = highRaw?.name ?? lowRaw.name;
-      final continent = highRaw?.continent ?? lowRaw.continent;
+      final name = _countryNameOverrides[iso2] ?? highRaw?.name ?? lowRaw.name;
+      final continent =
+          highRaw?.continent ?? lowRaw.continent ?? fullRaw?.continent;
       final lowRings = lowRaw.rings;
-      final highRings = highRaw?.rings ?? lowRings;
+      final highRings = highRaw?.rings ?? fullRaw?.rings ?? lowRings;
 
       final lodRings = <List<List<GlobeGeoPoint>>>[
         <List<GlobeGeoPoint>>[],
@@ -201,9 +241,7 @@ class GlobeCountryDatasetLoader {
           primary = lodRingShapes[lod].first;
         }
       }
-      primary ??= lodRingShapes
-          .firstWhere((rings) => rings.isNotEmpty)
-          .first;
+      primary ??= lodRingShapes.firstWhere((rings) => rings.isNotEmpty).first;
 
       countries.add(
         GlobeCountryShape(
@@ -264,6 +302,7 @@ class GlobeCountryDatasetLoader {
 
   static Future<Map<String, _RawCountry>> _loadRawCountries({
     required String assetPath,
+    Set<String>? allowedIso2,
   }) async {
     final sourceText = await rootBundle.loadString(assetPath);
     final root = jsonDecode(sourceText) as Map<String, dynamic>;
@@ -284,6 +323,9 @@ class GlobeCountryDatasetLoader {
 
       final iso2 = _readIso2(properties);
       if (iso2 == null) {
+        continue;
+      }
+      if (allowedIso2 != null && !allowedIso2.contains(iso2)) {
         continue;
       }
 

@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'globe_country_data.dart';
 import 'globe_projection.dart';
 
+const globeTinyRingFastPathThreshold = 4.6;
+
 /// CustomPainter that renders the interactive globe.
 ///
 /// The renderer is structured around per-ring drawing:
@@ -270,6 +272,7 @@ class GlobePainter extends CustomPainter {
       for (final ring in rings) {
         final centroid = projector.project(ring.centroid);
         final maxSin = math.sin(ring.maxAngularDistanceRad).abs();
+        final projectedRadius = globeRadius * maxSin;
 
         // Cull rings that are entirely on the back hemisphere. We allow a
         // tiny epsilon so rings that *just* touch the horizon still draw.
@@ -280,7 +283,7 @@ class GlobePainter extends CustomPainter {
         // Coarse on-screen culling using the centroid + max-extent bounding
         // circle. This keeps tight zoom-ins fast (most rings are skipped).
         final approxRadius =
-            (globeRadius * maxSin).clamp(8.0, globeRadius + 16.0);
+            projectedRadius.clamp(8.0, globeRadius + 16.0).toDouble();
         if (centroid.offset.dx + approxRadius < viewport.left ||
             centroid.offset.dx - approxRadius > viewport.right ||
             centroid.offset.dy + approxRadius < viewport.top ||
@@ -295,6 +298,7 @@ class GlobePainter extends CustomPainter {
             isVisited: isVisited,
             isSelected: isSelected,
             centroid: centroid,
+            projectedRadius: projectedRadius,
           ),
         );
       }
@@ -303,8 +307,7 @@ class GlobePainter extends CustomPainter {
     // Back-to-front by camera depth so closer rings paint on top of further
     // rings on the rare occasions where they overlap (e.g., overseas
     // territories drawn near a continental neighbour at low zoom).
-    items.sort((left, right) =>
-        left.centroid.z.compareTo(right.centroid.z));
+    items.sort((left, right) => left.centroid.z.compareTo(right.centroid.z));
     return items;
   }
 
@@ -319,6 +322,18 @@ class GlobePainter extends CustomPainter {
     required double visitedStroke,
     required double selectedStroke,
   }) {
+    if (_shouldUseTinyRingFastPath(item)) {
+      _paintTinyRing(
+        canvas,
+        item: item,
+        palette: palette,
+        defaultStroke: defaultStroke,
+        visitedStroke: visitedStroke,
+        selectedStroke: selectedStroke,
+      );
+      return;
+    }
+
     final ring = item.ring;
     final verts = _projectRing(ring, projector);
 
@@ -383,6 +398,55 @@ class GlobePainter extends CustomPainter {
     }
   }
 
+  bool _shouldUseTinyRingFastPath(_RingRenderItem item) {
+    return item.centroid.z > 0 &&
+        item.projectedRadius <= globeTinyRingFastPathThreshold;
+  }
+
+  void _paintTinyRing(
+    Canvas canvas, {
+    required _RingRenderItem item,
+    required _GlobePalette palette,
+    required double defaultStroke,
+    required double visitedStroke,
+    required double selectedStroke,
+  }) {
+    final isSelected = item.isSelected;
+    final isVisited = item.isVisited;
+
+    final fillColor = isSelected
+        ? palette.selectedFill
+        : (isVisited ? palette.visitedFill : palette.landFill);
+    final borderColor = isSelected
+        ? palette.selectedBorder
+        : (isVisited ? palette.visitedBorder : palette.landBorder);
+    final strokeWidth = isSelected
+        ? selectedStroke
+        : (isVisited ? visitedStroke : defaultStroke);
+    final dotRadius = item.projectedRadius
+        .clamp(isSelected ? 3.2 : 2.2, isSelected ? 8.0 : 6.0)
+        .toDouble();
+
+    canvas.drawCircle(
+      item.centroid.offset,
+      dotRadius,
+      Paint()
+        ..isAntiAlias = true
+        ..style = PaintingStyle.fill
+        ..color = fillColor,
+    );
+
+    canvas.drawCircle(
+      item.centroid.offset,
+      dotRadius,
+      Paint()
+        ..isAntiAlias = true
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.min(strokeWidth, dotRadius * 0.65)
+        ..color = borderColor,
+    );
+  }
+
   List<GlobeProjectedPoint> _projectRing(
     GlobeRingShape ring,
     GlobeProjector projector,
@@ -424,8 +488,7 @@ class GlobePainter extends CustomPainter {
     }
 
     if (allVisible) {
-      final path = Path()
-        ..moveTo(verts[0].offset.dx, verts[0].offset.dy);
+      final path = Path()..moveTo(verts[0].offset.dx, verts[0].offset.dy);
       for (var i = 1; i < n; i++) {
         path.lineTo(verts[i].offset.dx, verts[i].offset.dy);
       }
@@ -635,14 +698,12 @@ class GlobePainter extends CustomPainter {
         continue;
       }
 
-      final outerSize = (baseRadius *
-              (isSelected ? 0.024 : 0.018))
-          .clamp(2.6, 9.0);
+      final outerSize =
+          (baseRadius * (isSelected ? 0.024 : 0.018)).clamp(2.6, 9.0);
       canvas.drawCircle(
         centroid.offset,
         outerSize.toDouble(),
-        Paint()
-          ..color = isSelected ? palette.selectedPin : palette.visitedPin,
+        Paint()..color = isSelected ? palette.selectedPin : palette.visitedPin,
       );
       canvas.drawCircle(
         centroid.offset,
@@ -676,6 +737,7 @@ class _RingRenderItem {
     required this.isVisited,
     required this.isSelected,
     required this.centroid,
+    required this.projectedRadius,
   });
 
   final GlobeCountryShape country;
@@ -683,6 +745,7 @@ class _RingRenderItem {
   final bool isVisited;
   final bool isSelected;
   final GlobeProjectedPoint centroid;
+  final double projectedRadius;
 }
 
 /// Centralised palette so the visual identity of the globe is in one place.
@@ -732,15 +795,12 @@ class _GlobePalette {
     final isDark = scheme.brightness == Brightness.dark;
 
     // Cool deep-water gradient — three stops for a sense of depth.
-    final oceanHighlight = isDark
-        ? const Color(0xFF1E2B3F)
-        : const Color(0xFFE7EEF6);
-    final oceanBase = isDark
-        ? const Color(0xFF13202F)
-        : const Color(0xFFCBD9E8);
-    final oceanDeep = isDark
-        ? const Color(0xFF0A1422)
-        : const Color(0xFFA9BCD0);
+    final oceanHighlight =
+        isDark ? const Color(0xFF1E2B3F) : const Color(0xFFE7EEF6);
+    final oceanBase =
+        isDark ? const Color(0xFF13202F) : const Color(0xFFCBD9E8);
+    final oceanDeep =
+        isDark ? const Color(0xFF0A1422) : const Color(0xFFA9BCD0);
 
     return _GlobePalette(
       oceanHighlight: oceanHighlight,
