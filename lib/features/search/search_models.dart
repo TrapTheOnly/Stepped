@@ -32,39 +32,6 @@ class SearchCountryRef {
   final bool focusableOnGlobe;
 }
 
-const microstateSearchOnly = <SearchCountryRef>[
-  SearchCountryRef(
-    iso2: 'AD',
-    name: 'Andorra',
-    continent: 'Europe',
-    focusableOnGlobe: false,
-  ),
-  SearchCountryRef(
-    iso2: 'LI',
-    name: 'Liechtenstein',
-    continent: 'Europe',
-    focusableOnGlobe: false,
-  ),
-  SearchCountryRef(
-    iso2: 'MC',
-    name: 'Monaco',
-    continent: 'Europe',
-    focusableOnGlobe: false,
-  ),
-  SearchCountryRef(
-    iso2: 'SM',
-    name: 'San Marino',
-    continent: 'Europe',
-    focusableOnGlobe: false,
-  ),
-  SearchCountryRef(
-    iso2: 'VA',
-    name: 'Vatican City',
-    continent: 'Europe',
-    focusableOnGlobe: false,
-  ),
-];
-
 extension FirstOrNullExtension<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
 }

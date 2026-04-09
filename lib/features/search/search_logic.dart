@@ -25,7 +25,6 @@ List<CountrySearchEntry> buildCountrySearchCatalog({
         continent: country.continent,
         focusableOnGlobe: true,
       ),
-    ...microstateSearchOnly,
   ];
 
   return refs.map(

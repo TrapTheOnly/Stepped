@@ -406,6 +406,7 @@ class _GlobeWidgetState extends State<GlobeWidget>
     );
 
     final polygonHits = <_RingHit>[];
+    final centroidCandidates = <_RingHit>[];
 
     for (final country in dataset.countries) {
       final rings = country.ringsForLod(_activeLod);
@@ -416,10 +417,28 @@ class _GlobeWidgetState extends State<GlobeWidget>
         if (centroid.z + maxSin < -0.02) {
           continue;
         }
+        final projectedRadius = globeRadius * maxSin;
         final approxRadius =
-            (globeRadius * maxSin).clamp(8.0, globeRadius + 16.0);
-        if ((localPosition - centroid.offset).distance >
-            approxRadius + 6) {
+            projectedRadius.clamp(8.0, globeRadius + 16.0).toDouble();
+        if ((localPosition - centroid.offset).distance > approxRadius + 6) {
+          continue;
+        }
+
+        if (projectedRadius <= globeTinyRingFastPathThreshold) {
+          final distance = (centroid.offset - localPosition).distance;
+          final hitRadius = (projectedRadius * (_zoom >= 3.0 ? 1.35 : 1.65))
+              .clamp(10.0, 24.0)
+              .toDouble();
+          if (distance <= hitRadius) {
+            centroidCandidates.add(
+              _RingHit(
+                country: country,
+                ring: ring,
+                centroidDepth: centroid.z,
+                centroidDistance: distance,
+              ),
+            );
+          }
           continue;
         }
 
@@ -455,42 +474,6 @@ class _GlobeWidgetState extends State<GlobeWidget>
         return right.centroidDepth.compareTo(left.centroidDepth);
       });
       return polygonHits.first;
-    }
-
-    // Tiny country fallback — pin the tap to the nearest small ring centroid
-    // so islands you can't reasonably tap inside still get a hit.
-    final centroidCandidates = <_RingHit>[];
-    for (final country in dataset.countries) {
-      final rings = country.ringsForLod(_activeLod);
-      for (final ring in rings) {
-        final projected = projector.project(ring.centroid);
-        if (projected.z < 0) {
-          continue;
-        }
-        final projectedRadius =
-            globeRadius * math.sin(ring.maxAngularDistanceRad).abs();
-        final isTinyRing =
-            ring.maxAngularDistanceRad <= 0.22 || projectedRadius <= 18;
-        if (!isTinyRing) {
-          continue;
-        }
-
-        final distance = (projected.offset - localPosition).distance;
-        final hitRadius =
-            (projectedRadius * (_zoom >= 3.0 ? 1.35 : 1.65))
-                .clamp(10.0, 24.0)
-                .toDouble();
-        if (distance <= hitRadius) {
-          centroidCandidates.add(
-            _RingHit(
-              country: country,
-              ring: ring,
-              centroidDepth: projected.z,
-              centroidDistance: distance,
-            ),
-          );
-        }
-      }
     }
 
     if (centroidCandidates.isNotEmpty) {

@@ -39,7 +39,6 @@ List<TripCountryOption> buildTripCountryOptions(
         code: country.iso2.toUpperCase(),
         name: country.name,
       ),
-    for (final country in tripMicrostatesSearchOnly) country.code: country,
   };
 
   if (existingTrip != null) {
