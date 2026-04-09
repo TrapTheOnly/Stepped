@@ -69,6 +69,25 @@ Required GitHub Actions value:
 - Optional key: `GEMINI_MODEL` (fallback: `gemini-3-flash`)
 - Optional key: `GEMINI_API_VERSION` (fallback: `v1beta`)
 
+## CI iOS Archive
+
+- Workflow source: Xcode Cloud in App Store Connect, not GitHub Actions
+- GitHub check names such as `stepped | Default | Archive - iOS` are mirrored back from Xcode Cloud after Apple runs the archive workflow against this repository
+- Bootstrap script: `ios/ci_scripts/ci_post_clone.sh`
+
+Why the archive was failing:
+
+- `ios/Flutter/Release.xcconfig` includes `Generated.xcconfig`, but `ios/.gitignore` intentionally excludes `Flutter/Generated.xcconfig`
+- CocoaPods support files under `ios/Pods/Target Support Files/...` are also intentionally excluded from git
+- Xcode Cloud checks out a clean copy of the repo, so a Flutter app must run `flutter pub get` and `pod install` before Xcode tries to archive it
+
+The post-clone script now does exactly that for Xcode Cloud:
+
+- installs Flutter stable
+- runs `flutter precache --ios`
+- runs `flutter pub get`
+- runs `pod install` inside `ios/`
+
 ## CI Backend Deploy
 
 - Workflow: `.github/workflows/backend-cloud-run-deploy.yml`
