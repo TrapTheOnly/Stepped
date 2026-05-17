@@ -27,8 +27,7 @@ String? normalizeSocialAssetUrl(String? raw) {
   }
 
   final baseUri = Uri.parse(defaultSteppedApiBaseUrl);
-  final relativePath =
-      normalized.startsWith('/') ? normalized : '/$normalized';
+  final relativePath = normalized.startsWith('/') ? normalized : '/$normalized';
   return baseUri.resolve(relativePath).toString();
 }
 
@@ -37,6 +36,10 @@ bool _looksLikeLocalPath(String raw) {
     return true;
   }
   if (RegExp(r'^[a-zA-Z]:\\').hasMatch(raw)) {
+    return true;
+  }
+  if (RegExp(r'^/(data|storage|sdcard|private|var|Users|home|tmp)/')
+      .hasMatch(raw)) {
     return true;
   }
   if (raw.startsWith('./') || raw.startsWith('../')) {

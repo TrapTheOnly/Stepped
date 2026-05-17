@@ -57,8 +57,9 @@ class GeminiTripPlanner {
       );
     }
     if (normalizedCities.length > wishlistMaxCitiesPerRequest) {
-      throw const GeminiPlannerException(
-          'You can add up to 5 cities per request.');
+      throw GeminiPlannerException(
+        'You can add up to $wishlistMaxCitiesPerRequest cities per request.',
+      );
     }
     final normalizedMonth = (preferredMonth != null &&
             preferredMonth >= DateTime.january &&

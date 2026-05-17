@@ -11,6 +11,7 @@ import '../../widgets/frosted_squircle.dart';
 import '../map/map_viewmodel.dart';
 import '../wishlist/gemini_trip_planner.dart';
 import '../wishlist/wishlist_plan_date_utils.dart';
+import '../wishlist/widgets/wishlist_editorial_widgets.dart';
 import 'add_trip_controller.dart';
 import 'add_trip_form_types.dart';
 import 'add_trip_logic.dart';
@@ -401,6 +402,12 @@ class _AddTripScreenState extends ConsumerState<AddTripScreen> {
     }
     if (_tripCities.isEmpty) {
       _tripCities = fallbackCities;
+    }
+    if (_coverImageController.text.trim().isEmpty) {
+      final inheritedCover = wishlistPrimaryImageUrl(item)?.trim();
+      if (inheritedCover != null && inheritedCover.isNotEmpty) {
+        _coverImageController.text = inheritedCover;
+      }
     }
     _sourceWishlistItemId = item.id;
     _populatedFromWishlist = true;

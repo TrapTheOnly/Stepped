@@ -62,9 +62,12 @@ class CloudTripPlannerClient {
     }
 
     final uri = _buildTripPlannerUri(normalizedBaseUrl);
+    final today = DateTime.now();
     final payload = <String, dynamic>{
       'wishlist_title': wishlistTitle?.trim(),
       'country': normalizedCountryName,
+      'current_date': _toIsoDate(today),
+      'current_year': today.year,
       'trip_purpose': tripPurpose?.trim(),
       'home_base': homeBase?.trim(),
       'time_mode': preciseWindow != null
