@@ -32,3 +32,5 @@ test/
 tmp_*.xml
 *_options.yaml
 *_options.yml
+
+HANDOFF.md

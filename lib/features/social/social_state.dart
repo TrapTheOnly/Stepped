@@ -1240,8 +1240,12 @@ String? _mergeWishlistAiPlan({
   required String? remoteImageUrl,
 }) {
   final normalizedRemoteImage = normalizeSocialAssetUrl(remoteImageUrl);
-  String? basePlan =
-      _nonEmptyOrNull(remoteAiPlan) ?? _nonEmptyOrNull(localAiPlan);
+  final normalizedRemotePlan = _nonEmptyOrNull(remoteAiPlan);
+  final normalizedLocalPlan = _nonEmptyOrNull(localAiPlan);
+  final basePlan = _validWishlistPlanOrNull(normalizedRemotePlan) ??
+      _validWishlistPlanOrNull(normalizedLocalPlan) ??
+      normalizedLocalPlan ??
+      normalizedRemotePlan;
   if (basePlan == null && normalizedRemoteImage == null) {
     return null;
   }
@@ -1276,6 +1280,19 @@ String? _mergeWishlistAiPlan({
     return jsonEncode(payload);
   } catch (_) {
     return basePlan;
+  }
+}
+
+String? _validWishlistPlanOrNull(String? rawPlan) {
+  final normalized = _nonEmptyOrNull(rawPlan);
+  if (normalized == null) {
+    return null;
+  }
+  try {
+    final decoded = jsonDecode(normalized);
+    return decoded is Map ? normalized : null;
+  } catch (_) {
+    return null;
   }
 }
 

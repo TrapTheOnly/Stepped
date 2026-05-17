@@ -32,7 +32,7 @@ This spec assumes one unified premium plan:
 ### 2.3 Cost Protection Rules
 
 - Hard input cap:
-- max `4` cities per request
+- max `6` cities per request
 - max `1` country per request
 - Hard output cap:
 - `max_output_tokens = 900`
@@ -82,7 +82,7 @@ Replace form-like flow with step cards:
 
 - Step 1: Destination
 - country picker
-- city chips input (max 4)
+- city chips input (max 6)
 - Step 2: Timing
 - exact date range or flexible month + duration
 - Step 3: Preferences

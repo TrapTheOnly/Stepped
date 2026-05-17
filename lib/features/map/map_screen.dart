@@ -144,31 +144,43 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               offset: const Offset(0, -52),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(0, 8, 0, 30),
-                child: GlobeWidget(
-                  visitedCountryCodes:
-                      dashboardAsync.valueOrNull?.visitedCountryCodes ??
-                          const <String>[],
-                  focusCountryCode: focusRequest?.countryCode,
-                  focusRequestToken: focusRequest?.token,
-                  resetViewRequestToken: resetToken,
-                  onSelectedCountryChanged: _handleGlobeSelectedCountryChanged,
-                  onFocusRequestConsumed: (countryCode, token) {
-                    final activeRequest = ref.read(globeFocusRequestProvider);
-                    if (activeRequest == null) {
-                      return;
-                    }
+                child: FrostedSquircle(
+                  radius: 36,
+                  blurSigma: 20,
+                  color: colorScheme.surface.withValues(alpha: 0.45),
+                  borderColor:
+                      colorScheme.primaryContainer.withValues(alpha: 0.10),
+                  shadowColor:
+                      colorScheme.secondary.withValues(alpha: 0.08),
+                  child: GlobeWidget(
+                    visitedCountryCodes:
+                        dashboardAsync.valueOrNull?.visitedCountryCodes ??
+                            const <String>[],
+                    focusCountryCode: focusRequest?.countryCode,
+                    focusRequestToken: focusRequest?.token,
+                    resetViewRequestToken: resetToken,
+                    onSelectedCountryChanged:
+                        _handleGlobeSelectedCountryChanged,
+                    onFocusRequestConsumed: (countryCode, token) {
+                      final activeRequest =
+                          ref.read(globeFocusRequestProvider);
+                      if (activeRequest == null) {
+                        return;
+                      }
 
-                    final matchesCountry =
-                        activeRequest.countryCode.toUpperCase() ==
-                            countryCode.toUpperCase();
-                    final matchesToken =
-                        token == null || activeRequest.token == token;
-                    if (!matchesCountry || !matchesToken) {
-                      return;
-                    }
+                      final matchesCountry =
+                          activeRequest.countryCode.toUpperCase() ==
+                              countryCode.toUpperCase();
+                      final matchesToken =
+                          token == null || activeRequest.token == token;
+                      if (!matchesCountry || !matchesToken) {
+                        return;
+                      }
 
-                    ref.read(globeFocusRequestProvider.notifier).state = null;
-                  },
+                      ref.read(globeFocusRequestProvider.notifier).state =
+                          null;
+                    },
+                  ),
                 ),
               ),
             ),

@@ -16,6 +16,9 @@ String buildGeminiBasePrompt({
   required List<String> preferredCities,
   required bool allowAdditionalCitiesIfTimeAllows,
 }) {
+  final today = DateTime.now();
+  final currentDateText = _formatDate(today);
+  final currentYear = today.year;
   final windowText = preciseWindow == null
       ? 'Not provided'
       : '${_formatDate(preciseWindow.start)} to ${_formatDate(preciseWindow.end)} '
@@ -35,8 +38,9 @@ String buildGeminiBasePrompt({
   final purposeText = tripPurpose == null || tripPurpose.trim().isEmpty
       ? 'Not provided'
       : tripPurpose.trim();
-  final isAiTimingMode =
-      preciseWindow == null && preferredMonth == null && durationPreference == null;
+  final isAiTimingMode = preciseWindow == null &&
+      preferredMonth == null &&
+      durationPreference == null;
   final timingInstruction = isAiTimingMode
       ? '- This request is in ai_decides mode. Pick the best concrete month or short month range for this exact trip and explain why.\n'
           '- In ai_decides mode, the first time_windows item must be the primary recommendation, not a generic season label.\n'
@@ -49,6 +53,8 @@ You are a concise travel planner. Return strict JSON only.
 INPUT
 - trip_title: $titleText
 - country: $countryName
+- current_date: $currentDateText
+- current_year: $currentYear
 - trip_purpose: $purposeText
 - generation_attempt: $generationAttempt
 - traveler_home_base: $baseText
@@ -91,7 +97,7 @@ OUTPUT JSON SCHEMA
 
 Rules:
 - City-level plan only (no hotels/flights).
-- Keep city_plan to 1-5 cities.
+- Keep city_plan to 1-6 cities.
 - Treat trip_purpose as the primary planning brief, not optional flavor text.
 - Start by extracting any hard anchors from trip_purpose: named cities, landmarks, day trips, conferences, festivals, holidays, launch sites, museums, beaches, and date-sensitive events.
 - Every hard anchor from trip_purpose must appear either in city_plan or inside the reason for the nearest city that supports it.
@@ -110,6 +116,8 @@ Rules:
 - If preferred_month is provided, the first time_windows item must honor that month.
 - If trip_purpose includes a named event or fixed date, time_windows must reflect that timing anchor directly.
 - If this request is in ai_decides mode, recommended_dates is required and must pick concrete dates in the next 18 months.
+- Treat current_date as today. Do not recommend dates before current_date.
+- Use current_year for date reasoning. If a preferred month has already passed in current_year, choose the next calendar year.
 - If this request is in ai_decides mode, recommended_dates should line up with the strongest time window and trip purpose.
 - If trip_purpose includes a named event or date anchor, recommended_dates should center around it when realistic.
 - If this request is not in ai_decides mode and no precise_date_window was provided, omit recommended_dates.

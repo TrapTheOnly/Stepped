@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
@@ -60,8 +61,14 @@ class _GlobeWidgetState extends State<GlobeWidget>
   static const _maxPitchVelocity = 2.6;
   static const _maxZoomVelocity = 6.2;
 
+  static const _idleAmplitude = 0.02;
+  static const _idlePeriodSeconds = 10;
+  static const _idleResumeDelaySeconds = 3;
+
   late final AnimationController _cameraController;
+  late final AnimationController _idleController;
   Ticker? _inertiaTicker;
+  Timer? _idleResumeTimer;
 
   Tween<double>? _rotationTween;
   Tween<double>? _pitchTween;
@@ -71,6 +78,7 @@ class _GlobeWidgetState extends State<GlobeWidget>
   double _rotation = 0;
   double _pitch = 0;
   double _zoom = _minZoom;
+  double _baseRotation = 0;
   int _activeLod = 0;
   int _cameraAnimationGeneration = 0;
   double _scaleStartZoom = _minZoom;
@@ -90,6 +98,7 @@ class _GlobeWidgetState extends State<GlobeWidget>
   Duration? _lastInertiaElapsed;
 
   GlobeCountryShape? _selectedCountry;
+  bool _isIdleActive = false;
 
   @override
   void initState() {
@@ -100,6 +109,10 @@ class _GlobeWidgetState extends State<GlobeWidget>
     )
       ..addListener(_onCameraTick)
       ..addStatusListener(_onCameraStatusChanged);
+    _idleController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: _idlePeriodSeconds),
+    )..addListener(_onIdleTick);
     _activeLod = _lodForZoom(_zoom);
     _maybeApplyExternalFocus();
   }
@@ -119,6 +132,8 @@ class _GlobeWidgetState extends State<GlobeWidget>
     _notifyInteractionChanged(false);
     _stopInertia();
     _inertiaTicker?.dispose();
+    _idleResumeTimer?.cancel();
+    _idleController.dispose();
     _cameraController.dispose();
     super.dispose();
   }
@@ -210,6 +225,7 @@ class _GlobeWidgetState extends State<GlobeWidget>
       setState(() {
         _setZoom(_zoom * factor);
       });
+      _scheduleIdleResume();
     });
   }
 
@@ -217,6 +233,7 @@ class _GlobeWidgetState extends State<GlobeWidget>
     _notifyInteractionChanged(true);
     _stopCameraAnimation();
     _stopInertia();
+    _cancelIdle();
     _scaleStartZoom = _zoom;
     _lastTapAt = null;
     _lastTapPosition = null;
@@ -262,6 +279,7 @@ class _GlobeWidgetState extends State<GlobeWidget>
       final pitchDelta =
           details.focalPointDelta.dy * widget.sensitivity * 0.65 / _zoom;
       _rotation = GlobeProjection.normalizeAngle(_rotation + rotationDelta);
+      _baseRotation = _rotation;
       _pitch = (_pitch + pitchDelta).clamp(_pitchMin, _pitchMax);
       if (dtSeconds > 0) {
         _rotationVelocity = (rotationDelta / dtSeconds)
@@ -290,6 +308,11 @@ class _GlobeWidgetState extends State<GlobeWidget>
               .toDouble();
     }
     _startInertiaIfNeeded();
+    if (_rotationVelocity.abs() < _rotationVelocityThreshold &&
+        _pitchVelocity.abs() < _pitchVelocityThreshold &&
+        _zoomVelocity.abs() < _zoomVelocityThreshold) {
+      _scheduleIdleResume();
+    }
   }
 
   void _handleTapDown({
@@ -727,6 +750,7 @@ class _GlobeWidgetState extends State<GlobeWidget>
     setState(() {
       final t = curve.value;
       _rotation = rotationTween.transform(t);
+      _baseRotation = _rotation;
       _pitch = pitchTween.transform(t);
       _setZoom(zoomTween.transform(t));
     });
@@ -745,11 +769,13 @@ class _GlobeWidgetState extends State<GlobeWidget>
     }
 
     _rotation = GlobeProjection.normalizeAngle(_rotation);
+    _baseRotation = _rotation;
     _cameraCurve = null;
     _rotationTween = null;
     _pitchTween = null;
     _zoomTween = null;
     _doubleTapEnabled = true;
+    _scheduleIdleResume();
   }
 
   // ---------------------------------------------------------------------------
@@ -813,6 +839,7 @@ class _GlobeWidgetState extends State<GlobeWidget>
       _rotation = GlobeProjection.normalizeAngle(
         _rotation + (nextRotationVelocity * dtSeconds),
       );
+      _baseRotation = _rotation;
 
       final unclampedPitch = _pitch + (nextPitchVelocity * dtSeconds);
       final clampedPitch = unclampedPitch.clamp(_pitchMin, _pitchMax);
@@ -838,6 +865,7 @@ class _GlobeWidgetState extends State<GlobeWidget>
         _zoomVelocity.abs() < _zoomVelocityThreshold;
     if (done) {
       _stopInertia();
+      _scheduleIdleResume();
     }
   }
 
@@ -851,6 +879,7 @@ class _GlobeWidgetState extends State<GlobeWidget>
     _pitchTween = null;
     _zoomTween = null;
     _doubleTapEnabled = true;
+    _cancelIdle();
   }
 
   void _stopInertia() {
@@ -904,6 +933,44 @@ class _GlobeWidgetState extends State<GlobeWidget>
   void _setZoom(double zoom) {
     _zoom = zoom.clamp(_minZoom, _maxZoom);
     _activeLod = _lodForZoom(_zoom);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Idle animation — subtle breathing rotation
+  // ---------------------------------------------------------------------------
+
+  void _onIdleTick() {
+    if (!_isIdleActive || !mounted) return;
+    final phase = _idleController.value * 2 * math.pi;
+    setState(() {
+      _rotation = GlobeProjection.normalizeAngle(
+        _baseRotation + math.sin(phase) * _idleAmplitude,
+      );
+    });
+  }
+
+  void _scheduleIdleResume() {
+    _idleResumeTimer?.cancel();
+    if (!mounted) return;
+    _idleResumeTimer = Timer(
+      const Duration(seconds: _idleResumeDelaySeconds),
+      () {
+        if (!mounted) return;
+        _isIdleActive = true;
+        _idleController.repeat();
+      },
+    );
+  }
+
+  void _cancelIdle() {
+    _idleResumeTimer?.cancel();
+    _isIdleActive = false;
+    if (_idleController.isAnimating) {
+      _idleController.stop();
+    }
+    // Snap base rotation to current so idle resumes from where the user
+    // left the globe, not from some stale anchor.
+    _baseRotation = _rotation;
   }
 
   // ---------------------------------------------------------------------------

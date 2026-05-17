@@ -33,7 +33,7 @@ class WishlistPlanCityPreferencesSection extends StatelessWidget {
     return WishlistEditorSectionCard(
       title: 'Route hints',
       subtitle:
-          'If you already have cities in mind, add up to four. If not, AI can build the route from scratch.',
+          'If you already have cities in mind, add up to six. If not, AI can build the route from scratch.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[

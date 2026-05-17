@@ -5,25 +5,31 @@ GeminiTripPlan mergeGeminiTripPlans({
   required GeminiTripPlan current,
   required GeminiTripPlan generated,
 }) {
-  final mergedCountry = readGeminiNonEmpty(generated.country) ?? current.country;
-  final mergedSummary = readGeminiNonEmpty(generated.summary) ?? current.summary;
+  final mergedCountry =
+      readGeminiNonEmpty(generated.country) ?? current.country;
+  final mergedSummary =
+      readGeminiNonEmpty(generated.summary) ?? current.summary;
   final mergedDuration = isValidGeminiStayDuration(generated.stayDuration)
       ? generated.stayDuration
       : current.stayDuration;
-  final mergedRecommendedDates = generated.recommendedDates ?? current.recommendedDates;
-  final mergedWindows =
-      generated.timeWindows.isNotEmpty ? generated.timeWindows : current.timeWindows;
+  final mergedRecommendedDates =
+      generated.recommendedDates ?? current.recommendedDates;
+  final mergedWindows = generated.timeWindows.isNotEmpty
+      ? generated.timeWindows
+      : current.timeWindows;
 
-  final currentCityByKey = <String, GeminiCityPlan>{
-    for (final city in current.cityPlan) geminiCityKey(city.city): city,
+  final generatedCityByKey = <String, GeminiCityPlan>{
+    for (final city in generated.cityPlan) geminiCityKey(city.city): city,
   };
   final mergedCityPlan = <GeminiCityPlan>[];
+  final mergedCityKeys = <String>{};
 
-  for (final generatedCity in generated.cityPlan) {
-    final key = geminiCityKey(generatedCity.city);
-    final currentCity = currentCityByKey[key];
-    if (currentCity == null) {
-      mergedCityPlan.add(generatedCity);
+  for (final currentCity in current.cityPlan) {
+    final key = geminiCityKey(currentCity.city);
+    final generatedCity = generatedCityByKey[key];
+    if (generatedCity == null) {
+      mergedCityPlan.add(currentCity);
+      mergedCityKeys.add(key);
       continue;
     }
     mergedCityPlan.add(
@@ -34,13 +40,23 @@ GeminiTripPlan mergeGeminiTripPlans({
         isExtra: generatedCity.isExtra,
       ),
     );
+    mergedCityKeys.add(key);
+  }
+
+  for (final generatedCity in generated.cityPlan) {
+    final key = geminiCityKey(generatedCity.city);
+    if (mergedCityKeys.add(key)) {
+      mergedCityPlan.add(generatedCity);
+    }
   }
 
   final currentDetailByKey = <String, GeminiCityDetail>{
-    for (final detail in current.cityDetails) geminiCityKey(detail.city): detail,
+    for (final detail in current.cityDetails)
+      geminiCityKey(detail.city): detail,
   };
   final generatedDetailByKey = <String, GeminiCityDetail>{
-    for (final detail in generated.cityDetails) geminiCityKey(detail.city): detail,
+    for (final detail in generated.cityDetails)
+      geminiCityKey(detail.city): detail,
   };
 
   final mergedDetails = <GeminiCityDetail>[];
@@ -87,7 +103,8 @@ GeminiTripPlan mergeGeminiTripPlans({
     timeWindows: mergedWindows,
     cityPlan: mergedCityPlan,
     cityDetails: alignedDetails,
-    rawText:
-        generated.rawText.trim().isNotEmpty ? generated.rawText : current.rawText,
+    rawText: generated.rawText.trim().isNotEmpty
+        ? generated.rawText
+        : current.rawText,
   );
 }

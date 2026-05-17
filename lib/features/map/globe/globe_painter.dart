@@ -74,19 +74,56 @@ class GlobePainter extends CustomPainter {
     );
 
     final strokeBase = baseRadius;
-    final defaultStroke = (strokeBase * 0.0048).clamp(0.42, 0.85);
-    final visitedStroke = (strokeBase * 0.0064).clamp(0.55, 1.05);
-    final selectedStroke = (strokeBase * 0.0085).clamp(0.72, 1.45);
+    final defaultStroke = (strokeBase * 0.0035).clamp(0.35, 0.55);
+    final visitedStroke = (strokeBase * 0.0070).clamp(0.65, 0.90);
+    final selectedStroke = (strokeBase * 0.0080).clamp(0.80, 1.20);
+    final preparedItems = _prepareRenderItems(
+      renderQueue,
+      projector: projector,
+      center: center,
+      radius: globeRadius,
+    );
 
-    for (final item in renderQueue) {
-      _paintRing(
+    for (final item in preparedItems) {
+      _paintRingFill(
         canvas,
         item: item,
-        projector: projector,
-        center: center,
-        radius: globeRadius,
+        palette: palette,
+      );
+    }
+
+    for (final item in preparedItems) {
+      _paintRingBaseBorder(
+        canvas,
+        item: item,
         palette: palette,
         defaultStroke: defaultStroke,
+        visitedStroke: visitedStroke,
+        selectedStroke: selectedStroke,
+      );
+    }
+
+    for (final item in preparedItems) {
+      if (!item.renderItem.isVisited || item.renderItem.isSelected) {
+        continue;
+      }
+      _paintRingStateOverlay(
+        canvas,
+        item: item,
+        palette: palette,
+        visitedStroke: visitedStroke,
+        selectedStroke: selectedStroke,
+      );
+    }
+
+    for (final item in preparedItems) {
+      if (!item.renderItem.isSelected) {
+        continue;
+      }
+      _paintRingStateOverlay(
+        canvas,
+        item: item,
+        palette: palette,
         visitedStroke: visitedStroke,
         selectedStroke: selectedStroke,
       );
@@ -95,9 +132,9 @@ class GlobePainter extends CustomPainter {
     _paintMarkers(
       canvas,
       renderItems: renderQueue,
-      projector: projector,
       baseRadius: baseRadius,
       palette: palette,
+      showVisitedMarkers: lodLevel >= 1,
     );
 
     canvas.restore();
@@ -151,20 +188,37 @@ class GlobePainter extends CustomPainter {
     double globeRadius,
     _GlobePalette palette,
   ) {
+    // Inner glow — tight to sphere edge, warm moss tint for rim separation.
+    final innerRadius = globeRadius * 1.025;
+    final innerRect = Rect.fromCircle(center: center, radius: innerRadius);
+    final innerPaint = Paint()
+      ..shader = ui.Gradient.radial(
+        center,
+        innerRadius,
+        <Color>[
+          palette.atmosphereInner.withValues(alpha: 0.0),
+          palette.atmosphereInner.withValues(alpha: 0.08),
+          palette.atmosphereInner.withValues(alpha: 0.0),
+        ],
+        <double>[0.89, 0.96, 1.0],
+      );
+    canvas.drawRect(innerRect, innerPaint);
+
+    // Outer halo — soft cool diffusion, wider overshoot.
     final outerRadius = globeRadius * 1.10;
-    final rect = Rect.fromCircle(center: center, radius: outerRadius);
-    final paint = Paint()
+    final outerRect = Rect.fromCircle(center: center, radius: outerRadius);
+    final outerPaint = Paint()
       ..shader = ui.Gradient.radial(
         center,
         outerRadius,
         <Color>[
-          palette.atmosphere.withValues(alpha: 0.0),
-          palette.atmosphere.withValues(alpha: 0.18),
-          palette.atmosphere.withValues(alpha: 0.0),
+          palette.atmosphereOuter.withValues(alpha: 0.0),
+          palette.atmosphereOuter.withValues(alpha: 0.035),
+          palette.atmosphereOuter.withValues(alpha: 0.0),
         ],
-        <double>[0.86, 0.93, 1.0],
+        <double>[0.83, 0.94, 1.0],
       );
-    canvas.drawRect(rect, paint);
+    canvas.drawRect(outerRect, outerPaint);
   }
 
   void _paintSphereSurface(
@@ -173,8 +227,7 @@ class GlobePainter extends CustomPainter {
     double globeRadius,
     _GlobePalette palette,
   ) {
-    // Base ocean fill — soft radial gradient to suggest a 3D sphere without
-    // the glossy "globus" feel.
+    // Base ocean fill — soft radial gradient anchored in nightForest.
     canvas.drawCircle(
       center,
       globeRadius,
@@ -190,7 +243,7 @@ class GlobePainter extends CustomPainter {
         ),
     );
 
-    // Subtle warm rim light to make the sphere feel lit from above.
+    // Subtle warm rim light — tinted with mossSoft to tie into app palette.
     canvas.drawCircle(
       center,
       globeRadius,
@@ -202,7 +255,7 @@ class GlobePainter extends CustomPainter {
           ),
           globeRadius * 0.8,
           <Color>[
-            palette.rimLight.withValues(alpha: 0.18),
+            palette.rimLight.withValues(alpha: 0.16),
             palette.rimLight.withValues(alpha: 0.0),
           ],
         ),
@@ -235,15 +288,28 @@ class GlobePainter extends CustomPainter {
     _GlobePalette palette,
     double baseRadius,
   ) {
-    final rimWidth = math.max(1.0, baseRadius * 0.006);
-    canvas.drawCircle(
-      center,
-      globeRadius,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = rimWidth
-        ..color = palette.rim.withValues(alpha: 0.55),
-    );
+    final rimWidth =
+        math.max(1.0, baseRadius * 0.008).clamp(1.0, 3.0).toDouble();
+
+    // Sweep gradient: upper-left catches light (mossSoft tint),
+    // lower-right falls into shadow (outlineVariant).
+    final rimPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = rimWidth
+      ..shader = ui.Gradient.sweep(
+        center,
+        <Color>[
+          palette.rimDark.withValues(alpha: 0.10),
+          palette.rimHighlight.withValues(alpha: 0.38),
+          palette.rimHighlight.withValues(alpha: 0.38),
+          palette.rimDark.withValues(alpha: 0.10),
+          palette.rimShadow.withValues(alpha: 0.24),
+          palette.rimShadow.withValues(alpha: 0.24),
+          palette.rimDark.withValues(alpha: 0.10),
+        ],
+        <double>[0.0, 0.08, 0.28, 0.42, 0.58, 0.78, 1.0],
+      );
+    canvas.drawCircle(center, globeRadius, rimPaint);
   }
 
   // ---------------------------------------------------------------------------
@@ -311,91 +377,57 @@ class GlobePainter extends CustomPainter {
     return items;
   }
 
-  void _paintRing(
-    Canvas canvas, {
-    required _RingRenderItem item,
+  List<_PreparedRingRenderItem> _prepareRenderItems(
+    List<_RingRenderItem> renderItems, {
     required GlobeProjector projector,
     required Offset center,
     required double radius,
-    required _GlobePalette palette,
-    required double defaultStroke,
-    required double visitedStroke,
-    required double selectedStroke,
   }) {
-    if (_shouldUseTinyRingFastPath(item)) {
-      _paintTinyRing(
-        canvas,
-        item: item,
-        palette: palette,
-        defaultStroke: defaultStroke,
-        visitedStroke: visitedStroke,
-        selectedStroke: selectedStroke,
-      );
-      return;
-    }
-
-    final ring = item.ring;
-    final verts = _projectRing(ring, projector);
-
-    var anyVisible = false;
-    for (final v in verts) {
-      if (v.visible) {
-        anyVisible = true;
-        break;
+    final preparedItems = <_PreparedRingRenderItem>[];
+    for (final item in renderItems) {
+      if (_shouldUseTinyRingFastPath(item)) {
+        final dotRadius = item.projectedRadius
+            .clamp(item.isSelected ? 3.2 : 2.2, item.isSelected ? 8.0 : 6.0)
+            .toDouble();
+        preparedItems.add(
+          _PreparedRingRenderItem(
+            renderItem: item,
+            fillPath: null,
+            borderPath: null,
+            dotRadius: dotRadius,
+          ),
+        );
+        continue;
       }
+
+      final verts = _projectRing(item.ring, projector);
+      var anyVisible = false;
+      for (final v in verts) {
+        if (v.visible) {
+          anyVisible = true;
+          break;
+        }
+      }
+      if (!anyVisible) {
+        continue;
+      }
+
+      final fillPath = _buildFillPath(verts, center, radius);
+      if (fillPath == null) {
+        continue;
+      }
+
+      final borderPath = _buildBorderPath(verts, center, radius);
+      preparedItems.add(
+        _PreparedRingRenderItem(
+          renderItem: item,
+          fillPath: fillPath,
+          borderPath: borderPath.getBounds().isEmpty ? null : borderPath,
+          dotRadius: null,
+        ),
+      );
     }
-    if (!anyVisible) {
-      return;
-    }
-
-    final fillPath = _buildFillPath(verts, center, radius);
-    if (fillPath == null) {
-      return;
-    }
-
-    final isSelected = item.isSelected;
-    final isVisited = item.isVisited;
-
-    final fillColor = isSelected
-        ? palette.selectedFill
-        : (isVisited ? palette.visitedFill : palette.landFill);
-    final borderColor = isSelected
-        ? palette.selectedBorder
-        : (isVisited ? palette.visitedBorder : palette.landBorder);
-    final strokeWidth = isSelected
-        ? selectedStroke
-        : (isVisited ? visitedStroke : defaultStroke);
-
-    final fillPaint = Paint()
-      ..isAntiAlias = true
-      ..style = PaintingStyle.fill
-      ..color = fillColor;
-
-    canvas.drawPath(fillPath, fillPaint);
-
-    final borderPath = _buildBorderPath(verts, center, radius);
-    if (!borderPath.getBounds().isEmpty) {
-      // A thin matching-color underlay smooths the join between fill and
-      // stroke at high zoom — without it, antialiasing can leave a 1px
-      // ocean-coloured halo at the polygon edge.
-      final sealPaint = Paint()
-        ..isAntiAlias = true
-        ..style = PaintingStyle.stroke
-        ..strokeJoin = StrokeJoin.round
-        ..strokeCap = StrokeCap.round
-        ..strokeWidth = strokeWidth * 1.25
-        ..color = fillColor;
-      canvas.drawPath(borderPath, sealPaint);
-
-      final borderPaint = Paint()
-        ..isAntiAlias = true
-        ..style = PaintingStyle.stroke
-        ..strokeJoin = StrokeJoin.round
-        ..strokeCap = StrokeCap.round
-        ..strokeWidth = strokeWidth
-        ..color = borderColor;
-      canvas.drawPath(borderPath, borderPaint);
-    }
+    return preparedItems;
   }
 
   bool _shouldUseTinyRingFastPath(_RingRenderItem item) {
@@ -403,48 +435,248 @@ class GlobePainter extends CustomPainter {
         item.projectedRadius <= globeTinyRingFastPathThreshold;
   }
 
-  void _paintTinyRing(
+  Color _fillColorForState({
+    required _GlobePalette palette,
+    required bool isVisited,
+    required bool isSelected,
+  }) {
+    if (isSelected && isVisited) {
+      return palette.selectedVisitedFill;
+    }
+    if (isSelected) {
+      return palette.selectedFill;
+    }
+    if (isVisited) {
+      return palette.visitedFill;
+    }
+    return palette.landFill;
+  }
+
+  Color _borderColorForState({
+    required _GlobePalette palette,
+    required bool isVisited,
+    required bool isSelected,
+  }) {
+    if (isSelected && isVisited) {
+      return palette.selectedVisitedBorder;
+    }
+    if (isSelected) {
+      return palette.selectedBorder;
+    }
+    if (isVisited) {
+      return palette.visitedBorder;
+    }
+    return palette.landBorder;
+  }
+
+  double _strokeWidthForState({
+    required bool isVisited,
+    required bool isSelected,
+    required double defaultStroke,
+    required double visitedStroke,
+    required double selectedStroke,
+  }) {
+    if (isSelected) {
+      return selectedStroke;
+    }
+    if (isVisited) {
+      return visitedStroke;
+    }
+    return defaultStroke;
+  }
+
+  void _paintRingFill(
     Canvas canvas, {
-    required _RingRenderItem item,
+    required _PreparedRingRenderItem item,
+    required _GlobePalette palette,
+  }) {
+    final renderItem = item.renderItem;
+    final isSelected = renderItem.isSelected;
+    final isVisited = renderItem.isVisited;
+
+    final fillColor = _fillColorForState(
+      palette: palette,
+      isVisited: isVisited,
+      isSelected: isSelected,
+    );
+
+    final dotRadius = item.dotRadius;
+    if (dotRadius != null) {
+      if (isSelected) {
+        canvas.drawCircle(
+          renderItem.centroid.offset,
+          dotRadius + 2.0,
+          Paint()
+            ..isAntiAlias = true
+            ..style = PaintingStyle.fill
+            ..color =
+                isVisited ? palette.selectedVisitedGlow : palette.selectedGlow
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0),
+        );
+      }
+
+      canvas.drawCircle(
+        renderItem.centroid.offset,
+        dotRadius,
+        Paint()
+          ..isAntiAlias = true
+          ..style = PaintingStyle.fill
+          ..color = fillColor,
+      );
+      return;
+    }
+
+    final fillPath = item.fillPath;
+    if (fillPath == null) {
+      return;
+    }
+
+    if (isSelected) {
+      final glowPaint = Paint()
+        ..isAntiAlias = true
+        ..style = PaintingStyle.fill
+        ..color =
+            (isVisited ? palette.selectedVisitedGlow : palette.selectedGlow)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.4);
+      canvas.drawPath(fillPath, glowPaint);
+    }
+
+    final fillPaint = Paint()
+      ..isAntiAlias = true
+      ..style = PaintingStyle.fill
+      ..color = fillColor;
+    canvas.drawPath(fillPath, fillPaint);
+  }
+
+  void _paintRingBaseBorder(
+    Canvas canvas, {
+    required _PreparedRingRenderItem item,
     required _GlobePalette palette,
     required double defaultStroke,
     required double visitedStroke,
     required double selectedStroke,
   }) {
-    final isSelected = item.isSelected;
-    final isVisited = item.isVisited;
-
-    final fillColor = isSelected
-        ? palette.selectedFill
-        : (isVisited ? palette.visitedFill : palette.landFill);
-    final borderColor = isSelected
-        ? palette.selectedBorder
-        : (isVisited ? palette.visitedBorder : palette.landBorder);
-    final strokeWidth = isSelected
-        ? selectedStroke
-        : (isVisited ? visitedStroke : defaultStroke);
-    final dotRadius = item.projectedRadius
-        .clamp(isSelected ? 3.2 : 2.2, isSelected ? 8.0 : 6.0)
-        .toDouble();
-
-    canvas.drawCircle(
-      item.centroid.offset,
-      dotRadius,
-      Paint()
-        ..isAntiAlias = true
-        ..style = PaintingStyle.fill
-        ..color = fillColor,
+    final renderItem = item.renderItem;
+    final isSelected = renderItem.isSelected;
+    final isVisited = renderItem.isVisited;
+    final fillColor = _fillColorForState(
+      palette: palette,
+      isVisited: isVisited,
+      isSelected: isSelected,
+    );
+    final strokeWidth = _strokeWidthForState(
+      isVisited: isVisited,
+      isSelected: isSelected,
+      defaultStroke: defaultStroke,
+      visitedStroke: visitedStroke,
+      selectedStroke: selectedStroke,
     );
 
-    canvas.drawCircle(
-      item.centroid.offset,
-      dotRadius,
-      Paint()
+    final dotRadius = item.dotRadius;
+    if (dotRadius != null) {
+      canvas.drawCircle(
+        renderItem.centroid.offset,
+        dotRadius,
+        Paint()
+          ..isAntiAlias = true
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = math.min(strokeWidth, dotRadius * 0.65)
+          ..color = palette.landBorder,
+      );
+      return;
+    }
+
+    final borderPath = item.borderPath;
+    if (borderPath == null) {
+      return;
+    }
+
+    final sealPaint = Paint()
+      ..isAntiAlias = true
+      ..style = PaintingStyle.stroke
+      ..strokeJoin = StrokeJoin.round
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = strokeWidth * 1.25
+      ..color = fillColor;
+    canvas.drawPath(borderPath, sealPaint);
+
+    final borderPaint = Paint()
+      ..isAntiAlias = true
+      ..style = PaintingStyle.stroke
+      ..strokeJoin = StrokeJoin.round
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = strokeWidth
+      ..color = palette.landBorder;
+    canvas.drawPath(borderPath, borderPaint);
+  }
+
+  void _paintRingStateOverlay(
+    Canvas canvas, {
+    required _PreparedRingRenderItem item,
+    required _GlobePalette palette,
+    required double visitedStroke,
+    required double selectedStroke,
+  }) {
+    final renderItem = item.renderItem;
+    final isSelected = renderItem.isSelected;
+    final isVisited = renderItem.isVisited;
+    final strokeWidth = isSelected ? selectedStroke : visitedStroke;
+    final borderColor = _borderColorForState(
+      palette: palette,
+      isVisited: isVisited,
+      isSelected: isSelected,
+    );
+
+    final dotRadius = item.dotRadius;
+    if (dotRadius != null) {
+      canvas.drawCircle(
+        renderItem.centroid.offset,
+        dotRadius,
+        Paint()
+          ..isAntiAlias = true
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = math.min(strokeWidth, dotRadius * 0.65)
+          ..color = borderColor,
+      );
+      return;
+    }
+
+    final borderPath = item.borderPath;
+    if (borderPath == null) {
+      return;
+    }
+
+    if (isVisited && !isSelected) {
+      final visitedGlowPaint = Paint()
         ..isAntiAlias = true
         ..style = PaintingStyle.stroke
-        ..strokeWidth = math.min(strokeWidth, dotRadius * 0.65)
-        ..color = borderColor,
-    );
+        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = StrokeCap.round
+        ..strokeWidth = strokeWidth * 1.45
+        ..color = palette.visitedGlow
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.35);
+      canvas.drawPath(borderPath, visitedGlowPaint);
+    }
+
+    final borderPaint = Paint()
+      ..isAntiAlias = true
+      ..style = PaintingStyle.stroke
+      ..strokeJoin = StrokeJoin.round
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = strokeWidth
+      ..color = borderColor;
+    canvas.drawPath(borderPath, borderPaint);
+
+    if (isVisited && !isSelected) {
+      final reliefPaint = Paint()
+        ..isAntiAlias = true
+        ..style = PaintingStyle.stroke
+        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = StrokeCap.round
+        ..strokeWidth = strokeWidth * 0.62
+        ..color = palette.visitedHighlight;
+      canvas.drawPath(borderPath, reliefPaint);
+    }
   }
 
   List<GlobeProjectedPoint> _projectRing(
@@ -671,18 +903,17 @@ class GlobePainter extends CustomPainter {
   }
 
   // ---------------------------------------------------------------------------
-  // Pins / markers
+  // Markers — luminous dots
   // ---------------------------------------------------------------------------
 
   void _paintMarkers(
     Canvas canvas, {
     required List<_RingRenderItem> renderItems,
-    required GlobeProjector projector,
     required double baseRadius,
     required _GlobePalette palette,
+    required bool showVisitedMarkers,
   }) {
-    // Only mark each country once — pin sits on its largest visible piece.
-    final marked = <String>{};
+    final markerItems = <String, _RingRenderItem>{};
     for (final item in renderItems) {
       final country = item.country;
       final isVisited = item.isVisited;
@@ -690,7 +921,7 @@ class GlobePainter extends CustomPainter {
       if (!isVisited && !isSelected) {
         continue;
       }
-      if (!marked.add(country.iso2)) {
+      if (isVisited && !showVisitedMarkers) {
         continue;
       }
       final centroid = item.centroid;
@@ -698,19 +929,48 @@ class GlobePainter extends CustomPainter {
         continue;
       }
 
-      final outerSize =
-          (baseRadius * (isSelected ? 0.024 : 0.018)).clamp(2.6, 9.0);
+      final previous = markerItems[country.iso2];
+      if (previous == null || _isBetterMarkerItem(item, previous)) {
+        markerItems[country.iso2] = item;
+      }
+    }
+
+    for (final item in markerItems.values) {
+      final isSelected = item.isSelected;
+      final centroid = item.centroid;
+      final markerColor = isSelected ? palette.selectedDot : palette.visitedDot;
+      final coreRadius = (baseRadius * (isSelected ? 0.0065 : 0.0045))
+          .clamp(2.0, 5.0)
+          .toDouble();
+      final glowRadius = coreRadius * (isSelected ? 2.65 : 2.25);
+
+      // Soft radial glow underlay.
+      final glowPaint = Paint()
+        ..shader = ui.Gradient.radial(
+          centroid.offset,
+          glowRadius,
+          <Color>[
+            markerColor.withValues(alpha: isSelected ? 0.40 : 0.28),
+            markerColor.withValues(alpha: 0.0),
+          ],
+        );
+      canvas.drawCircle(centroid.offset, glowRadius, glowPaint);
+
+      // Crisp core.
       canvas.drawCircle(
         centroid.offset,
-        outerSize.toDouble(),
-        Paint()..color = isSelected ? palette.selectedPin : palette.visitedPin,
-      );
-      canvas.drawCircle(
-        centroid.offset,
-        (outerSize * 0.42).clamp(1.1, 4.0).toDouble(),
-        Paint()..color = palette.pinCore,
+        coreRadius,
+        Paint()..color = markerColor,
       );
     }
+  }
+
+  bool _isBetterMarkerItem(_RingRenderItem item, _RingRenderItem previous) {
+    final radiusDelta = item.projectedRadius - previous.projectedRadius;
+    if (radiusDelta.abs() > 0.75) {
+      return radiusDelta > 0;
+    }
+    return item.centroid.z > previous.centroid.z;
   }
 
   // ---------------------------------------------------------------------------
@@ -748,17 +1008,34 @@ class _RingRenderItem {
   final double projectedRadius;
 }
 
-/// Centralised palette so the visual identity of the globe is in one place.
-/// The colors are derived from the active [ColorScheme] so the globe still
-/// follows the rest of the app's theme but with a more cinematic, deep-water
-/// look that doesn't read as a children's globus.
+class _PreparedRingRenderItem {
+  const _PreparedRingRenderItem({
+    required this.renderItem,
+    required this.fillPath,
+    required this.borderPath,
+    required this.dotRadius,
+  });
+
+  final _RingRenderItem renderItem;
+  final Path? fillPath;
+  final Path? borderPath;
+  final double? dotRadius;
+}
+
+/// Centralised palette for the globe's visual identity.
+///
+/// Ocean stays dimensional in both themes, land uses warm earth tones, and
+/// visited countries get a quiet fill instead of relying on outlines.
 class _GlobePalette {
   const _GlobePalette({
     required this.oceanHighlight,
     required this.oceanBase,
     required this.oceanDeep,
-    required this.atmosphere,
-    required this.rim,
+    required this.atmosphereInner,
+    required this.atmosphereOuter,
+    required this.rimHighlight,
+    required this.rimShadow,
+    required this.rimDark,
     required this.rimLight,
     required this.innerShadow,
     required this.ambientShadow,
@@ -766,18 +1043,26 @@ class _GlobePalette {
     required this.landBorder,
     required this.visitedFill,
     required this.visitedBorder,
-    required this.visitedPin,
-    required this.selectedFill,
+    required this.visitedHighlight,
+    required this.visitedGlow,
+    required this.visitedDot,
     required this.selectedBorder,
-    required this.selectedPin,
-    required this.pinCore,
+    required this.selectedVisitedBorder,
+    required this.selectedGlow,
+    required this.selectedVisitedGlow,
+    required this.selectedFill,
+    required this.selectedVisitedFill,
+    required this.selectedDot,
   });
 
   final Color oceanHighlight;
   final Color oceanBase;
   final Color oceanDeep;
-  final Color atmosphere;
-  final Color rim;
+  final Color atmosphereInner;
+  final Color atmosphereOuter;
+  final Color rimHighlight;
+  final Color rimShadow;
+  final Color rimDark;
   final Color rimLight;
   final Color innerShadow;
   final Color ambientShadow;
@@ -785,45 +1070,106 @@ class _GlobePalette {
   final Color landBorder;
   final Color visitedFill;
   final Color visitedBorder;
-  final Color visitedPin;
-  final Color selectedFill;
+  final Color visitedHighlight;
+  final Color visitedGlow;
+  final Color visitedDot;
   final Color selectedBorder;
-  final Color selectedPin;
-  final Color pinCore;
+  final Color selectedVisitedBorder;
+  final Color selectedGlow;
+  final Color selectedVisitedGlow;
+  final Color selectedFill;
+  final Color selectedVisitedFill;
+  final Color selectedDot;
 
   factory _GlobePalette.fromScheme(ColorScheme scheme) {
     final isDark = scheme.brightness == Brightness.dark;
 
-    // Cool deep-water gradient — three stops for a sense of depth.
+    // Ocean — deep in dark mode, sleek blue-green pewter in light mode.
     final oceanHighlight =
-        isDark ? const Color(0xFF1E2B3F) : const Color(0xFFE7EEF6);
+        isDark ? const Color(0xFF203932) : const Color(0xFFD8E3DE);
     final oceanBase =
-        isDark ? const Color(0xFF13202F) : const Color(0xFFCBD9E8);
+        isDark ? const Color(0xFF10221E) : const Color(0xFFB8CBC6);
     final oceanDeep =
-        isDark ? const Color(0xFF0A1422) : const Color(0xFFA9BCD0);
+        isDark ? const Color(0xFF081210) : const Color(0xFF859D99);
+
+    // Land — warm enough to avoid map-gray, restrained enough for app chrome.
+    final landFill = isDark
+        ? const Color(0xFF302B23).withValues(alpha: 0.96)
+        : const Color(0xFFECE2CF).withValues(alpha: 0.98);
+    final landBorder = isDark
+        ? const Color(0xFF6A5F4F).withValues(alpha: 0.42)
+        : const Color(0xFF8F8575).withValues(alpha: 0.52);
+
+    // MossSoft (#8FB3A7) and warm brass (#C8B38C) from app design language.
+    final mossSoft = const Color(0xFF8FB3A7);
+    final warmBrass = const Color(0xFFC8B38C);
+    final earth = const Color(0xFF695D40);
+    final lakeSoft = const Color(0xFFC4E4F9);
+
+    final selectedColor = isDark ? warmBrass : earth;
+    final visitedFill = isDark
+        ? const Color(0xFF395F55).withValues(alpha: 0.90)
+        : const Color(0xFFC3D1C4).withValues(alpha: 0.96);
+    final selectedFill = isDark
+        ? const Color(0xFF6B5E46).withValues(alpha: 0.94)
+        : const Color(0xFFD5C28F).withValues(alpha: 0.95);
+    final selectedVisitedFill = isDark
+        ? const Color(0xFF4B7165).withValues(alpha: 0.96)
+        : const Color(0xFFABC4B5).withValues(alpha: 0.98);
+
+    // Visited: distinct fill first, then a quiet moss edge.
+    final visitedBorder = mossSoft.withValues(alpha: isDark ? 0.66 : 0.70);
+    final visitedHighlight = mossSoft.withValues(alpha: isDark ? 0.18 : 0.22);
+    final visitedGlow = mossSoft.withValues(alpha: isDark ? 0.10 : 0.12);
+
+    // Selected: brass focus for unvisited, moss fill plus brass edge for visited.
+    final selectedBorder =
+        selectedColor.withValues(alpha: isDark ? 0.84 : 0.78);
+    final selectedVisitedBorder =
+        warmBrass.withValues(alpha: isDark ? 0.86 : 0.76);
+    final selectedGlow = selectedColor.withValues(alpha: isDark ? 0.18 : 0.20);
+    final selectedVisitedGlow =
+        mossSoft.withValues(alpha: isDark ? 0.14 : 0.16);
+
+    // Markers — low-glow pins used only after the globe reaches detail zoom.
+    final visitedDot = mossSoft.withValues(alpha: isDark ? 0.78 : 0.82);
+    final selectedDot = warmBrass.withValues(alpha: isDark ? 0.88 : 0.84);
+
+    // Atmosphere — inner warm moss, outer cool lake.
+    final atmosphereInner = mossSoft;
+    final atmosphereOuter = lakeSoft;
+
+    // Rim — directional light gradient.
+    final rimHighlight = mossSoft;
+    final rimShadow = isDark ? scheme.outlineVariant : const Color(0xFF60736D);
+    final rimDark = isDark ? const Color(0xFF07100E) : const Color(0xFF78908A);
 
     return _GlobePalette(
       oceanHighlight: oceanHighlight,
       oceanBase: oceanBase,
       oceanDeep: oceanDeep,
-      atmosphere: scheme.primary,
-      rim: scheme.outlineVariant,
-      rimLight: isDark ? const Color(0xFFCFE3FF) : const Color(0xFFFFFFFF),
+      atmosphereInner: atmosphereInner,
+      atmosphereOuter: atmosphereOuter,
+      rimHighlight: rimHighlight,
+      rimShadow: rimShadow,
+      rimDark: rimDark,
+      rimLight: isDark ? const Color(0xFFD8EDE5) : const Color(0xFFF3EAD8),
       innerShadow: isDark ? Colors.black : const Color(0xFF1B2A3D),
       ambientShadow: scheme.shadow,
-      landFill: isDark
-          ? const Color(0xFF2A3A4F).withValues(alpha: 0.92)
-          : const Color(0xFFF3F1EC).withValues(alpha: 0.96),
-      landBorder: isDark
-          ? const Color(0xFF7B8FA8).withValues(alpha: 0.60)
-          : const Color(0xFF6A788C).withValues(alpha: 0.68),
-      visitedFill: scheme.primaryContainer.withValues(alpha: 0.95),
-      visitedBorder: scheme.primary.withValues(alpha: 0.95),
-      visitedPin: scheme.primary,
-      selectedFill: scheme.tertiaryContainer.withValues(alpha: 0.97),
-      selectedBorder: scheme.tertiary.withValues(alpha: 0.98),
-      selectedPin: scheme.tertiary,
-      pinCore: scheme.onPrimary,
+      landFill: landFill,
+      landBorder: landBorder,
+      visitedFill: visitedFill,
+      visitedBorder: visitedBorder,
+      visitedHighlight: visitedHighlight,
+      visitedGlow: visitedGlow,
+      visitedDot: visitedDot,
+      selectedBorder: selectedBorder,
+      selectedVisitedBorder: selectedVisitedBorder,
+      selectedGlow: selectedGlow,
+      selectedVisitedGlow: selectedVisitedGlow,
+      selectedFill: selectedFill,
+      selectedVisitedFill: selectedVisitedFill,
+      selectedDot: selectedDot,
     );
   }
 }
