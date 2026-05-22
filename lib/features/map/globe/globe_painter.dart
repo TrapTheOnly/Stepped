@@ -1084,63 +1084,64 @@ class _GlobePalette {
   factory _GlobePalette.fromScheme(ColorScheme scheme) {
     final isDark = scheme.brightness == Brightness.dark;
 
-    // Ocean — deep in dark mode, sleek blue-green pewter in light mode.
+    // Ocean — dark green-gray in dark mode, muted slate in light mode.
     final oceanHighlight =
-        isDark ? const Color(0xFF203932) : const Color(0xFFD8E3DE);
+        isDark ? const Color(0xFF24382F) : const Color(0xFFD9DFD6);
     final oceanBase =
-        isDark ? const Color(0xFF10221E) : const Color(0xFFB8CBC6);
+        isDark ? const Color(0xFF14251D) : const Color(0xFFB7C6C2);
     final oceanDeep =
-        isDark ? const Color(0xFF081210) : const Color(0xFF859D99);
+        isDark ? const Color(0xFF09110E) : const Color(0xFF7F9491);
 
-    // Land — warm enough to avoid map-gray, restrained enough for app chrome.
+    // Land — cream and warm gold from the logo, softened for map readability.
     final landFill = isDark
-        ? const Color(0xFF302B23).withValues(alpha: 0.96)
-        : const Color(0xFFECE2CF).withValues(alpha: 0.98);
+        ? const Color(0xFF2A2A20).withValues(alpha: 0.96)
+        : const Color(0xFFEBDDC4).withValues(alpha: 0.98);
     final landBorder = isDark
-        ? const Color(0xFF6A5F4F).withValues(alpha: 0.42)
-        : const Color(0xFF8F8575).withValues(alpha: 0.52);
+        ? const Color(0xFF77674F).withValues(alpha: 0.42)
+        : const Color(0xFF897C68).withValues(alpha: 0.52);
 
-    // MossSoft (#8FB3A7) and warm brass (#C8B38C) from app design language.
-    final mossSoft = const Color(0xFF8FB3A7);
-    final warmBrass = const Color(0xFFC8B38C);
-    final earth = const Color(0xFF695D40);
-    final lakeSoft = const Color(0xFFC4E4F9);
+    final forest = const Color(0xFF254333);
+    final warmGold = const Color(0xFFD4B88B);
+    final creamHighlight = const Color(0xFFEBD7B3);
+    final slateBlue = const Color(0xFF3E606B);
 
-    final selectedColor = isDark ? warmBrass : earth;
+    final selectedColor = isDark ? warmGold : forest;
     final visitedFill = isDark
-        ? const Color(0xFF395F55).withValues(alpha: 0.90)
-        : const Color(0xFFC3D1C4).withValues(alpha: 0.96);
+        ? const Color(0xFF254333).withValues(alpha: 0.92)
+        : const Color(0xFFC8D2C6).withValues(alpha: 0.96);
     final selectedFill = isDark
-        ? const Color(0xFF6B5E46).withValues(alpha: 0.94)
-        : const Color(0xFFD5C28F).withValues(alpha: 0.95);
+        ? const Color(0xFF5F4F31).withValues(alpha: 0.94)
+        : const Color(0xFFD4B88B).withValues(alpha: 0.95);
     final selectedVisitedFill = isDark
-        ? const Color(0xFF4B7165).withValues(alpha: 0.96)
-        : const Color(0xFFABC4B5).withValues(alpha: 0.98);
+        ? const Color(0xFF315541).withValues(alpha: 0.96)
+        : const Color(0xFFB9C8B9).withValues(alpha: 0.98);
 
-    // Visited: distinct fill first, then a quiet moss edge.
-    final visitedBorder = mossSoft.withValues(alpha: isDark ? 0.66 : 0.70);
-    final visitedHighlight = mossSoft.withValues(alpha: isDark ? 0.18 : 0.22);
-    final visitedGlow = mossSoft.withValues(alpha: isDark ? 0.10 : 0.12);
+    // Visited: distinct fill first, then a quiet forest edge.
+    final visitedBorder = (isDark ? creamHighlight : forest)
+        .withValues(alpha: isDark ? 0.58 : 0.62);
+    final visitedHighlight =
+        creamHighlight.withValues(alpha: isDark ? 0.16 : 0.20);
+    final visitedGlow = forest.withValues(alpha: isDark ? 0.18 : 0.12);
 
-    // Selected: brass focus for unvisited, moss fill plus brass edge for visited.
+    // Selected: gold focus for unvisited, forest fill plus gold edge for visited.
     final selectedBorder =
         selectedColor.withValues(alpha: isDark ? 0.84 : 0.78);
     final selectedVisitedBorder =
-        warmBrass.withValues(alpha: isDark ? 0.86 : 0.76);
+        warmGold.withValues(alpha: isDark ? 0.86 : 0.76);
     final selectedGlow = selectedColor.withValues(alpha: isDark ? 0.18 : 0.20);
-    final selectedVisitedGlow =
-        mossSoft.withValues(alpha: isDark ? 0.14 : 0.16);
+    final selectedVisitedGlow = forest.withValues(alpha: isDark ? 0.18 : 0.16);
 
     // Markers — low-glow pins used only after the globe reaches detail zoom.
-    final visitedDot = mossSoft.withValues(alpha: isDark ? 0.78 : 0.82);
-    final selectedDot = warmBrass.withValues(alpha: isDark ? 0.88 : 0.84);
+    final visitedDot = (isDark ? creamHighlight : forest)
+        .withValues(alpha: isDark ? 0.78 : 0.82);
+    final selectedDot = warmGold.withValues(alpha: isDark ? 0.88 : 0.84);
 
-    // Atmosphere — inner warm moss, outer cool lake.
-    final atmosphereInner = mossSoft;
-    final atmosphereOuter = lakeSoft;
+    // Atmosphere — inner forest warmth, outer slate-blue coolness.
+    final atmosphereInner = isDark ? creamHighlight : forest;
+    final atmosphereOuter = slateBlue;
 
     // Rim — directional light gradient.
-    final rimHighlight = mossSoft;
+    final rimHighlight = isDark ? creamHighlight : forest;
     final rimShadow = isDark ? scheme.outlineVariant : const Color(0xFF60736D);
     final rimDark = isDark ? const Color(0xFF07100E) : const Color(0xFF78908A);
 
@@ -1153,7 +1154,7 @@ class _GlobePalette {
       rimHighlight: rimHighlight,
       rimShadow: rimShadow,
       rimDark: rimDark,
-      rimLight: isDark ? const Color(0xFFD8EDE5) : const Color(0xFFF3EAD8),
+      rimLight: isDark ? creamHighlight : const Color(0xFFF3EAD8),
       innerShadow: isDark ? Colors.black : const Color(0xFF1B2A3D),
       ambientShadow: scheme.shadow,
       landFill: landFill,

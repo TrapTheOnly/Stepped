@@ -69,11 +69,40 @@ Required GitHub Actions value:
 - Optional key: `GEMINI_MODEL` (fallback: `gemini-3-flash`)
 - Optional key: `GEMINI_API_VERSION` (fallback: `v1beta`)
 
+## CI iOS TestFlight
+
+- Workflow: `.github/workflows/ios-testflight.yml`
+- Trigger: every push to `main` that touches app/iOS files, plus manual run from Actions tab
+- Output: signed App Store IPA uploaded as a workflow artifact and pushed to App Store Connect/TestFlight with fastlane
+- Runner: GitHub-hosted `macos-15`
+
+Required GitHub Actions values in environment `Main`:
+
+- Secret: `APP_STORE_CONNECT_KEY_ID`
+- Secret: `APP_STORE_CONNECT_ISSUER_ID`
+- Secret: `APP_STORE_CONNECT_API_KEY_BASE64` (base64 of `AuthKey_<KEY_ID>.p8`)
+- Secret: `IOS_DISTRIBUTION_CERTIFICATE_BASE64` (base64 of the Apple Distribution `.p12`)
+- Secret: `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`
+- Secret: `IOS_PROVISIONING_PROFILE_BASE64` (base64 of the App Store `.mobileprovision` for `com.gico.stepped`)
+- Secret: `GOOGLE_SERVER_CLIENT_ID`
+- Optional variable: `IOS_BUILD_NUMBER_OFFSET` (defaults to `1000`; increase if App Store Connect already has a higher build number for the current app version)
+- Optional variable: `IOS_USES_NON_EXEMPT_ENCRYPTION` (`true` or `false`, if you want fastlane to set export-compliance metadata during upload)
+- Optional variables: `STEPPED_API_BASE_URL`, `GEMINI_MODEL`, `GEMINI_API_VERSION`
+
+Base64 helpers:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("AuthKey_XXXXXXXXXX.p8")) | Set-Clipboard
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("AppleDistribution.p12")) | Set-Clipboard
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("Stepped_App_Store.mobileprovision")) | Set-Clipboard
+```
+
 ## CI iOS Archive
 
 - Workflow source: Xcode Cloud in App Store Connect, not GitHub Actions
 - GitHub check names such as `stepped | Default | Archive - iOS` are mirrored back from Xcode Cloud after Apple runs the archive workflow against this repository
 - Bootstrap script: `ios/ci_scripts/ci_post_clone.sh`
+- TestFlight deployment from GitHub Actions is handled separately by `.github/workflows/ios-testflight.yml`
 
 Why the archive was failing:
 

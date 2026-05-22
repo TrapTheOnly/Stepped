@@ -5,7 +5,7 @@ class _GoogleBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const _GoogleMark(size: 20);
+    return const _GoogleMark(size: 19);
   }
 }
 
@@ -21,56 +21,48 @@ class _GoogleSignInButton extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final disabled = onPressed == null;
 
-    return Opacity(
-      opacity: disabled ? 0.58 : 1,
+    return IgnorePointer(
+      ignoring: disabled,
       child: SizedBox(
-        height: 56,
+        height: 50,
         child: Material(
           color: Colors.transparent,
-          child: Theme(
-            data: Theme.of(context).copyWith(
-              splashFactory: NoSplash.splashFactory,
-              highlightColor: Colors.transparent,
-            ),
-            child: Ink(
-              decoration: ShapeDecoration(
-                shape: squircleShape(
-                  26,
-                  side: BorderSide(
-                    color: colorScheme.outlineVariant.withValues(alpha: 0.20),
-                  ),
+          child: Ink(
+            decoration: ShapeDecoration(
+              shape: squircleShape(
+                18,
+                side: BorderSide(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.20),
                 ),
-                color: colorScheme.surfaceContainerHigh.withValues(alpha: 0.82),
-                shadows: <BoxShadow>[
-                  BoxShadow(
-                    color: colorScheme.shadow.withValues(alpha: 0.05),
-                    blurRadius: 18,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
               ),
-              child: InkWell(
-                onTap: onPressed,
-                customBorder: squircleShape(26),
-                overlayColor: WidgetStatePropertyAll<Color>(
-                  colorScheme.primary.withValues(alpha: 0.05),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 18),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: <Widget>[
-                      const _GoogleBadge(),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Continue with Google',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              color: colorScheme.onSurface,
-                              fontSize: 17,
-                            ),
-                      ),
-                    ],
-                  ),
+              color: disabled
+                  ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.48)
+                  : _fieldFillColor(colorScheme),
+            ),
+            child: InkWell(
+              onTap: onPressed,
+              customBorder: squircleShape(18),
+              overlayColor: WidgetStatePropertyAll<Color>(
+                colorScheme.primary.withValues(alpha: 0.05),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    const _GoogleBadge(),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Continue with Google',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                            color: disabled
+                                ? colorScheme.onSurfaceVariant
+                                : colorScheme.onSurface,
+                            fontSize: 14,
+                            letterSpacing: 0,
+                          ),
+                    ),
+                  ],
                 ),
               ),
             ),
