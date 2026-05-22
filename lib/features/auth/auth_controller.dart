@@ -47,14 +47,16 @@ class AuthController extends ChangeNotifier {
   bool get isAuthenticated => _currentUser != null && _accessToken != null;
   bool get isInitialized => _initialized;
   bool get isBusy => _isBusy;
-  bool get hasPasswordProvider => _firebaseAuth.currentUser?.providerData.any(
-            (entry) => entry.providerId == 'password',
-          ) ??
-          (_currentUser?.provider == AuthProvider.password);
-  bool get hasGoogleProvider => _firebaseAuth.currentUser?.providerData.any(
-            (entry) => entry.providerId == 'google.com',
-          ) ??
-          (_currentUser?.provider == AuthProvider.google);
+  bool get hasPasswordProvider =>
+      _firebaseAuth.currentUser?.providerData.any(
+        (entry) => entry.providerId == 'password',
+      ) ??
+      (_currentUser?.provider == AuthProvider.password);
+  bool get hasGoogleProvider =>
+      _firebaseAuth.currentUser?.providerData.any(
+        (entry) => entry.providerId == 'google.com',
+      ) ??
+      (_currentUser?.provider == AuthProvider.google);
 
   Future<String?> getFreshAccessToken({bool forceRefresh = false}) async {
     await _ensureInitialized();
@@ -128,23 +130,31 @@ class AuthController extends ChangeNotifier {
 
     try {
       await _runBusy(() async {
-        final credentials = await _firebaseAuth.createUserWithEmailAndPassword(
+        try {
+          final session = await _authApiClient.registerWithEmail(
+            displayName: normalizedName,
+            email: normalizedEmail,
+            password: password,
+          );
+          await _setSession(
+            accessToken: session.accessToken,
+            user: session.user,
+          );
+          await _tryAttachFirebaseEmailSession(
+            email: normalizedEmail,
+            password: password,
+          );
+          return;
+        } on AuthApiException catch (error) {
+          if (!_shouldFallbackToFirebaseEmailAuth(error)) {
+            rethrow;
+          }
+        }
+
+        await _registerWithFirebaseEmail(
+          displayName: normalizedName,
           email: normalizedEmail,
           password: password,
-        );
-        final user = credentials.user;
-        if (user == null) {
-          throw const AuthException(
-              'Account was created, but no user session was returned.');
-        }
-
-        if ((user.displayName ?? '').trim() != normalizedName) {
-          await user.updateDisplayName(normalizedName);
-        }
-
-        await _syncSessionFromFirebaseUser(
-          user,
-          forceRefreshToken: true,
         );
       });
     } on firebase_auth.FirebaseAuthException catch (error) {
@@ -168,23 +178,50 @@ class AuthController extends ChangeNotifier {
 
     try {
       await _runBusy(() async {
-        final credentials = await _firebaseAuth.signInWithEmailAndPassword(
-          email: normalizedEmail,
-          password: password,
-        );
-        final user = credentials.user;
-        if (user == null) {
-          throw const AuthException(
-              'Sign-in succeeded, but no user session was returned.');
+        try {
+          final session = await _authApiClient.signInWithEmail(
+            email: normalizedEmail,
+            password: password,
+          );
+          await _setSession(
+            accessToken: session.accessToken,
+            user: session.user,
+          );
+          await _tryAttachFirebaseEmailSession(
+            email: normalizedEmail,
+            password: password,
+          );
+          return;
+        } on AuthApiException catch (error) {
+          if (!_shouldFallbackToFirebaseEmailAuth(error)) {
+            rethrow;
+          }
         }
 
-        await _syncSessionFromFirebaseUser(
-          user,
-          forceRefreshToken: true,
+        await _signInWithFirebaseEmail(
+          email: normalizedEmail,
+          password: password,
         );
       });
     } on firebase_auth.FirebaseAuthException catch (error) {
       throw AuthException(_toUserMessageForEmailSignInException(error));
+    }
+  }
+
+  Future<void> sendPasswordResetEmail({required String email}) async {
+    await _ensureInitialized();
+    final normalizedEmail = _normalizeEmail(email);
+
+    if (!_isValidEmail(normalizedEmail)) {
+      throw const AuthException('Enter your email address first.');
+    }
+
+    try {
+      await _runBusy(() async {
+        await _firebaseAuth.sendPasswordResetEmail(email: normalizedEmail);
+      });
+    } on firebase_auth.FirebaseAuthException catch (error) {
+      throw AuthException(_toUserMessageForPasswordResetException(error));
     }
   }
 
@@ -306,7 +343,8 @@ class AuthController extends ChangeNotifier {
     await _ensureInitialized();
     final firebaseUser = _firebaseAuth.currentUser;
     if (firebaseUser == null) {
-      throw const AuthException('You need to sign in again to change password.');
+      throw const AuthException(
+          'You need to sign in again to change password.');
     }
 
     final normalizedNewPassword = newPassword.trim();
@@ -429,6 +467,25 @@ class AuthController extends ChangeNotifier {
   Future<void> _refreshSessionFromFirebase() async {
     final firebaseUser = _firebaseAuth.currentUser;
     if (firebaseUser == null) {
+      if (_currentUser != null && _accessToken != null) {
+        try {
+          final user = await _authApiClient.fetchCurrentUser(
+            accessToken: _accessToken!,
+          );
+          await _setSession(
+            accessToken: _accessToken!,
+            user: user,
+            notify: false,
+          );
+          return;
+        } on AuthApiException catch (error) {
+          if (!error.isUnauthorized) {
+            return;
+          }
+        } catch (_) {
+          return;
+        }
+      }
       await _clearSession(notify: false);
       return;
     }
@@ -482,6 +539,85 @@ class AuthController extends ChangeNotifier {
       user: user,
       notify: notify,
     );
+  }
+
+  Future<void> _registerWithFirebaseEmail({
+    required String displayName,
+    required String email,
+    required String password,
+  }) async {
+    final credentials = await _firebaseAuth.createUserWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+    final user = credentials.user;
+    if (user == null) {
+      throw const AuthException(
+          'Account was created, but no user session was returned.');
+    }
+
+    if ((user.displayName ?? '').trim() != displayName) {
+      await user.updateDisplayName(displayName);
+    }
+
+    await _syncSessionFromFirebaseUser(
+      user,
+      forceRefreshToken: true,
+    );
+  }
+
+  Future<void> _signInWithFirebaseEmail({
+    required String email,
+    required String password,
+  }) async {
+    final credentials = await _firebaseAuth.signInWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+    final user = credentials.user;
+    if (user == null) {
+      throw const AuthException(
+          'Sign-in succeeded, but no user session was returned.');
+    }
+
+    await _syncSessionFromFirebaseUser(
+      user,
+      forceRefreshToken: true,
+    );
+  }
+
+  Future<void> _tryAttachFirebaseEmailSession({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      final credentials = await _firebaseAuth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      final user = credentials.user;
+      if (user == null) {
+        return;
+      }
+
+      final accessToken = await user.getIdToken(true);
+      final normalizedToken = accessToken?.trim();
+      if (normalizedToken == null || normalizedToken.isEmpty) {
+        return;
+      }
+
+      final backendUser = await _authApiClient.fetchCurrentUser(
+        accessToken: normalizedToken,
+      );
+      await _setSession(
+        accessToken: normalizedToken,
+        user: backendUser,
+      );
+    } catch (_) {
+      // The backend session is already valid. This best-effort bridge only
+      // keeps the Firebase SDK attached when both clients target the same auth
+      // project.
+    }
   }
 
   AuthUser _mapFirebaseUser(firebase_auth.User firebaseUser) {
@@ -610,7 +746,7 @@ class AuthController extends ChangeNotifier {
       'account-exists-with-different-credential' =>
         'This email is already linked to a different sign-in method.',
       'invalid-credential' =>
-        'Those sign-in details were not accepted. Please try again.',
+        'That email and password were not accepted. Please try again.',
       'operation-not-allowed' =>
         'Google auth is not enabled in Firebase Authentication. Enable Google in Firebase Console > Authentication > Sign-in method.',
       'user-disabled' => 'This account has been disabled.',
@@ -620,7 +756,7 @@ class AuthController extends ChangeNotifier {
         'This email is already registered. Try signing in instead.',
       'invalid-email' => 'Enter a valid email address.',
       'invalid-login-credentials' =>
-        'Incorrect email or password. If this account was created with Google, use Continue with Google instead.',
+        'Incorrect email or password. You can also use Continue with Google if it is linked to this account.',
       'wrong-password' => 'Incorrect email or password.',
       'user-not-found' => 'Incorrect email or password.',
       'too-many-requests' =>
@@ -636,8 +772,11 @@ class AuthController extends ChangeNotifier {
     firebase_auth.FirebaseAuthException error,
   ) {
     return switch (error.code) {
-      'invalid-credential' || 'invalid-login-credentials' || 'wrong-password' || 'user-not-found' =>
-        'Incorrect email or password. If this account was created with Google, use Continue with Google instead.',
+      'invalid-credential' ||
+      'invalid-login-credentials' ||
+      'wrong-password' ||
+      'user-not-found' =>
+        'Incorrect email or password. You can also use Continue with Google if it is linked to this account.',
       'invalid-email' => 'Enter a valid email address.',
       'user-disabled' => 'This account has been disabled.',
       'network-request-failed' =>
@@ -646,6 +785,14 @@ class AuthController extends ChangeNotifier {
         'Too many sign-in attempts right now. Please wait a moment and try again.',
       _ => 'We could not sign you in with that email and password.',
     };
+  }
+
+  bool _shouldFallbackToFirebaseEmailAuth(AuthApiException error) {
+    final statusCode = error.statusCode;
+    if (statusCode == null) {
+      return true;
+    }
+    return statusCode == 404 || statusCode >= 500;
   }
 
   String _toUserMessageForEmailRegistrationException(
@@ -661,6 +808,20 @@ class AuthController extends ChangeNotifier {
       'too-many-requests' =>
         'Too many sign-up attempts right now. Please wait a moment and try again.',
       _ => 'We could not create your account right now. Please try again.',
+    };
+  }
+
+  String _toUserMessageForPasswordResetException(
+    firebase_auth.FirebaseAuthException error,
+  ) {
+    return switch (error.code) {
+      'invalid-email' => 'Enter a valid email address.',
+      'user-disabled' => 'This account has been disabled.',
+      'network-request-failed' =>
+        'We could not reach the reset service. Check your connection and try again.',
+      'too-many-requests' =>
+        'Too many reset attempts right now. Please wait a moment and try again.',
+      _ => 'We could not send a reset email right now. Please try again.',
     };
   }
 

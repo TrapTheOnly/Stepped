@@ -5,16 +5,21 @@ import '../widgets/frosted_squircle.dart';
 class AppTheme {
   const AppTheme._();
 
-  static const Color _moss = Color(0xFF43655B);
-  static const Color _mossSoft = Color(0xFF8FB3A7);
-  static const Color _lake = Color(0xFF436274);
-  static const Color _lakeSoft = Color(0xFFC4E4F9);
-  static const Color _earth = Color(0xFF695D40);
-  static const Color _parchment = Color(0xFFF4F1E8);
-  static const Color _ink = Color(0xFF191C1B);
-  static const Color _nightForest = Color(0xFF121816);
-  static const Color _nightSurface = Color(0xFF1B2320);
-  static const Color _mist = Color(0xFFE6E7E0);
+  static const Color _forest = Color(0xFF254333);
+  static const Color _deepShadowForest = Color(0xFF163124);
+  static const Color _warmGold = Color(0xFFD4B88B);
+  static const Color _creamHighlight = Color(0xFFEBD7B3);
+  static const Color _slateBlue = Color(0xFF3E606B);
+  static const Color _softCreamSurface = Color(0xFFF5EFE2);
+  static const Color _creamSurfaceLow = Color(0xFFF0E7D5);
+  static const Color _greenGraySurface = Color(0xFFE8E4D4);
+  static const Color _darkGreenGray = Color(0xFF101713);
+  static const Color _darkSurfaceLow = Color(0xFF151D19);
+  static const Color _darkSurface = Color(0xFF1A241F);
+  static const Color _darkSurfaceHigh = Color(0xFF223028);
+  static const Color _darkSurfaceHighest = Color(0xFF2B3A31);
+  static const Color _ink = Color(0xFF16201A);
+  static const Color _creamInk = Color(0xFFF0E5D2);
 
   static ThemeData light() {
     return _base(_lightScheme);
@@ -144,19 +149,19 @@ class AppTheme {
       displayLarge: base.displayLarge?.copyWith(
         fontFamily: 'Georgia',
         fontWeight: FontWeight.w700,
-        letterSpacing: -1.2,
+        letterSpacing: 0,
         color: headlineColor,
       ),
       displayMedium: base.displayMedium?.copyWith(
         fontFamily: 'Georgia',
         fontWeight: FontWeight.w700,
-        letterSpacing: -0.9,
+        letterSpacing: 0,
         color: headlineColor,
       ),
       titleLarge: base.titleLarge?.copyWith(
         fontFamily: 'Georgia',
         fontWeight: FontWeight.w700,
-        letterSpacing: -0.2,
+        letterSpacing: 0,
         color: headlineColor,
       ),
       titleMedium: base.titleMedium?.copyWith(
@@ -193,51 +198,68 @@ class AppTheme {
   }
 
   static final ColorScheme _lightScheme = ColorScheme.fromSeed(
-    seedColor: _moss,
+    seedColor: _forest,
     brightness: Brightness.light,
   ).copyWith(
-    primary: _moss,
-    onPrimary: Colors.white,
-    primaryContainer: _mossSoft,
-    onPrimaryContainer: const Color(0xFF13231E),
-    secondary: _lake,
-    onSecondary: Colors.white,
-    secondaryContainer: _lakeSoft,
-    onSecondaryContainer: const Color(0xFF10212C),
-    tertiary: _earth,
-    onTertiary: Colors.white,
-    surface: _parchment,
+    primary: _forest,
+    onPrimary: _creamHighlight,
+    primaryContainer: _creamHighlight,
+    onPrimaryContainer: _deepShadowForest,
+    secondary: _slateBlue,
+    onSecondary: const Color(0xFFF0E9D9),
+    secondaryContainer: const Color(0xFFD8E0DD),
+    onSecondaryContainer: const Color(0xFF13282E),
+    tertiary: const Color(0xFF80673C),
+    onTertiary: const Color(0xFFFFF4DF),
+    tertiaryContainer: _warmGold,
+    onTertiaryContainer: const Color(0xFF2B2113),
+    surface: _softCreamSurface,
     onSurface: _ink,
-    surfaceTint: _moss,
+    onSurfaceVariant: const Color(0xFF58655E),
+    surfaceTint: _forest,
+    surfaceContainerLowest: const Color(0xFFFBF5E9),
+    surfaceContainerLow: _creamSurfaceLow,
+    surfaceContainer: _greenGraySurface,
+    surfaceContainerHigh: const Color(0xFFDDD7C5),
+    surfaceContainerHighest: const Color(0xFFD2CBB8),
+    outline: const Color(0xFF77847C),
+    outlineVariant: const Color(0xFFB8C0B5),
+    shadow: _deepShadowForest,
+    scrim: _deepShadowForest,
     error: const Color(0xFFB44C3D),
-    onError: Colors.white,
+    onError: const Color(0xFFFFF4EF),
   );
 
   static final ColorScheme _darkScheme = ColorScheme.fromSeed(
-    seedColor: _mossSoft,
+    seedColor: _warmGold,
     brightness: Brightness.dark,
   ).copyWith(
-    primary: _mossSoft,
-    onPrimary: const Color(0xFF172C25),
-    primaryContainer: _moss,
-    onPrimaryContainer: const Color(0xFFD8EEE6),
-    secondary: const Color(0xFFA4C8DB),
-    onSecondary: const Color(0xFF152732),
-    secondaryContainer: const Color(0xFF304958),
-    onSecondaryContainer: const Color(0xFFD8EDF9),
-    tertiary: const Color(0xFFC8B38C),
-    onTertiary: const Color(0xFF322718),
-    surface: _nightForest,
-    onSurface: _mist,
-    surfaceTint: _mossSoft,
+    primary: _warmGold,
+    onPrimary: _deepShadowForest,
+    primaryContainer: _forest,
+    onPrimaryContainer: _creamHighlight,
+    secondary: const Color(0xFF9DB8BF),
+    onSecondary: const Color(0xFF10242A),
+    secondaryContainer: _slateBlue,
+    onSecondaryContainer: const Color(0xFFE1EEF0),
+    tertiary: _creamHighlight,
+    onTertiary: const Color(0xFF382914),
+    tertiaryContainer: const Color(0xFF5B492B),
+    onTertiaryContainer: const Color(0xFFF4E1BE),
+    surface: _darkGreenGray,
+    onSurface: _creamInk,
+    onSurfaceVariant: const Color(0xFFC8BDA8),
+    surfaceTint: _warmGold,
     error: const Color(0xFFFFB4A8),
     onError: const Color(0xFF690005),
-    outline: const Color(0xFF8A938D),
-    outlineVariant: const Color(0xFF3B4742),
-    surfaceContainerLowest: _nightForest,
-    surfaceContainerLow: _nightSurface,
-    surfaceContainer: const Color(0xFF202926),
-    surfaceContainerHigh: const Color(0xFF27322E),
-    surfaceContainerHighest: const Color(0xFF31403A),
+    outline: const Color(0xFF958D7C),
+    outlineVariant: const Color(0xFF455247),
+    shadow: Colors.black,
+    scrim: Colors.black,
+    surfaceContainerLowest: const Color(0xFF0B100D),
+    surfaceContainerLow: _darkSurfaceLow,
+    surfaceContainer: _darkSurface,
+    surfaceContainerHigh: _darkSurfaceHigh,
+    surfaceContainerHighest: _darkSurfaceHighest,
   );
 }

@@ -32,6 +32,10 @@ final _shellNavigatorKey =
 
 const _inviteAppLinkHost = 'app.stepped.world';
 const _inviteCustomScheme = 'stepped';
+const _brandLogoAsset = 'assets/branding/stepped_logo.png';
+const _brandForest = Color(0xFF254333);
+const _brandGold = Color(0xFFD4B88B);
+const _brandCream = Color(0xFFEBD7B3);
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final authController = ref.read(authControllerProvider);
@@ -598,30 +602,31 @@ class _AppLaunchScreen extends StatelessWidget {
                         radius: 44,
                         blurSigma: 22,
                         color: colorScheme.surface.withValues(alpha: 0.42),
-                        borderColor: colorScheme.primaryContainer
-                            .withValues(alpha: 0.14),
+                        borderColor: _brandGold.withValues(alpha: 0.16),
                         shadowColor:
                             colorScheme.primary.withValues(alpha: 0.08),
                         padding: const EdgeInsets.all(14),
                         child: DecoratedBox(
                           decoration: ShapeDecoration(
                             shape: squircleShape(34),
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: <Color>[
-                                colorScheme.primary,
-                                colorScheme.primaryContainer,
-                              ],
-                            ),
+                            color: _brandForest,
+                            shadows: <BoxShadow>[
+                              BoxShadow(
+                                color: _brandForest.withValues(alpha: 0.24),
+                                blurRadius: 24,
+                                offset: const Offset(0, 12),
+                              ),
+                            ],
                           ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(18),
+                          child: ClipPath(
+                            clipper: ShapeBorderClipper(
+                              shape: squircleShape(34),
+                            ),
                             child: Image.asset(
-                              'assets/branding/stepped_monochrome_logo.png',
-                              width: 72,
-                              height: 72,
-                              color: colorScheme.onPrimary,
+                              _brandLogoAsset,
+                              width: 108,
+                              height: 108,
+                              fit: BoxFit.cover,
                               filterQuality: FilterQuality.high,
                             ),
                           ),
@@ -633,6 +638,9 @@ class _AppLaunchScreen extends StatelessWidget {
                         style: textTheme.titleLarge?.copyWith(
                           letterSpacing: 4,
                           fontSize: 30,
+                          color: colorScheme.brightness == Brightness.dark
+                              ? _brandCream
+                              : _brandForest,
                         ),
                       ),
                       const SizedBox(height: 8),

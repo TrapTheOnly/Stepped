@@ -1,0 +1,216 @@
+name: Build And Upload iOS TestFlight
+
+on:
+  push:
+    branches:
+    - main
+    paths:
+    - ".github/workflows/ios-testflight.yml"
+    - "assets/**"
+    - "ios/**"
+    - "lib/**"
+    - "pubspec.yaml"
+    - "pubspec.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-testflight-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-upload-testflight:
+    environment: Main
+    runs-on: macos-15
+    timeout-minutes: 90
+
+    env:
+      APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      GEMINI_API_VERSION: ${{ vars.GEMINI_API_VERSION }}
+      GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+      GOOGLE_SERVER_CLIENT_ID: ${{ secrets.GOOGLE_SERVER_CLIENT_ID }}
+      IOS_BUILD_NUMBER_OFFSET: ${{ vars.IOS_BUILD_NUMBER_OFFSET }}
+      IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
+      IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+      IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+      IOS_USES_NON_EXEMPT_ENCRYPTION: ${{ vars.IOS_USES_NON_EXEMPT_ENCRYPTION }}
+      STEPPED_API_BASE_URL: ${{ vars.STEPPED_API_BASE_URL }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        channel: stable
+        cache: true
+
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        bundler-cache: true
+        working-directory: ios
+
+    - name: Validate iOS release secrets
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        required_vars=(
+          APP_STORE_CONNECT_API_KEY_BASE64
+          APP_STORE_CONNECT_ISSUER_ID
+          APP_STORE_CONNECT_KEY_ID
+          IOS_DISTRIBUTION_CERTIFICATE_BASE64
+          IOS_DISTRIBUTION_CERTIFICATE_PASSWORD
+          IOS_PROVISIONING_PROFILE_BASE64
+        )
+
+        missing=()
+        for var_name in "${required_vars[@]}"; do
+          if [ -z "${!var_name:-}" ]; then
+            missing+=("$var_name")
+          fi
+        done
+
+        if [ "${#missing[@]}" -gt 0 ]; then
+          printf 'Missing required GitHub Actions secrets:\n'
+          printf ' - %s\n' "${missing[@]}"
+          exit 1
+        fi
+
+    - name: Install Flutter dependencies
+      run: flutter pub get
+
+    - name: Install CocoaPods dependencies
+      run: pod install --repo-update
+      working-directory: ios
+
+    - name: Import Apple signing assets
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        certificate_path="$RUNNER_TEMP/apple_distribution.p12"
+        profile_path="$RUNNER_TEMP/stepped_app_store.mobileprovision"
+        profile_plist="$RUNNER_TEMP/stepped_app_store_profile.plist"
+        keychain_path="$RUNNER_TEMP/stepped-signing.keychain-db"
+        keychain_password="$(uuidgen)"
+
+        printf '%s' "$IOS_DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode > "$certificate_path"
+        printf '%s' "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$profile_path"
+
+        security create-keychain -p "$keychain_password" "$keychain_path"
+        security set-keychain-settings -lut 21600 "$keychain_path"
+        security unlock-keychain -p "$keychain_password" "$keychain_path"
+        security import "$certificate_path" \
+          -P "$IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" \
+          -A \
+          -t cert \
+          -f pkcs12 \
+          -k "$keychain_path"
+        security list-keychains -d user -s "$keychain_path"
+        security default-keychain -s "$keychain_path"
+        security set-key-partition-list \
+          -S apple-tool:,apple:,codesign: \
+          -s \
+          -k "$keychain_password" \
+          "$keychain_path"
+
+        mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+        security cms -D -i "$profile_path" > "$profile_plist"
+        profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print UUID' "$profile_plist")"
+        profile_name="$(/usr/libexec/PlistBuddy -c 'Print Name' "$profile_plist")"
+        team_id="$(/usr/libexec/PlistBuddy -c 'Print TeamIdentifier:0' "$profile_plist")"
+        cp "$profile_path" "$HOME/Library/MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision"
+
+        {
+          echo "IOS_DEVELOPMENT_TEAM=$team_id"
+          echo "IOS_PROVISIONING_PROFILE_NAME=$profile_name"
+        } >> "$GITHUB_ENV"
+
+    - name: Build signed IPA
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        build_number_offset="${IOS_BUILD_NUMBER_OFFSET:-1000}"
+        if ! [[ "$build_number_offset" =~ ^[0-9]+$ ]]; then
+          echo "IOS_BUILD_NUMBER_OFFSET must be a non-negative integer."
+          exit 1
+        fi
+
+        build_number=$((GITHUB_RUN_NUMBER + build_number_offset))
+        archive_path="$RUNNER_TEMP/Runner.xcarchive"
+        export_path="$GITHUB_WORKSPACE/build/ios/ipa"
+        export_options_plist="$RUNNER_TEMP/ExportOptions.plist"
+
+        flutter build ios --release --no-codesign \
+          --build-number="$build_number" \
+          --dart-define=GOOGLE_SERVER_CLIENT_ID="$GOOGLE_SERVER_CLIENT_ID" \
+          --dart-define=STEPPED_API_BASE_URL="$STEPPED_API_BASE_URL" \
+          --dart-define=GEMINI_MODEL="$GEMINI_MODEL" \
+          --dart-define=GEMINI_API_VERSION="$GEMINI_API_VERSION"
+
+        cat > "$export_options_plist" <<'PLIST'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict/>
+        </plist>
+        PLIST
+
+        /usr/libexec/PlistBuddy -c "Add :destination string export" "$export_options_plist"
+        /usr/libexec/PlistBuddy -c "Add :method string app-store-connect" "$export_options_plist"
+        /usr/libexec/PlistBuddy -c "Add :provisioningProfiles dict" "$export_options_plist"
+        /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:com.gico.stepped string $IOS_PROVISIONING_PROFILE_NAME" "$export_options_plist"
+        /usr/libexec/PlistBuddy -c "Add :signingCertificate string Apple Distribution" "$export_options_plist"
+        /usr/libexec/PlistBuddy -c "Add :signingStyle string manual" "$export_options_plist"
+        /usr/libexec/PlistBuddy -c "Add :stripSwiftSymbols bool true" "$export_options_plist"
+        /usr/libexec/PlistBuddy -c "Add :teamID string $IOS_DEVELOPMENT_TEAM" "$export_options_plist"
+        /usr/libexec/PlistBuddy -c "Add :uploadSymbols bool true" "$export_options_plist"
+
+        xcodebuild archive \
+          -workspace ios/Runner.xcworkspace \
+          -scheme Runner \
+          -configuration Release \
+          -destination "generic/platform=iOS" \
+          -archivePath "$archive_path" \
+          DEVELOPMENT_TEAM="$IOS_DEVELOPMENT_TEAM" \
+          CODE_SIGN_STYLE=Manual \
+          CODE_SIGN_IDENTITY="Apple Distribution" \
+          PROVISIONING_PROFILE_SPECIFIER="$IOS_PROVISIONING_PROFILE_NAME" \
+          CURRENT_PROJECT_VERSION="$build_number" \
+          FLUTTER_BUILD_NUMBER="$build_number"
+
+        mkdir -p "$export_path"
+        xcodebuild -exportArchive \
+          -archivePath "$archive_path" \
+          -exportPath "$export_path" \
+          -exportOptionsPlist "$export_options_plist"
+
+        ipa_path="$(find "$export_path" -name '*.ipa' -print -quit)"
+        if [ -z "$ipa_path" ]; then
+          echo "No IPA was exported to $export_path"
+          exit 1
+        fi
+
+        {
+          echo "IOS_BUILD_NUMBER=$build_number"
+          echo "IPA_PATH=$ipa_path"
+        } >> "$GITHUB_ENV"
+
+    - name: Upload IPA artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-store-ipa-build-${{ github.run_number }}
+        path: build/ios/ipa/*.ipa
+        if-no-files-found: error
+
+    - name: Upload to TestFlight
+      run: bundle exec fastlane ios upload_testflight ipa:"$IPA_PATH"
+      working-directory: ios

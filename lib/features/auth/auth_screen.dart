@@ -35,7 +35,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
   late final TextEditingController _registerEmailController;
   late final TextEditingController _registerPasswordController;
   late final TextEditingController _registerConfirmPasswordController;
-  late final AnimationController _backgroundController;
+  late final AnimationController _modeController;
 
   _AuthPanelMode _mode = _AuthPanelMode.signIn;
 
@@ -48,10 +48,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
     _registerEmailController = TextEditingController();
     _registerPasswordController = TextEditingController();
     _registerConfirmPasswordController = TextEditingController();
-    _backgroundController = AnimationController(
+    _modeController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 16),
-    )..repeat(reverse: true);
+      duration: const Duration(milliseconds: 620),
+      reverseDuration: const Duration(milliseconds: 520),
+      value: 0,
+    );
   }
 
   @override
@@ -62,7 +64,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
     _registerEmailController.dispose();
     _registerPasswordController.dispose();
     _registerConfirmPasswordController.dispose();
-    _backgroundController.dispose();
+    _modeController.dispose();
     super.dispose();
   }
 
@@ -74,107 +76,158 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
 
     return Scaffold(
-      body: Stack(
-        children: <Widget>[
-          Positioned.fill(
-            child: _AnimatedBackdrop(
-              controller: _backgroundController,
-              colorScheme: colorScheme,
-            ),
-          ),
-          SafeArea(
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(20, 24, 20, 28 + bottomInset),
+      backgroundColor: colorScheme.surface,
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: _authBackgroundGradient(colorScheme),
+        ),
+        child: SafeArea(
+          top: false,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final wide = constraints.maxWidth > 560;
+              final pageWidth = wide ? 430.0 : constraints.maxWidth;
+              return Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 470),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      _AuthHero(mode: _mode),
-                      const SizedBox(height: 18),
-                      _ModeSegmentControl(
-                        mode: _mode,
-                        onChanged: (nextMode) {
-                          if (isBusy || _mode == nextMode) {
-                            return;
-                          }
-                          setState(() {
-                            _mode = nextMode;
-                          });
-                        },
-                      ),
-                      const SizedBox(height: 14),
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 420),
-                        switchInCurve: Curves.easeOutCubic,
-                        switchOutCurve: Curves.easeInCubic,
-                        layoutBuilder: (currentChild, previousChildren) {
-                          return Stack(
-                            alignment: Alignment.topCenter,
-                            children: <Widget>[
-                              ...previousChildren,
-                              if (currentChild != null) currentChild,
-                            ],
-                          );
-                        },
-                        transitionBuilder: (child, animation) {
-                          final key = child.key;
-                          final isSignIn = key is ValueKey<_AuthPanelMode> &&
-                              key.value == _AuthPanelMode.signIn;
-                          final beginX = isSignIn ? -0.08 : 0.08;
-                          final fade = CurvedAnimation(
-                            parent: animation,
-                            curve: Curves.easeOutCubic,
-                          );
-                          return FadeTransition(
-                            opacity: fade,
-                            child: SlideTransition(
-                              position: Tween<Offset>(
-                                begin: Offset(beginX, 0),
-                                end: Offset.zero,
-                              ).animate(fade),
-                              child: child,
-                            ),
-                          );
-                        },
-                        child: _mode == _AuthPanelMode.signIn
-                            ? _SignInCard(
-                                key: const ValueKey<_AuthPanelMode>(
-                                  _AuthPanelMode.signIn,
-                                ),
-                                formKey: _signInFormKey,
-                                isBusy: isBusy,
-                                emailController: _signInEmailController,
-                                passwordController: _signInPasswordController,
-                                onPrimaryPressed: _onSignInPressed,
-                                onGooglePressed: _onGooglePressed,
+                  constraints: BoxConstraints(
+                    maxWidth: pageWidth,
+                    minHeight: constraints.maxHeight,
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(wide ? 34 : 0),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: colorScheme.surface,
+                        border: wide
+                            ? Border.all(
+                                color: colorScheme.outlineVariant
+                                    .withValues(alpha: 0.22),
                               )
-                            : _RegisterCard(
-                                key: const ValueKey<_AuthPanelMode>(
-                                  _AuthPanelMode.register,
+                            : null,
+                        boxShadow: wide
+                            ? <BoxShadow>[
+                                BoxShadow(
+                                  color: colorScheme.shadow
+                                      .withValues(alpha: 0.10),
+                                  blurRadius: 32,
+                                  offset: const Offset(0, 18),
                                 ),
-                                formKey: _registerFormKey,
-                                isBusy: isBusy,
-                                displayNameController: _registerNameController,
-                                emailController: _registerEmailController,
-                                passwordController: _registerPasswordController,
-                                confirmPasswordController:
-                                    _registerConfirmPasswordController,
-                                onPrimaryPressed: _onRegisterPressed,
-                                onGooglePressed: _onGooglePressed,
-                              ),
+                              ]
+                            : null,
                       ),
-                    ],
+                      child: SingleChildScrollView(
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: EdgeInsets.only(bottom: 22 + bottomInset),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minHeight: constraints.maxHeight,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: <Widget>[
+                              AnimatedBuilder(
+                                animation: _modeController,
+                                builder: (context, child) {
+                                  final progress = _authMotionCurve.transform(
+                                    _modeController.value,
+                                  );
+                                  return _AuthHero(progress: progress);
+                                },
+                              ),
+                              AnimatedBuilder(
+                                animation: _modeController,
+                                builder: (context, child) {
+                                  final progress = _authMotionCurve.transform(
+                                    _modeController.value,
+                                  );
+                                  return Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      24,
+                                      20,
+                                      24,
+                                      0,
+                                    ),
+                                    child: _AuthFlowPanel(
+                                      mode: _mode,
+                                      progress: progress,
+                                      signInFormKey: _signInFormKey,
+                                      registerFormKey: _registerFormKey,
+                                      isBusy: isBusy,
+                                      signInEmailController:
+                                          _signInEmailController,
+                                      signInPasswordController:
+                                          _signInPasswordController,
+                                      registerNameController:
+                                          _registerNameController,
+                                      registerEmailController:
+                                          _registerEmailController,
+                                      registerPasswordController:
+                                          _registerPasswordController,
+                                      registerConfirmPasswordController:
+                                          _registerConfirmPasswordController,
+                                      onForgotPasswordPressed:
+                                          _onForgotPasswordPressed,
+                                      onSignInPressed: _onSignInPressed,
+                                      onRegisterPressed: _onRegisterPressed,
+                                      onGooglePressed: _onGooglePressed,
+                                      onSwitchMode: () => _setMode(
+                                        _mode == _AuthPanelMode.signIn
+                                            ? _AuthPanelMode.register
+                                            : _AuthPanelMode.signIn,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
-        ],
+        ),
       ),
     );
+  }
+
+  void _setMode(_AuthPanelMode mode) {
+    final auth = ref.read(authControllerProvider);
+    if (auth.isBusy || _mode == mode) {
+      return;
+    }
+    _carrySharedAuthText(mode);
+    setState(() {
+      _mode = mode;
+    });
+    final target = mode == _AuthPanelMode.signIn ? 0.0 : 1.0;
+    _modeController.animateTo(
+      target,
+      curve: Curves.linear,
+    );
+  }
+
+  void _carrySharedAuthText(_AuthPanelMode nextMode) {
+    if (nextMode == _AuthPanelMode.register) {
+      if (_registerEmailController.text.trim().isEmpty) {
+        _registerEmailController.text = _signInEmailController.text;
+      }
+      if (_registerPasswordController.text.isEmpty) {
+        _registerPasswordController.text = _signInPasswordController.text;
+      }
+      return;
+    }
+
+    if (_signInEmailController.text.trim().isEmpty) {
+      _signInEmailController.text = _registerEmailController.text;
+    }
+    if (_signInPasswordController.text.isEmpty) {
+      _signInPasswordController.text = _registerPasswordController.text;
+    }
   }
 
   Future<void> _onSignInPressed() async {
@@ -216,6 +269,20 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
     }
   }
 
+  Future<void> _onForgotPasswordPressed() async {
+    final auth = ref.read(authControllerProvider);
+    try {
+      await auth.sendPasswordResetEmail(email: _signInEmailController.text);
+      _showMessage(
+        'If password reset is available, instructions will be sent to that email.',
+      );
+    } on AuthException catch (error) {
+      _showError(error.message);
+    } catch (error) {
+      _showError(error.toString());
+    }
+  }
+
   Future<void> _onGooglePressed() async {
     final auth = ref.read(authControllerProvider);
     try {
@@ -228,6 +295,14 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
   }
 
   void _showError(String message) {
+    _showSnackBar(message);
+  }
+
+  void _showMessage(String message) {
+    _showSnackBar(message);
+  }
+
+  void _showSnackBar(String message) {
     if (!mounted) {
       return;
     }
@@ -248,3 +323,5 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
       );
   }
 }
+
+const _authMotionCurve = Cubic(0.20, 0.00, 0.00, 1.00);
